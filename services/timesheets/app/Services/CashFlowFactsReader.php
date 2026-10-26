@@ -5,11 +5,37 @@ namespace App\Services;
 use App\Models\FinalApproval;
 use App\Models\FinalApprovalException;
 use App\Models\TimesheetEntry;
+use App\Models\ReportingFreezeRecord;
 use App\Support\ReportingFreeze;
 use Illuminate\Support\Facades\DB;
 
 final class CashFlowFactsReader
 {
+
+    /** Snapshot and token/revision validation share the same reporting advisory gate. */
+    public function readWithFreeze(
+        string $from,
+        string $to,
+        ?array $memberIds,
+        ?string $freezeToken,
+        ?int $clientId,
+    ): array {
+        return DB::transaction(function () use ($from, $to, $memberIds, $freezeToken, $clientId): array {
+            ReportingFreeze::lock();
+            $snapshot = $this->read($from, $to, $memberIds);
+            if ($freezeToken !== null) {
+                abort_unless($clientId !== null, 422, 'Frozen snapshot requires client scope');
+                $freeze = ReportingFreezeRecord::query()->where('freeze_token', $freezeToken)->first();
+                abort_unless($freeze && (int) $freeze->client_id === $clientId
+                    && $freeze->period_start === $from && $freeze->period_end === $to,
+                    409, 'Reporting freeze does not cover requested period');
+                abort_unless(hash_equals((string) $freeze->revision, $snapshot['revision']), 409,
+                    'Frozen Timesheets revision has changed');
+            }
+            return $snapshot;
+        });
+    }
+
     /**
      * Independent, read-only canonical facts. Scoped reads are authorised by the
      * Clients integration token and the complete set of ClientMember IDs sent by

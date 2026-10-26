@@ -36,7 +36,8 @@ test('No fabricated P&L or Clients/Timesheets profitability', () => {
   assert.ok(ui.includes("i.document_status==='issued'"));
   assert.ok(read('services/clients/app/Http/Controllers/FinanceClientsController.php').includes('IRLIX_FINANCE_CLIENTS_TOKEN'));
   assert.ok(read('services/clients/routes/internal.php').includes("FinanceClientsController::class"));
-  assert.ok(read('services/timesheets/routes/system.php').includes('IRLIX_FINANCE_TIMESHEETS_TOKEN'));
+  assert.ok(read('services/timesheets/routes/system.php').includes("[CommercialDataController::class, 'finance']"));
+  assert.ok(read('services/timesheets/app/Http/Controllers/CommercialDataController.php').includes('IRLIX_FINANCE_TIMESHEETS_TOKEN'));
   assert.ok(read('services/finance/app/Http/Controllers/SettlementController.php').includes('lockForUpdate'));
 });
 test('Own Finance schema, no direct cross-service DB table writes', () => {

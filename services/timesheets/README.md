@@ -1,5 +1,7 @@
 # Timesheets backend
 
+Архитектура контроллеров/сервисов/Eloquent, границы интеграций и проверки: [ARCHITECTURE_REFACTOR.md](ARCHITECTURE_REFACTOR.md).
+
 Laravel-сервис коммерческого рабочего времени, владеющий PostgreSQL schema `timesheets`. Интеграции с Clients, Employees и Vacations выполняются через API.
 
 ## Факты и идентичность
@@ -58,6 +60,6 @@ AM/временный делегат действует в рамках свое
 
 ## Проверки
 
-Docker build запускает `tests/runtime_contract_smoke.php` и `tests/project_conversion_smoke.php` на синтетической SQLite БД. Первая проверка выполняет реальные Laravel routes: собственный и управленческий workflow, AM/RN/delegate/admin, partner identity/24ч, отказ неполного каталога, конфликт, точные 7.33, freeze/revision и защищённый purge. Вторая проверяет точный rekey, все описания, lineage, approvals/exceptions, crash rollback и повторение. `assignment_reconciliation_smoke.php` дополнительно проверяет сохранение/пометку конфликтных часов и источник ClientMember. PostgreSQL schema/concurrency и интеграционное QA выполняются отдельно; SQLite smoke не заменяет их.
+Docker build запускает `tests/architecture_smoke.php`, `tests/runtime_contract_smoke.php` и `tests/project_conversion_smoke.php` на синтетической SQLite БД. Первая проверка выполняет реальные Laravel routes: собственный и управленческий workflow, AM/RN/delegate/admin, partner identity/24ч, отказ неполного каталога, конфликт, точные 7.33, freeze/revision и защищённый purge. Вторая проверяет точный rekey, все описания, lineage, approvals/exceptions, crash rollback и повторение. `assignment_reconciliation_smoke.php` дополнительно проверяет сохранение/пометку конфликтных часов и источник ClientMember. PostgreSQL schema/concurrency и интеграционное QA выполняются отдельно; SQLite smoke не заменяет их.
 
 Схема ClientMember, проектно-независимые факты, freeze/revision/snapshot, ручные конфликты и безопасная координированная процедура восстановления описаны в [docs/CLIENT_MEMBER_CUTOVER.md](../../docs/CLIENT_MEMBER_CUTOVER.md). Partner self-service в текущем интерфейсе не реализован.
