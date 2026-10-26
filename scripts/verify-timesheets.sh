@@ -21,18 +21,15 @@ do
 done
 echo "[routing] direct SPA routes OK"
 
-# Design System is now SSO-gated, including deep links. It must never return
-# a public SPA (200), and a 302 must point at the Portal sign-in entry.
-for page in components navigation
+# The catalog requires Employees/Keycloak authentication. Anonymous deep links
+# must redirect to the SSO entry flow instead of returning public SPA HTML.
+echo "[routing] protected Design System routes"
+for route in design-system/components design-system/navigation
 do
-  url="http://127.0.0.1/design-system/$page/"
-  response="$(curl_stand -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$url")"
-  case "$response" in
-    "302 "*"design-system=1&return=/design-system/$page/") ;;
-    *) fail "protected Design System /$page/ returned unexpected status or redirect: $response" ;;
-  esac
+  code="$(curl_stand -sS -o /dev/null -w '%{http_code}' --retry 8 --retry-all-errors --retry-delay 1 "http://127.0.0.1/$route/")"
+  [ "$code" = 302 ] || fail "anonymous protected route /$route/ returned HTTP $code instead of 302"
 done
-echo "[routing] authenticated Design System deep links redirect to SSO"
+echo "[routing] protected Design System routes OK"
 
 echo "[timesheets] frontend"
 html="$(curl_stand -fsS --retry 20 --retry-all-errors --retry-delay 2 http://127.0.0.1/timesheets/)" || {
