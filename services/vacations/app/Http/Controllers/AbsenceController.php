@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 
 use App\Application\AbsenceService;
+use App\Application\AbsenceDeletionService;
 use App\Application\AbsenceReadService;
 use App\Domain\Absence\AbsenceStatus;
 use App\Domain\Absence\AbsenceType;
@@ -25,6 +26,7 @@ final class AbsenceController extends Controller
         private readonly EmployeesDirectory $employees,
         private readonly ClientsDirectory $clients,
         private readonly AbsenceService $absences,
+        private readonly AbsenceDeletionService $deletions,
         private readonly AbsenceReadService $reads,
         private readonly VacationsAccess $authorization,
     ) {}
@@ -144,6 +146,20 @@ final class AbsenceController extends Controller
                 $data,
                 $this->subject($request),
             )]);
+        });
+    }
+
+    public function destroy(Request $request, int $absence): JsonResponse
+    {
+        return $this->withEmployee($request, function (array $employee) use ($request, $absence) {
+            $access = $this->employees->vacationsAccess($request, (int) $employee['id']);
+            if (!$this->authorization->isAdmin($access)) {
+                throw new DomainException('Недостаточно прав для удаления отсутствия');
+            }
+
+            $this->deletions->delete($absence);
+
+            return response()->json(['data' => ['id' => $absence, 'deleted' => true]]);
         });
     }
 
