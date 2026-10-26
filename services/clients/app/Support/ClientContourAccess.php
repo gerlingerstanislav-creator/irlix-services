@@ -3,7 +3,7 @@
 namespace App\Support;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use App\Models\ClientContourPermission;
 use Illuminate\Support\Facades\Http;
 
 class ClientContourAccess
@@ -209,7 +209,7 @@ class ClientContourAccess
             // Generic managers retain the configurable Timesheets grants of the
             // department-manager matrix role, without gaining its Clients grants.
             $matrixRoles = in_array('manager', $specialRoles, true) ? [...$roles, 'department-manager'] : $roles;
-            foreach (DB::table('client_contour_permissions')->whereIn('role', $matrixRoles)->where('allowed', true)->get() as $row) {
+            foreach (ClientContourPermission::query()->whereIn('role', $matrixRoles)->where('allowed', true)->get() as $row) {
                 if ($row->role === 'department-manager' && !$managedProductionRoots && !str_starts_with($row->permission, 'timesheets.')) continue;
                 $current = $permissions[$row->permission]['scope'] ?? 'none';
                 if (($rank[$row->scope] ?? 0) >= ($rank[$current] ?? 0)) $permissions[$row->permission] = ['allowed' => true, 'scope' => $row->scope];

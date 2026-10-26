@@ -2,7 +2,9 @@
 
 namespace App\Support;
 
-use Illuminate\Support\Facades\DB;
+use App\Models\ClientRequest;
+use App\Models\Position;
+use App\Models\ConnectionAttempt;
 
 final class RequestLifecycle
 {
@@ -20,10 +22,10 @@ final class RequestLifecycle
     // Always lock in request -> position -> attempt order.
     public static function lockPosition(int $positionId): array
     {
-        $position = DB::table('positions')->find($positionId);
+        $position = Position::query()->find($positionId);
         abort_unless($position, 404, 'Позиция не найдена.');
-        $request = DB::table('client_requests')->where('id', $position->client_request_id)->lockForUpdate()->first();
-        $position = DB::table('positions')->where('id', $positionId)->lockForUpdate()->first();
+        $request = ClientRequest::query()->where('id', $position->client_request_id)->lockForUpdate()->first();
+        $position = Position::query()->where('id', $positionId)->lockForUpdate()->first();
         abort_unless($request && $position, 404, 'Позиция не найдена.');
         return [$request, $position];
     }
@@ -35,11 +37,11 @@ final class RequestLifecycle
 
     public static function closeNewAttempts(array $positionIds): void
     {
-        $attempts = DB::table('connection_attempts')->whereIn('position_id', $positionIds)
+        $attempts = ConnectionAttempt::query()->whereIn('position_id', $positionIds)
             ->orderBy('id')->lockForUpdate()->get();
         abort_if($attempts->contains(fn ($attempt) => $attempt->status !== 'Новая'
             && !in_array($attempt->status, self::CLOSED_ATTEMPTS, true)), 422, 'Сперва закройте активные попытки');
-        DB::table('connection_attempts')->whereIn('position_id', $positionIds)->where('status', 'Новая')->update([
+        ConnectionAttempt::query()->whereIn('position_id', $positionIds)->where('status', 'Новая')->update([
             'status' => 'Закрыт: неудача',
             'closed_from_status' => 'Новая',
             'failure_reasons' => json_encode(['Запрос закрыт'], JSON_UNESCAPED_UNICODE),

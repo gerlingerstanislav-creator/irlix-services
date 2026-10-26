@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Support\ClientContourAccess;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use App\Services\ClientContourPermissionService;
 use Illuminate\Validation\Rule;
 
 class ClientContourPermissionsController extends Controller
@@ -18,19 +18,7 @@ class ClientContourPermissionsController extends Controller
     {
         $access = $resolver->resolve($request);
         abort_unless($access['platform_admin'] || ($resolver->allows($access, 'permissions.view') && $resolver->scope($access, 'permissions.view') === 'all'), 403, 'Недостаточно прав на просмотр матрицы разрешений.');
-        $rows = DB::table('client_contour_permissions')->orderBy('role')->orderBy('permission')->get();
-        $matrix = [];
-        foreach ($rows as $row) {
-            if ($row->role === 'platform-tester') continue; // retired role: no tester Clients grants
-            $matrix[$row->role][$row->permission] = [
-                'allowed' => (bool) $row->allowed,
-                'scope' => $row->scope,
-            ];
-        }
-        $matrix['platform-admin'] = [];
-        foreach (array_keys(ClientContourAccess::PERMISSION_LABELS) as $permission) {
-            $matrix['platform-admin'][$permission] = ['allowed' => true, 'scope' => 'all', 'locked' => true];
-        }
+        $matrix = app(ClientContourPermissionService::class)->matrix();
         return response()->json(['data' => [
             'can_manage' => $access['platform_admin'] || ($resolver->allows($access, 'permissions.manage') && $resolver->scope($access, 'permissions.manage') === 'all'),
             'roles' => collect(ClientContourAccess::ROLE_LABELS)->map(fn ($label, $key) => ['key' => $key, 'label' => $label, 'locked' => $key === 'platform-admin'])->values(),
@@ -54,24 +42,9 @@ class ClientContourPermissionsController extends Controller
         if (!$data['allowed']) $data['scope'] = 'none';
         if ($data['allowed'] && $data['scope'] === 'none') return response()->json(['message' => 'Для разрешённого действия укажите область данных.'], 422);
 
-        DB::transaction(function () use ($data, $access): void {
-            $row = DB::table('client_contour_permissions')
-                ->where(['role' => $data['role'], 'permission' => $data['permission']])
-                ->lockForUpdate()->first();
-            $before = ['allowed' => (bool) ($row?->allowed ?? false), 'scope' => $row?->scope ?? 'none'];
-            $after = ['allowed' => $data['allowed'], 'scope' => $data['scope']];
-            DB::table('client_contour_permissions')->updateOrInsert(
-                ['role' => $data['role'], 'permission' => $data['permission']],
-                [...$after, 'updated_at' => now(), ...(!$row ? ['created_at' => now()] : [])]
-            );
-            DB::table('client_contour_permission_audit')->insert([
-                'actor_employee_id' => $access['employee']['id'] ?? null,
-                'role' => $data['role'], 'permission' => $data['permission'],
-                'before' => json_encode($before, JSON_UNESCAPED_UNICODE),
-                'after' => json_encode($after, JSON_UNESCAPED_UNICODE),
-                'created_at' => now(),
-            ]);
-        });
+        app(ClientContourPermissionService::class)->update(
+            $data, isset($access['employee']['id']) ? (int) $access['employee']['id'] : null
+        );
         return $this->index($request, $resolver);
     }
 }

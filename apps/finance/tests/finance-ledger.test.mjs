@@ -21,7 +21,8 @@ test('Invoices require trusted Clients contract and cannot be paid as drafts', (
   assert.ok(api.includes("where('document_status','issued')"));
   assert.ok(api.includes("SettlementController::class,'issue'"));
   assert.ok(read('services/finance/app/Http/Controllers/SettlementController.php').includes("document_status==='issued'"));
-  assert.ok(read('services/clients/app/Http/Controllers/ReportingPeriodsController.php').includes("status === 'Счет оплачен'"));
+  assert.ok(read('services/clients/app/Http/Controllers/ReportingPeriodsController.php').includes('ReportingPeriodLifecycleService'));
+  assert.ok(read('services/clients/app/Services/ReportingPeriodLifecycleService.php').includes("$current->status === 'Счет оплачен'"));
   assert.ok(!api.includes('/close-month'));
 });
 test('No fabricated P&L or Clients/Timesheets profitability', () => {
@@ -33,7 +34,8 @@ test('No fabricated P&L or Clients/Timesheets profitability', () => {
   assert.ok(ui.includes('Нет данных'));
   assert.ok(ui.includes('черновики не участвуют в контроле закрытия периода Clients'));
   assert.ok(ui.includes("i.document_status==='issued'"));
-  assert.ok(read('services/clients/routes/internal.php').includes('IRLIX_FINANCE_CLIENTS_TOKEN'));
+  assert.ok(read('services/clients/app/Http/Controllers/FinanceClientsController.php').includes('IRLIX_FINANCE_CLIENTS_TOKEN'));
+  assert.ok(read('services/clients/routes/internal.php').includes("FinanceClientsController::class"));
   assert.ok(read('services/timesheets/routes/system.php').includes('IRLIX_FINANCE_TIMESHEETS_TOKEN'));
   assert.ok(read('services/finance/app/Http/Controllers/SettlementController.php').includes('lockForUpdate'));
 });
@@ -291,12 +293,12 @@ test('Invoice list resolves client and reporting period labels', () => {
 test('Client expense attribution requires documented and Clients-verified reference', () => {
   const api=read('services/finance/routes/api.php');
   const gateway=read('services/finance/app/Support/ClientsGateway.php');
-  const clientApi=read('services/clients/routes/internal.php');
+  const clientApi=read('services/clients/app/Services/FinanceClientsService.php');
   const ui=read('apps/finance/src/App.vue');
   assert.ok(api.includes('ClientsGateway::validateDirectExpense'));
   assert.ok(api.includes('direct_cost_reason'));
   assert.ok(api.includes("'cost_center'=>$r->filled('client_id')?'client:'"));
-  assert.ok(clientApi.includes("where('client_id',(int)$client->id)"));
+  assert.ok(clientApi.includes("where('client_id', $clientId)"));
   assert.ok(gateway.includes('Finance/Clients secret not configured'));
   assert.ok(ui.includes('direct_contribution_margin'));
   assert.ok(ui.includes('clientExpenseOptions'));
