@@ -72,3 +72,6 @@
 }
 @keyframes clients-load-spin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion:reduce) { .clients-load-spinner { animation:none; border-style:dashed; } }
+
+/* Loading rows remain centred in their scroll/list parent. */
+.clients-load-more .ui-loader { width:100%; min-height:46px; }

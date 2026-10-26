@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { UiAppTopbar, UiAppSidebar, UiRegistryTable, UiErrorState } from '@irlix/ui';
+import { UiAppTopbar, UiAppSidebar, UiRegistryTable, UiErrorState, UiLoader } from '@irlix/ui';
 import { auth } from './auth';
 
 const navItems = [
@@ -280,7 +280,7 @@ const openPerson = id => navigate(`people/${id}`);
       <UiAppTopbar service="specialists" :section="sidebarSection" :items="navItems" :loading="loading" />
       <div class="content irlix-service-content">
       <div v-if="error" class="alert">{{ error }}</div>
-      <div v-if="loading" class="loading">Загрузка данных направления…</div>
+      <UiLoader v-if="loading" page label="Загрузка данных направления" />
 
       <UiErrorState v-else-if="route.section === 'not-found'" :status="404" back-href="/specialists/" back-label="На главную Specialists" />
 
@@ -311,7 +311,7 @@ const openPerson = id => navigate(`people/${id}`);
       <template v-else-if="route.section === 'person'">
         <button class="back" @click="navigate('people')">← К специалистам</button>
         <section v-if="profileErrorStatus" class="panel" role="alert"><h1>{{ profileErrorStatus }} — {{ profileErrorStatus===403 ? 'Доступ запрещён' : 'Профиль не найден' }}</h1><p>{{ error }}</p><a href="/specialists/people">К специалистам</a></section>
-        <div v-else-if="!selected" class="loading">Загрузка профиля…</div>
+        <UiLoader v-else-if="!selected" page label="Загрузка профиля специалиста" />
         <template v-else>
           <header class="profile-head"><span class="avatar xl">{{ initials(selected.employee.full_name) }}</span><div><div class="profile-title"><h1>{{ selected.employee.full_name }}</h1><span v-if="selected.employee.employment_status === 'Уволен'" class="status off">Уволен</span></div><p>{{ selected.employee.position || 'Должность не указана' }} · {{ selected.employee.department_name || 'Направление не указано' }}</p></div></header>
           <section class="profile-grid"><article class="panel form-panel"><h2>Профессиональный профиль</h2><label>Грейд<input v-model="editor.grade" placeholder="Например: Middle" /></label><label>Комментарий руководителя<textarea v-model="editor.manager_note" rows="5" placeholder="Краткий контекст по развитию специалиста"></textarea></label><h3>Технологии</h3><div v-if="workspace.catalog.technologies.length" class="choice-grid"><button v-for="t in workspace.catalog.technologies" :key="t.id" :class="{ selected: editor.technology_ids.includes(Number(t.id)) }" @click="toggleTechnology(t.id)">{{ t.name }}</button></div><div v-else class="empty">Каталог технологий пока пуст.</div><div class="actions"><button class="primary" :disabled="saving" @click="savePerson">{{ saving ? 'Сохраняем…' : 'Сохранить профиль' }}</button></div></article><aside class="stack"><article class="panel"><h2>Компетенции</h2><div v-if="selected.professional.competencies?.length" class="competency-list"><div v-for="c in selected.professional.competencies" :key="c.id"><span><b>{{ c.name }}</b><small>{{ c.technology_name || 'Общая компетенция' }}</small></span><strong>{{ c.level ?? '—' }}</strong></div></div><div v-else class="empty">Компетенции пока не оценены.</div></article><article class="panel future"><h2>Следующие этапы</h2><p>Assessments, обучение и Performance Review будут добавлены следующими итерациями.</p></article></aside></section>
