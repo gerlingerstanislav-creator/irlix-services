@@ -22,3 +22,15 @@ assert.ok(keyframes.every(frame => !frame.includes('rotate(')), 'assembly must n
 assert.match(preloader, /\.ui-preloader--overlay\s*\{[^}]*inset:0/);
 assert.match(preloader, /\.ui-preloader--page\s*\{[^}]*min-height/);
 console.log('UI preloader source geometry, variants, default and centering: PASS');
+
+const employees = read('../../../apps/web/src/App.vue');
+const clients = read('../../../apps/clients/src/App.vue');
+const clientsCss = read('../../../apps/clients/src/style.css');
+assert.match(employees, /const initialPageLoading = ref\(true\)/);
+assert.match(employees, /finally \{ loading\.value = false; initialPageLoading\.value = false; \}/);
+assert.match(employees, /UiLoader v-if="initialPageLoading" page/);
+assert.doesNotMatch(employees, /UiLoader v-if="loading" page/);
+assert.match(clients, /UiLoader v-if="loading" overlay/);
+assert.match(clients, /UiErrorState v-if="!titles\[view\]"/);
+assert.match(clientsCss, /\.content\{position:relative;min-height:/);
+console.log('Employees refresh stability and Clients container overlay: PASS');

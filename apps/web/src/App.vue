@@ -36,6 +36,8 @@ const referenceData = ref({ employee_statuses: [], work_formats: [], cooperation
 const access = ref({ allowed: false, permissions: {}, roles: [], scope: 'none' });
 const accessLoaded = ref(false);
 const loading = ref(false);
+// Keep already rendered pages and open drawers mounted during background data refreshes.
+const initialPageLoading = ref(true);
 const error = ref('');
 const search = ref('');
 const departmentFilter = ref('');
@@ -149,7 +151,7 @@ const loadEmployees = async () => {
     positions.value = positionsPayload.data ?? [];
     referenceData.value = referencesPayload.data ?? referenceData.value;
   } catch (e) { error.value = e.message; accessLoaded.value = true; }
-  finally { loading.value = false; }
+  finally { loading.value = false; initialPageLoading.value = false; }
 };
 
 const employeeCreated = async (employee) => { showNewEmployee.value = false; await loadEmployees(); selectedEmployeeId.value = employee.id; };
@@ -197,7 +199,7 @@ onMounted(loadEmployees);
         </template>
       </UiAppTopbar>
 
-      <UiLoader v-if="loading" page label="Загрузка раздела сотрудников" />
+      <UiLoader v-if="initialPageLoading" page label="Загрузка раздела сотрудников" />
       <template v-else>
       <div v-if="currentSection === 'not-found'" class="empty-state" role="alert"><strong>404 — Страница не найдена</strong><span>Такой страницы в сервисе сотрудников нет.</span><a href="/employees/">К сотрудникам</a></div>
       <div v-if="accessLoaded && access.allowed && ((currentSection==='roles' && !canManageAccess) || (currentSection==='permissions' && !canManageEmployeePermissions) || (currentSection==='fot' && !canReadFot) || (currentSection==='audit' && !canReadAudit))" class="empty-state access-denied" role="alert"><strong>403 — Доступ запрещён</strong><span>Недостаточно прав для этого раздела.</span><a href="/employees/">К сотрудникам</a></div>

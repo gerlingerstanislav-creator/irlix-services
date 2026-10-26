@@ -70,9 +70,13 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   assert.equal(saved.length,2);assert.equal(saved[1].partner_specialist_id,9);assert.equal(saved[1].employee_id,null);
   // Creating a connection intentionally opens its detail drawer. Close it
   // before navigating away; the modal backdrop must block sidebar clicks.
-  // Saving can concurrently tear down the drawer; avoid waiting for a moving backdrop.
-  await page.evaluate(() => document.querySelector('.irlix-drawer-layer .irlix-drawer-close')?.click());
-  await page.locator('.irlix-drawer-layer').waitFor({state:'detached',timeout:8000});
+  // Concurrent refresh can stack detail drawers; close every layer before navigating.
+  for (let attempt=0; attempt<6; attempt++) {
+    if (!await page.locator('.irlix-drawer-backdrop').count()) break;
+    await page.evaluate(() => [...document.querySelectorAll('.irlix-drawer-layer .irlix-drawer-close')].at(-1)?.click());
+    await page.waitForTimeout(80);
+  }
+  assert.equal(await page.locator('.irlix-drawer-backdrop').count(),0,'All drawer layers must be closed before navigating');
   await page.getByRole('navigation',{name:'Навигация сервиса клиентов'}).getByRole('button',{name:'Партнёры',exact:true}).click();
   // The accessible button name includes the displayed specialist count, e.g. 'Synthetic Agency (1)'.
   const agencyRow=page.locator('.partners-registry .partner-parent .partner-name').filter({hasText:'Synthetic Agency'});
