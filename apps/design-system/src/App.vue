@@ -1,10 +1,12 @@
 <script setup>
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
+import { useRoute } from 'vue-router';
 import { catalogSections as nav } from './catalogSections.js';
 import { useCatalogNavigation } from './useCatalogNavigation.js';
 import tokenStyles from '../../../packages/ui/src/styles/tokens.css?raw';
 import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiCheckbox, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiRegistryTable, UiLoader, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiKanbanBoard, UiClientSummary, UiStatusCheck, UiErrorState, getTheme, setTheme } from '@irlix/ui';
 
+const activeRoute = useRoute();
 const { section, navigate } = useCatalogNavigation(nav);
 const checkboxDemo = ref(true);
 const checkboxUncheckedDemo = ref(false);
@@ -100,6 +102,8 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
 <template>
   <UiAppShell :account-enabled="false" :service-access="publicServiceAccess" service="design-system" :section="section" :items="nav" :current-user="null" @update:section="navigate">
     <main class="ds-page">
+      <UiErrorState v-if="activeRoute.name === 'not-found'" :status="404" back-href="/design-system/" back-label="К дизайн-системе" />
+      <template v-else>
       <div class="ds-topbar"><span>Общие компоненты IRLIX</span></div>
       <UiPageHeader eyebrow="IRLIX DESIGN SYSTEM" title="Дизайн-система" description="Живые компоненты и паттерны, которые используются в сервисах платформы." />
       <p class="ds-note">Интерактивные примеры общей библиотеки. Все данные вымышлены.</p>
@@ -219,6 +223,7 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
       </section>
       <UiDrawer :open="drawerOpen" :inactive="nestedDrawerOpen" title="Демо-проект · Карточка" width="40vw" :min-width="320" @close="drawerOpen = false"><UiTabs v-model="drawerTab" :items="[{ value: 'info', label: 'Информация' }, { value: 'history', label: 'История', count: 2 }]" /><div class="ds-drawer-content"><template v-if="drawerTab === 'info'"><p>Демо-клиент Север · Frontend</p><UiButton @click="nestedDrawerOpen = true">Открыть вложенную карточку</UiButton></template><p v-else>Демонстрационная запись истории.</p></div></UiDrawer>
       <UiDrawer :open="nestedDrawerOpen" title="Демо-специалист 01" width="30vw" :min-width="240" :z-index="1050" @close="nestedDrawerOpen = false"><p>Предыдущая карточка недоступна до закрытия этой.</p><UiBadge tone="success">На проекте</UiBadge></UiDrawer>
+    </template>
     </main>
   </UiAppShell>
 </template>

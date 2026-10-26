@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { UiAppSidebar, UiAppTopbar, UiRegistryTable, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 import { recruitmentApi } from './api';
@@ -29,7 +30,8 @@ const loading = ref(true);
 const error = ref('');
 const workspace = reactive({ candidates: [], requests: [], pools: [], employment: [], onboarding: [], tasks: [], interviews: [], offers: [], funnel: {} });
 const selectedCandidate = ref(null);
-const currentPath = ref(window.location.pathname);
+const activeRoute = useRoute();
+const router = useRouter();
 const modal = ref(null);
 
 const candidateForm = reactive({ full_name:'', role:'', grade:'', city:'', salary_expectation:'', source:'', recruiter_name:'', email:'', phone:'', stack:'' });
@@ -37,14 +39,10 @@ const requestForm = reactive({ title:'', department_name:'', manager_name:'', re
 const poolForm = reactive({ name:'', description:'' });
 const taskForm = reactive({ title:'', assignee:'', entity_type:'', entity_id:'', due_at:'' });
 
-const normalize = () => currentPath.value.replace(/^\/recruitment\/?/, '').replace(/\/$/, '');
-const route = computed(() => {
-  const path = normalize();
-  if (!path) return { section: 'dashboard' };
-  const detail = path.match(/^candidates\/(\d+)$/);
-  if (detail) return { section: 'candidate', id: Number(detail[1]) };
-  return { section: navItems.some((item) => item.id === path) ? path : 'not-found' };
-});
+const route = computed(() => ({
+  section: activeRoute.meta.section || 'not-found',
+  id: Number(activeRoute.params.id) || null,
+}));
 const sidebarSection = computed(() => route.value.section === 'candidate' ? 'candidates' : route.value.section);
 const processes = computed(() => workspace.candidates.map(c => c.hiring_process ? ({...c.hiring_process, candidate:c}) : null).filter(Boolean));
 const activeOffers = computed(() => workspace.offers.filter(o => !['accepted','rejected','withdrawn'].includes(o.status)));
@@ -56,10 +54,7 @@ const dashboardStats = computed(() => [
 ]);
 
 function navigate(path='') {
-  const target = path ? `/recruitment/${path}` : '/recruitment/';
-  if (window.location.pathname !== target) window.history.pushState({}, '', target);
-  currentPath.value = window.location.pathname;
-  syncCandidate();
+  router.push({ path: path ? '/' + path : '/' });
 }
 function syncCandidate() {
   if (route.value.section === 'candidate') selectedCandidate.value = workspace.candidates.find(c => Number(c.id) === route.value.id) || null;
@@ -123,9 +118,8 @@ async function startEmployment(process) {
   await recruitmentApi.createEmployment({ candidate_id:c.id, hiring_process_id:process.id, role:c.role || 'Специалист', department_name, manager_name, planned_start_date }); await reload();
 }
 
-const onPopState = () => { currentPath.value = window.location.pathname; syncCandidate(); };
-onMounted(() => { window.addEventListener('popstate', onPopState); reload(); });
-onBeforeUnmount(() => window.removeEventListener('popstate', onPopState));
+watch(() => activeRoute.fullPath, syncCandidate);
+onMounted(reload);
 </script>
 
 <template>

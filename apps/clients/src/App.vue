@@ -1,6 +1,7 @@
 <script setup>
 import { displayEmployeeName } from './displayEmployeeName';
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiTooltip, UiViewSwitch, UiRegistryTable, UiErrorState } from '@irlix/ui';
 import ClientsSidebar from './components/ClientsSidebar.vue';
 import { rememberedView, rememberView } from './persistView';
@@ -23,12 +24,9 @@ import AttemptFunnelView from './components/AttemptFunnelView.vue';
 import LeadsBoard from './components/LeadsBoard.vue';
 import LeadCard from './components/LeadCard.vue';
 
-const sectionFromPath = () => {
-  const tail = window.location.pathname.replace(/^\/clients\/?/, '').replace(/\/$/, '');
-  const section = tail || 'clients';
-  return section === 'reporting-periods' ? 'reports' : section === 'attempt-funnel' ? 'attempts' : section;
-};
-const view = ref(sectionFromPath());
+const route = useRoute();
+const router = useRouter();
+const view = computed(() => route.meta.section || 'not-found');
 const loading = ref(false);
 const error = ref('');
 const query = ref('');
@@ -176,7 +174,13 @@ async function loadPartnerCatalog() {
   partnerCatalog.value=response.data||[];
  } catch { partnerCatalog.value=[]; }
 }
-const selectView = (section) => { if (section === 'attempt-funnel') { section = 'attempts'; if (can('attempts.analytics.view')) attemptMode.value = 'funnel'; } if (!titles[section] || !allowedSections.value.includes(section)) return; view.value = section; query.value = ''; };
+const selectView = (target) => {
+  const section = target === 'attempt-funnel' ? 'attempts' : target;
+  if (!titles[section] || !allowedSections.value.includes(section) || !router.hasRoute(target)) return;
+  if (target === 'attempt-funnel' && can('attempts.analytics.view')) attemptMode.value = 'funnel';
+  router.push({ name: target });
+  query.value = '';
+};
 async function api(url, options = {}) { const response = await fetch(url, { ...options, headers: { Accept:'application/json', 'Content-Type':'application/json', ...(options.headers || {}) } }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.message || Object.values(body.errors || {}).flat().join(', ') || `HTTP ${response.status}`); return body; }
 async function load() {
   loading.value = true; error.value = '';
@@ -369,16 +373,11 @@ async function createQuickLead(){quickLeadSaving.value=true;quickLeadError.value
 async function patch(url, payload) { try { await api(url, { method:'PATCH', body:JSON.stringify(payload) }); await load(); } catch (e) { error.value = e.message; } }
 async function moveLead({lead,status}) { try { lead.status=status; await api(`/api/clients/leads/${lead.id}`,{method:'PATCH',body:JSON.stringify({status})}); await load(); } catch(e) { error.value=e.message||String(e); await load(); } }
 function createFromAttempt(a) { const client = clients.value.find(c => c.id === Number(a.clientId)); const project = client?.projects?.[0]; openForm('member', { client_id:client?.id, project_id:project?.id, specialist_type:a.is_external?'partner':'employee', specialist_name:a.specialist_name, specialist_id:a.specialist_id, source_attempt_id:a.id, hourly_rate:'', hours_per_day:8 }); }
-const syncClientRoute = () => {
-  view.value = sectionFromPath();
-  if (window.location.pathname.replace(/\/$/, '').endsWith('/attempt-funnel') && can('attempts.analytics.view')) attemptMode.value='funnel';
-};
-onMounted(() => {
-  window.addEventListener('popstate', syncClientRoute);
-  syncClientRoute();
-  load();
+watch(() => route.fullPath, () => {
+  if (route.name === 'attempt-funnel' && can('attempts.analytics.view')) attemptMode.value = 'funnel';
+  query.value = '';
 });
-onBeforeUnmount(() => window.removeEventListener('popstate', syncClientRoute));
+onMounted(load);
 </script>
 
 <template>

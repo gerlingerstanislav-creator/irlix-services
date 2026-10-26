@@ -1,5 +1,4 @@
 import './theme.js';
-import './sectionRouting';
 import './searchableSelectUpgrade';
 import './styles/searchable-select.css';
 import './styles/kanban.css';

@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { UiAppTopbar, UiAppSidebar, UiRegistryTable, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 
@@ -15,7 +16,8 @@ const saving = ref(false);
 const catalogSaving = ref(false);
 const error = ref('');
 const workspace = ref({ people: [], departments: [], catalog: { technologies: [], competencies: [] } });
-const currentPath = ref(window.location.pathname);
+const activeRoute = useRoute();
+const router = useRouter();
 const selected = ref(null);
 const profileErrorStatus = ref(null);
 const filters = reactive({ search: '', department: '', grade: '', technology: '', status: 'active' });
@@ -24,24 +26,12 @@ const technologyEditor = reactive({ id: null, name: '', alias: '', category: '',
 const technologyModalOpen = ref(false);
 const expandedTechnologies = ref(new Set());
 
-const normalizeRoute = () => currentPath.value.replace(/^\/specialists\/?/, '').replace(/\/$/, '');
-const route = computed(() => {
-  const path = normalizeRoute();
-  if (!path) return { section: 'dashboard', employeeId: null };
-  const detail = path.match(/^people\/(\d+)$/);
-  if (detail) return { section: 'person', employeeId: Number(detail[1]) };
-  if (path === 'people') return { section: 'people', employeeId: null };
-  if (path === 'competencies') return { section: 'competencies', employeeId: null };
-  return { section: 'not-found', employeeId: null };
-});
+const route = computed(() => ({
+  section: activeRoute.meta.section || 'not-found',
+  employeeId: Number(activeRoute.params.employeeId) || null,
+}));
 const sidebarSection = computed(() => route.value.section === 'person' ? 'people' : route.value.section);
-
-const navigate = (path) => {
-  const target = path ? `/specialists/${path}` : '/specialists/';
-  if (window.location.pathname !== target) window.history.pushState({}, '', target);
-  currentPath.value = window.location.pathname;
-};
-const onPopState = () => { currentPath.value = window.location.pathname; };
+const navigate = path => router.push({ path: path ? '/' + path : '/' });
 
 const api = async (path, options = {}) => {
   const response = await fetch(`/api/specialists${path}`, {
@@ -256,7 +246,6 @@ const toggleTechnology = (id) => {
 };
 
 onMounted(async () => {
-  window.addEventListener('popstate', onPopState);
   try {
     const response = await auth.fetch('/api/employees/access/me');
     if (response.ok) {
@@ -269,12 +258,9 @@ onMounted(async () => {
   expandedTechnologies.value = new Set(parents.map((t) => Number(t.id)));
   if (route.value.employeeId) await loadPerson(route.value.employeeId);
 });
-onBeforeUnmount(() => window.removeEventListener('popstate', onPopState));
+watch(() => route.value.employeeId, id => { if (id && !loading.value) loadPerson(id); });
 
-const openPerson = async (id) => {
-  navigate(`people/${id}`);
-  await loadPerson(id);
-};
+const openPerson = id => navigate(`people/${id}`);
 </script>
 
 <template>
