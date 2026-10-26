@@ -1,6 +1,6 @@
 <script setup>
 import { displayEmployeeName } from './displayEmployeeName';
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiTooltip, UiViewSwitch, UiRegistryTable, UiErrorState } from '@irlix/ui';
 import ClientsSidebar from './components/ClientsSidebar.vue';
@@ -24,6 +24,7 @@ import AttemptFunnelView from './components/AttemptFunnelView.vue';
 import LeadsBoard from './components/LeadsBoard.vue';
 import LeadCard from './components/LeadCard.vue';
 
+const initialAccess = inject('clientsInitialAccess', null);
 const route = useRoute();
 const router = useRouter();
 const view = computed(() => route.meta.section || 'not-found');
@@ -233,7 +234,7 @@ const sectionParams = (section, page) => {
         .map(employee => Number(employee.id)));
     }
     if (clientFilters.technology) {
-      params.technologies = JSON.stringify([...clientTechnologyDescendants.value.get(clientFilters.technology) || new Set([clientFilters.technology])]);
+      params.technologies = JSON.stringify([...(clientTechnologyDescendants.value.get(clientFilters.technology) || new Set([clientFilters.technology]))]);
     }
     if (clientFilters.activity) params.activity = clientFilters.activity;
     params.date = localDateValue();
@@ -331,8 +332,8 @@ watch(selectedLead, lead => {
 async function load() {
   loading.value = true; error.value = '';
   try {
-    const [directory, access] = await Promise.all([api('/api/employees/clients-directory'), api('/api/clients/permissions/me')]);
-    contourAccess.value = access.data || { permissions: {} };
+    const directory = await api('/api/employees/clients-directory');
+    contourAccess.value = initialAccess || (await api('/api/clients/permissions/me')).data || { permissions: {} };
     if (attemptModes.value.length && !attemptModes.value.includes(attemptMode.value)) attemptMode.value = attemptModes.value[0];
     employees.value = directory.data?.employees || [];
     departments.value = directory.data?.departments || [];
