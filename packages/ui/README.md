@@ -314,7 +314,7 @@ Run `node --test packages/ui/tests/*.test.*`, build all frontend consumers, and 
 
 Run `node --test packages/ui/tests/*.test.*`. Verify admin/non-admin catalog equality between launcher/dashboard, menu scrolling at short viewport heights, authenticated access in every service, four columns at 1360px, three at 1100px, equal card heights/row positions, and exactly one topbar on the dashboard.
 
-`UiIcon name="settings"` — шестерёнка для открытия настроек. Icon-only `UiButton` обязательно получает `aria-label` и tooltip; disabled используется для недоступных модулей.
+Для настроек доступны два варианта из Lucide: **`UiIcon name="settings"`** — контурная шестерёнка (основная, используется для сервиса «Система» в общем launcher через `serviceCatalog.js`) и **`UiIcon name="settings-2"`** — альтернативная иконка с ползунками. Оба варианта представлены в каталоге `/design-system/` и наследуют размер, цвет и толщину линий от компонентов-потребителей. Icon-only `UiButton` обязательно получает `aria-label` и tooltip; disabled используется для недоступных модулей.
 
 Clients access exception: a verified `platform-tester` without `platform-admin` does not see Clients in the dashboard or launcher, including when organizational roles grant client permissions. Both components use the same role-aware visibility function; `UiAppShell` forwards `serviceAccess`. The sidebar loads effective Employees roles through `platformAccess` even when `platformAdmin` is true. A real administrator (including both roles) retains Clients access. This UI restriction accompanies the Clients API guard; Timesheets and Vacations read integration contracts remain available.
 

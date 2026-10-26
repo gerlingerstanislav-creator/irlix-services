@@ -4,7 +4,14 @@ defineProps({ name: { type: String, required: true } });
 
 <template>
   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <template v-if="name === 'settings'"><path d="m10 3-.5 2-2 .8-1.8-1L3.8 8l1.5 1.5-.3 2.2-2 1v3.1l2 .6.8 2-1 1.8L8 22l1.5-1.5 2.2.3 1 2h3.1l.6-2 2-.8 1.8 1 1.8-3.2-1.5-1.5.3-2.2 2-1V10l-2-.6-.8-2 1-1.8L17.9 3.8l-1.5 1.5-2.2-.3-1-2Z" transform="translate(1 0) scale(.88)"/><circle cx="12" cy="12" r="3"/></template>
+    <template v-if="name === 'settings'">
+      <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+      <circle cx="12" cy="12" r="3" />
+    </template>
+    <template v-else-if="name === 'settings-2'">
+      <path d="M14 17H5" /><path d="M19 7h-9" />
+      <circle cx="17" cy="17" r="3" /><circle cx="7" cy="7" r="3" />
+    </template>
     <template v-else-if="name === 'power'"><path d="M12 3v8M7.2 5.8a8 8 0 1 0 9.6 0" /></template>
     <template v-else-if="name === 'chevron-left'"><path d="m14 6-6 6 6 6" /></template>
     <template v-else-if="name === 'chevron-right'"><path d="m10 6 6 6-6 6" /></template>
