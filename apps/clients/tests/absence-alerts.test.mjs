@@ -29,7 +29,7 @@ test('warnings are displayed in attempt tree, selected attempt, and create form 
  const badge=readFileSync(new URL('../src/components/AttemptAbsenceAlert.vue',import.meta.url),'utf8');
  const read=readFileSync(new URL('../../../services/vacations/app/Application/AbsenceReadService.php',import.meta.url),'utf8');
  const endpoint=readFileSync(new URL('../../../services/vacations/app/Http/Controllers/ClientServiceCalendarController.php',import.meta.url),'utf8');
- assert.match(view,/const alertFor = attempt => attempt && !attempt\.is_external/);
+ assert.match(view,/const alertFor = attempt => attempt && !Boolean\(Number\(attempt\.is_external\)\)/);
  assert.ok((view.match(/<AttemptAbsenceAlert/g)||[]).length>=5);
  assert.match(view,/levelForId\(form\.specialist_id\)/);
  assert.match(badge,/attempt-absence-alert--red/);
