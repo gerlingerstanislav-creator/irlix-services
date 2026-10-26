@@ -1,6 +1,6 @@
 <script setup>
 import { computed,onMounted,ref,watch } from 'vue';
-import { UiButton,UiFilterBar,UiPanel,UiSearchSelect, UiRegistryTable } from '@irlix/ui';
+import { UiButton,UiFilterBar,UiPanel,UiSearchSelect, UiRegistryTable, UiLoader } from '@irlix/ui';
 import { api } from '../api';
 import { auditLabels,formatDate,formatDateTime,typeLabels } from '../constants';
 import AbsenceActions from '../components/AbsenceActions.vue';
@@ -53,7 +53,7 @@ watch(()=>props.year,()=>{filters.value.from='';filters.value.to='';load()});
       <UiButton compact variant="secondary" @click="reset">Сбросить</UiButton>
     </UiFilterBar>
 
-    <div v-if="loading" class="empty">Загрузка истории…</div>
+    <UiLoader v-if="loading" page label="Загрузка истории отсутствий" />
     <div v-else-if="!items.length" class="empty"><strong>История пуста</strong><span>Для выбранных условий действий не найдено.</span></div>
     <div v-else class="table-wrap">
       <UiRegistryTable class="shared-registry-content" table-class="irlix-data-table history-table" :columns="['18%','20%','20%','15%','17%','10%']" min-width="930px" aria-label="История действий по отсутствиям" density="compact">

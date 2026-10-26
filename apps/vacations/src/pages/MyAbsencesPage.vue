@@ -1,6 +1,6 @@
 <script setup>
 import { computed,onMounted,ref,watch } from 'vue';
-import { UiButton,UiPanel } from '@irlix/ui';
+import { UiButton,UiPanel, UiLoader } from '@irlix/ui';
 import { api } from '../api';
 import { ownActions } from '../constants';
 import AbsenceCreateModal from '../components/AbsenceCreateModal.vue';
@@ -31,7 +31,7 @@ watch(()=>props.year,load);
   </section>
 
   <UiPanel class="vacations-page-panel">
-    <div v-if="loading" class="empty">Загрузка…</div>
+    <UiLoader v-if="loading" page label="Загрузка моих отсутствий" />
     <div v-else-if="!rows.length" class="empty"><strong>На {{ props.year }} год отсутствий пока нет</strong><span>Создайте первое отсутствие.</span></div>
     <AbsenceTable v-else :items="rows" :show-documents="false" :show-actions="false" show-progress @action="emit('action',$event)"/>
   </UiPanel>
