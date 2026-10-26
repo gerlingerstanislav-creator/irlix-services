@@ -32,7 +32,16 @@ class ClientsController extends Controller
         if ($section = $httpRequest->query('section')) {
             $page = max(1, min(100000, (int) $httpRequest->query('page', 1)));
             $perPage = max(1, min(120, (int) $httpRequest->query('per_page', 80)));
-            return response()->json(app(\App\Services\ClientsOverviewPageService::class)->page($access, (string) $section, $page, $perPage, $httpRequest->integer('lead_id') ?: null));
+            return response()->json(app(\App\Services\ClientsOverviewPageService::class)->page(
+                $access,
+                (string) $section,
+                $page,
+                $perPage,
+                $httpRequest->integer('lead_id') ?: null,
+                $httpRequest->only(['query', 'responsible', 'department_employee_ids', 'manager_employee_ids', 'technologies', 'activity', 'date', 'client_id']),
+                $httpRequest->attributes->get('clients_overview_client_ids'),
+                $httpRequest->attributes->get('clients_overview_lead_employee_ids'),
+            ));
         }
         return response()->json(['data' => app(\App\Services\ClientsOverviewService::class)->overview($access)]);
     }
