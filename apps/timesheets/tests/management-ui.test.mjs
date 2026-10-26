@@ -26,11 +26,19 @@ test('management cells keep the editor and selection but have no lock or descrip
   assert.match(app, /const clientPeriodLocked = /);
 });
 
-test('weekend approvals are visibly lighter and readable', () => {
-  assert.match(compact, /\.matrix-cell\.final\.non-working\s*\{[^}]*color-mix\(in srgb, var\(--irlix-color-confirm-final\) 38%, var\(--irlix-color-surface\)\)/);
+test('final-approved weekends retain a saturated green and white numbers, while preliminary weekends stay pale', () => {
+  assert.match(compact, /\.matrix-cell\.final\.non-working\s*\{[^}]*color-mix\(in srgb, var\(--irlix-color-confirm-final\) 92%, var\(--irlix-color-surface\)\)/);
+  assert.match(compact, /\.matrix-cell\.final\.non-working\s*\{[^}]*color:var\(--irlix-color-on-accent\)/);
+  assert.match(compact, /\.matrix-cell\.final\.non-working b\s*\{[^}]*color:var\(--irlix-color-on-accent\)/);
   assert.match(compact, /\.matrix-cell\.prelim\.non-working\s*\{[^}]*color-mix\(in srgb, var\(--irlix-color-confirm-preliminary\) 45%, var\(--irlix-color-surface\)\)/);
-  assert.match(compact, /\.matrix-cell\.final\.non-working b\s*\{[^}]*color:var\(--irlix-color-text\)/);
   assert.match(compact, /\.matrix th\.non-working\s*\{[^}]*background-color:var\(--irlix-color-surface\)/);
+});
+
+test('confirmed absence band and legend use orangered, pending absence stays pale', () => {
+  assert.match(compact, /\.matrix-cell\.has-absence \.absence-half\s*\{[^}]*background:orangered;/);
+  assert.match(compact, /\.swatch\.management-absence-confirmed[\s\S]*?background:linear-gradient\(to bottom,[\s\S]*?orangered 65% 100%\)/);
+  assert.match(compact, /\.matrix-cell\.has-absence\.absence-pending \.absence-half\s*\{[^}]*background:var\(--irlix-color-absence-border\)/);
+  assert.match(compact, /\.swatch\.management-absence-pending\s*\{[^}]*var\(--irlix-color-absence-border\) 65% 100%/);
 });
 
 test('management is edge-to-edge with one separator per section', () => {
