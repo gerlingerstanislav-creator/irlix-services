@@ -119,8 +119,13 @@ final class ClientsOverviewPageService
         $needle = trim((string) ($filters['query'] ?? ''));
         if ($needle !== '') {
             $safe = '%'.str_replace(['%', '_'], ['\%', '\_'], mb_substr($needle, 0, 120)).'%';
+            $managerIds = json_decode((string) ($filters['manager_employee_ids'] ?? ''), true);
+            $managerIds = is_array($managerIds) && count($managerIds) <= 10000
+                ? array_values(array_filter(array_map('intval', $managerIds), fn ($id) => $id > 0)) : [];
             $query->where(fn ($rows) => $rows->where('name', 'ilike', $safe)
-                ->orWhere('type', 'ilike', $safe)->orWhere('sector', 'ilike', $safe));
+                ->orWhere('type', 'ilike', $safe)->orWhere('sector', 'ilike', $safe)
+                ->orWhereIn('account_employee_id', $managerIds)
+                ->orWhereIn('sales_employee_id', $managerIds));
         }
         $responsible = (string) ($filters['responsible'] ?? '');
         if (preg_match('/^(account|sales):([1-9][0-9]*)$/D', $responsible, $match)) {
@@ -153,7 +158,7 @@ final class ClientsOverviewPageService
                     ->whereDate('mt.valid_from', '<=', $today)
                     ->where(fn ($term) => $term->whereNull('mt.valid_to')->orWhereDate('mt.valid_to', '>=', $today));
             }, 'and', $activity === 'inactive');
-            // Laravel whereExists third boolean argument, fourth not-flag: inactive => NOT EXISTS.
+            // The third whereExists argument negates the predicate for inactive clients.
         }
     }
 
