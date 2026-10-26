@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 
 /**
  * Minimal cross-contour read model for active Employees, restricted to
- * staff physically belonging to the client-service department subtree.
+ * employees belonging to client-service, plus signed platform administrators.
  * No absence type, files, reason, comment, approval chain or medical data.
  */
 final class ClientServiceCalendarController extends Controller
@@ -100,7 +100,11 @@ final class ClientServiceCalendarController extends Controller
             }
             $departmentId = (int) ($department['parent_id'] ?? 0);
         }
-        abort_unless($inService, 403, 'Календарь доступен только сотрудникам клиентской службы.');
+        // The signed Keycloak bearer has been verified by KeycloakBearer.
+        // A role preview, when present, is verified by Employees before replacement.
+        $platformAdmin = in_array('platform-admin', $roles, true);
+        abort_unless($inService || $platformAdmin, 403,
+            'Календарь доступен только клиентской службе и администраторам платформы.');
 
         return [$activeIds, $employees, $departments];
     }
