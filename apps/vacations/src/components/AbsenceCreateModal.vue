@@ -1,8 +1,8 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { UiButton } from '@irlix/ui';
+import { UiButton, UiSearchSelect } from '@irlix/ui';
 import { api } from '../api';
-import { typeLabels } from '../constants';
+import { formatDate, statusLabels, typeLabels } from '../constants';
 import DateRangePicker from './DateRangePicker.vue';
 
 const props = defineProps({
@@ -19,6 +19,7 @@ const savingMode = ref('');
 const localError = ref('');
 const occupied = ref([]);
 const occupiedLoading = ref(false);
+let occupiedRequest = 0;
 const fileInput = ref(null);
 const file = ref(null);
 const createdAbsenceId = ref(null);
@@ -34,7 +35,22 @@ function emptyForm() {
   };
 }
 
-const employeesForCreate = computed(() => [...props.employees].sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || ''), 'ru')));
+const employeeOptions = computed(() => [...props.employees]
+  .sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || ''), 'ru'))
+  .map((employee) => ({
+    value: employee.id,
+    label: `${employee.full_name} · ${employee.department_name || 'Без подразделения'}`,
+  })));
+const periodConflict = computed(() => {
+  const from = form.value.period.start;
+  if (!from) return null;
+  const until = form.value.period.end || '9999-12-31';
+  return occupied.value.find((absence) => {
+    const start = String(absence.starts_on || '').slice(0, 10);
+    const end = String(absence.ends_on || '9999-12-31').slice(0, 10);
+    return start && start <= until && end >= from;
+  }) || null;
+});
 const openEndedType = computed(() => ['sick_leave', 'maternity_leave'].includes(form.value.type));
 const documentRequired = computed(() => ['paid_vacation', 'unpaid_vacation', 'sick_leave', 'maternity_leave'].includes(form.value.type));
 const documentHint = computed(() => {
@@ -44,19 +60,31 @@ const documentHint = computed(() => {
   return 'Документ';
 });
 const canSave = computed(() => {
+  if (occupiedLoading.value || periodConflict.value) return false;
   if (props.forEmployee && !form.value.employee_id) return false;
   if (!form.value.period.start) return false;
   if (!openEndedType.value && !form.value.period.end) return false;
   return true;
 });
+const localToday = () => {
+  const date = new Date();
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
 const canSubmit = computed(() => {
   if (!canSave.value) return false;
   if (openEndedType.value && !form.value.period.end) return false;
+  if (form.value.type === 'sick_leave' && form.value.period.end > localToday()) return false;
   if (documentRequired.value && !file.value && !fileUploaded.value) return false;
   return true;
 });
+const submitHint = computed(() => form.value.type === 'sick_leave'
+  ? 'Больничный можно запланировать заранее. Отправить его на кадровое подтверждение можно после даты окончания, приложив листок нетрудоспособности.'
+  : '«Запланировать» сохраняет отсутствие в статусе «Запланировано». Для отправки отпуска на согласование заявление должно быть приложено.');
 
 const reset = () => {
+  occupiedRequest += 1;
+  occupiedLoading.value = false;
   form.value = emptyForm();
   file.value = null;
   localError.value = '';
@@ -73,22 +101,25 @@ const close = () => {
 };
 
 const loadOccupied = async () => {
+  const requestId = ++occupiedRequest;
   if (!props.open) return;
   if (props.forEmployee && !form.value.employee_id) {
     occupied.value = [];
+    occupiedLoading.value = false;
     return;
   }
   occupiedLoading.value = true;
+  occupied.value = [];
   localError.value = '';
   try {
     const params = new URLSearchParams();
     if (props.forEmployee) params.set('employee_id', String(form.value.employee_id));
     const payload = await api(`/api/vacations/absences/occupied${params.size ? `?${params}` : ''}`);
-    occupied.value = payload.data || [];
+    if (requestId === occupiedRequest && props.open) occupied.value = payload.data || [];
   } catch (error) {
-    localError.value = error.message;
+    if (requestId === occupiedRequest && props.open) localError.value = error.message;
   } finally {
-    occupiedLoading.value = false;
+    if (requestId === occupiedRequest) occupiedLoading.value = false;
   }
 };
 
@@ -175,12 +206,19 @@ watch(() => form.value.type, () => { localError.value = ''; });
 
       <div v-if="localError" class="modal-error">{{ localError }}</div>
 
-      <label v-if="forEmployee" class="irlix-field">Сотрудник
-        <select v-model="form.employee_id" :disabled="Boolean(createdAbsenceId)" required>
-          <option value="" disabled>Выберите сотрудника</option>
-          <option v-for="employee in employeesForCreate" :key="employee.id" :value="employee.id">{{ employee.full_name }} · {{ employee.department_name || 'Без подразделения' }}</option>
-        </select>
-      </label>
+      <div v-if="forEmployee" class="irlix-field">
+        <label>Сотрудник</label>
+        <UiSearchSelect
+          v-model="form.employee_id"
+          :options="employeeOptions"
+          :disabled="Boolean(createdAbsenceId)"
+          :clearable="false"
+          :teleport="true"
+          placeholder="Выберите сотрудника"
+          search-placeholder="Поиск по ФИО или подразделению"
+          aria-label="Сотрудник"
+        />
+      </div>
 
       <label class="irlix-field">Тип отсутствия
         <select v-model="form.type" :disabled="Boolean(createdAbsenceId)">
@@ -196,6 +234,12 @@ watch(() => form.value.type, () => { localError.value = ''; });
         :label="openEndedType ? 'Период (дата окончания может быть указана позже)' : 'Период отсутствия'"
       />
       <p v-if="occupiedLoading" class="hint">Проверяем уже занятые даты…</p>
+      <p v-if="periodConflict" class="field-error" role="alert">
+        Выбранный период пересекается с отсутствием №{{ periodConflict.id }}
+        ({{ formatDate(periodConflict.starts_on) }} — {{ periodConflict.ends_on ? formatDate(periodConflict.ends_on) : 'без даты окончания' }},
+        {{ statusLabels[periodConflict.status] || periodConflict.status }}).
+        Проверьте существующую запись.
+      </p>
       <p v-if="openEndedType" class="hint">Для больничного и декрета достаточно даты начала. До отправки на согласование период нужно закрыть и приложить документ.</p>
 
       <label class="irlix-field">Комментарий
@@ -213,7 +257,7 @@ watch(() => form.value.type, () => { localError.value = ''; });
         <small v-else>Можно прикрепить сейчас или позже. К одному отсутствию допускается один документ.</small>
       </div>
 
-      <p class="hint">«Запланировать» сохраняет отсутствие в статусе «Запланировано». Для отправки отпуска на согласование заявление должно быть приложено.</p>
+      <p class="hint">{{ submitHint }}</p>
       <div class="actions create-actions">
         <UiButton type="button" variant="secondary" @click="close">Отмена</UiButton>
         <UiButton type="submit" variant="secondary" :disabled="saving || !canSave">{{ saving && savingMode === 'planned' ? 'Сохраняем…' : 'Запланировать' }}</UiButton>

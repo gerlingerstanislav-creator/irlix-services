@@ -3,6 +3,10 @@
   overflow:visible;
 }
 
+.absence-create-modal .ui-search-select {
+  font-size:var(--irlix-font-size-body);
+}
+
 .modal-error {
   padding:10px 12px;
   border:1px solid var(--irlix-status-danger-border);

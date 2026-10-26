@@ -411,9 +411,6 @@ final class AbsenceService
         }
         if ($end && $end->lt($start)) throw new DomainException('Дата окончания не может быть раньше даты начала');
 
-        if ($type === AbsenceType::SickLeave && ($start->isFuture() || ($end && $end->isFuture()))) {
-            throw new DomainException('Больничный оформляется за уже наступивший период');
-        }
     }
 
     private function assertNoOverlap(int $employeeId, string $startsOn, ?string $endsOn, ?int $ignoreId = null): void
@@ -427,7 +424,16 @@ final class AbsenceService
                 $q->whereNull('ends_on')->orWhereDate('ends_on', '>=', $startsOn);
             });
         if ($ignoreId !== null) $query->where('id', '!=', $ignoreId);
-        if ($query->exists()) throw new DomainException('На выбранные даты уже запланировано отсутствие');
+        $conflict = $query->orderBy('starts_on')->first(['id', 'starts_on', 'ends_on']);
+        if ($conflict) {
+            $until = $conflict->ends_on ? substr((string) $conflict->ends_on, 0, 10) : 'дата окончания не указана';
+            throw new DomainException(sprintf(
+                'Период пересекается с отсутствием №%d (%s — %s). Проверьте существующую запись.',
+                $conflict->id,
+                substr((string) $conflict->starts_on, 0, 10),
+                $until,
+            ));
+        }
     }
 
     private function recordStatus(int $absenceId, ?string $from, string $to, string $actorSubject, ?int $actorEmployeeId, ?string $reason): void

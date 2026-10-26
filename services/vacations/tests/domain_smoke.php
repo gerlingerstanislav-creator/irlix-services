@@ -56,6 +56,19 @@ assert(!$workflow->canEmployeeEdit(AbsenceStatus::HrReview));
 assert($workflow->canReturnToPlanned(AbsenceStatus::ManagerReview));
 assert(!$workflow->canReturnToPlanned(AbsenceStatus::Confirmed));
 
+// Creating a sick leave in advance is allowed; its final confirmation is separate.
+$absenceService = (new ReflectionClass(\App\Application\AbsenceService::class))->newInstanceWithoutConstructor();
+$validateDates = new ReflectionMethod(\App\Application\AbsenceService::class, 'validateTypeDates');
+$validateDates->invoke($absenceService, AbsenceType::SickLeave, '2099-10-26', '2099-10-31');
+$validateDates->invoke($absenceService, AbsenceType::SickLeave, '2099-10-26', null);
+$invalidOrderRejected = false;
+try {
+    $validateDates->invoke($absenceService, AbsenceType::SickLeave, '2099-10-31', '2099-10-26');
+} catch (DomainException) {
+    $invalidOrderRejected = true;
+}
+if (!$invalidOrderRejected) throw new RuntimeException('End before start must be rejected');
+
 assert($days->calendarDays('2026-06-11', '2026-06-13') === 3);
 assert($days->calendarDays('2026-06-11', null) === null);
 assert($days->entitlementDays(AbsenceType::PaidVacation, '2026-06-11', '2026-06-13') === 2); // 12 June is excluded
