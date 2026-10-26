@@ -8,7 +8,8 @@ COPY routes /app/routes
 COPY bootstrap/app.php /app/bootstrap/app.php
 COPY database/migrations /app/database/migrations
 COPY tests /app/tests
-RUN php /app/tests/workflow_smoke.php \
+RUN php /app/tests/permissions_routes_smoke.php \
+    && php /app/tests/workflow_smoke.php \
     && php /app/tests/attempt_funnel_smoke.php \
     && php /app/tests/timesheet_assignments_smoke.php \
     && php /app/tests/tester_access_smoke.php \
