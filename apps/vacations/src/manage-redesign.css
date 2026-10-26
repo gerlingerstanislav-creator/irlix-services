@@ -195,6 +195,18 @@
   color:var(--irlix-color-text);
 }
 
+/* Compact department month totals: absent hours / available hours. */
+.month-card .month-card-hours {
+  justify-content:center;
+  font-size:clamp(8px, .67vw, 11px);
+  letter-spacing:-.15px;
+  font-variant-numeric:tabular-nums;
+}
+.vacations-table .empty-absence-label {
+  text-align:left;
+  color:var(--irlix-color-text-muted);
+}
+
 .manage-panel > .registry-meta {
   min-height:34px;
   display:flex;
