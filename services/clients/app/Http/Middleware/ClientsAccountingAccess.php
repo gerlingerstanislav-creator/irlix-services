@@ -144,6 +144,21 @@ class ClientsAccountingAccess
         // projection below remains defense-in-depth for every legacy consumer.
         $request->attributes->set('clients_overview_client_ids', array_values(array_unique([...$ownClients, ...$clientViewClients])));
         $request->attributes->set('clients_overview_lead_employee_ids', $employeeIdsForPermission('leads.view'));
+        if ($request->path() === 'api/overview' && $request->query('section') === 'contacts') {
+            $visibleLeadEmployees = $employeeIdsForPermission('leads.view');
+            $visibleLeadIds = DB::table('leads')
+                ->when($visibleLeadEmployees !== null,
+                    fn ($query) => $query->whereIn('responsible_employee_id', $visibleLeadEmployees ?: [0]))
+                ->pluck('id')->all();
+            $visibleClientIds = array_values(array_unique([...$ownClients, ...$clientViewClients]));
+            $visibleContactIds = DB::table('contact_relations')
+                ->where('active', true)
+                ->where(function ($query) use ($visibleLeadIds, $visibleClientIds) {
+                    $query->where(fn ($relation) => $relation->where('entity_type', 'lead')->whereIn('entity_id', $visibleLeadIds))
+                        ->orWhere(fn ($relation) => $relation->where('entity_type', 'client')->whereIn('entity_id', $visibleClientIds));
+                })->distinct()->pluck('contact_person_id')->all();
+            $request->attributes->set('clients_overview_contact_ids', $visibleContactIds);
+        }
 
         $isProductionManager = in_array('department-manager', $access['roles'] ?? [], true);
         $hasClientServiceRole = count(array_intersect(
