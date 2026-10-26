@@ -38,7 +38,7 @@ final class ServiceEntitlement
         if ($result->status() === 401) return response()->json(['message' => 'Authentication required'], 401);
         if (!$result->successful()) return response()->json(['message' => 'Service authorization unavailable'], 503);
         if ($result->json('data.services.vacations') !== true
-            && !($request->is('api/client-service-calendar') && $result->json('data.services.clients') === true)) {
+            && !($request->is('api/client-service-calendar', 'api/client-service-absence-alerts') && $result->json('data.services.clients') === true)) {
             return response()->json(['message' => 'Service access denied'], 403);
         }
         return $next($request);
