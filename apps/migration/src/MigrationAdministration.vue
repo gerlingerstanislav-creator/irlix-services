@@ -393,6 +393,7 @@ async function commitBackup(){
 .mctrl-backups-settings-content p{margin:0;color:var(--irlix-color-text-muted)}
 .mctrl-backups-retention-row{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
 .mctrl-backups-retention-row .irlix-field{flex:1 1 175px;max-width:260px}
+.mctrl-admin-secret-status{margin:0;color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption);line-height:1.4}
 .mctrl-admin-error{color:var(--irlix-color-danger,#b91c1c)}
 .mctrl-admin-confirm{padding:12px;border:1px solid var(--irlix-color-border);border-radius:8px}
 @media(max-width:600px){.mctrl-backup-card-main{align-items:flex-start;flex-direction:column}
