@@ -176,3 +176,20 @@ test('error surfaces use brand tokens and viewport centering', () => {
   }
   assert.doesNotMatch(bootstrap, /margin:12vh auto/);
 });
+
+test('embedded System Migration keeps legacy links and query/hash on its own router', async () => {
+  const { routes } = await import('../../../apps/system/src/routes.js');
+  const embedded = routes.find(route => route.path === '/migration/control/');
+  assert.equal(embedded.name, 'migration-control');
+  const context = { query: { operation: '123', filter: 'failed' }, hash: '#errors' };
+  for (const legacy of ['/migration/','/migration/console/']) {
+    const match = routes.find(route => route.path === legacy);
+    assert.deepEqual(match.redirect(context), { name: 'migration-control', ...context });
+  }
+  assert.equal(routes.find(route => route.name === 'not-found').path, '/:pathMatch(.*)*');
+  const main = readFileSync(new URL('../../../apps/system/src/main.js', import.meta.url), 'utf8');
+  assert.match(main, /if\(!await auth\.init\(\)\)return;/);
+  assert.match(main, /await router\.isReady\(\)/);
+  assert.match(main, /const restoredTarget = restoredPath \+ window\.location\.search \+ window\.location\.hash/);
+  assert.match(main, /router\.replace\(restoredTarget\)/);
+});
