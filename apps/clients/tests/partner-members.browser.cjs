@@ -217,9 +217,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    const container=element.getBoundingClientRect();
    const rects=[...element.querySelectorAll('[role=tab]')].map(x=>x.getBoundingClientRect());
    return {available:container.width,used:rects.reduce((s,x)=>s+x.width,0),
-    gap:parseFloat(getComputedStyle(element).columnGap)||0,widths:rects.map(x=>x.width)};
+    gap:parseFloat(getComputedStyle(element).columnGap)||0,padding:parseFloat(getComputedStyle(element).paddingLeft)+parseFloat(getComputedStyle(element).paddingRight),widths:rects.map(x=>x.width)};
   });
-  assert.ok(tabGeometry.used+3*tabGeometry.gap>=tabGeometry.available-3,'Partner tabs occupy full available width');
+  assert.ok(tabGeometry.used+3*tabGeometry.gap+tabGeometry.padding>=tabGeometry.available-2,'Partner tabs occupy full available width');
   assert.ok(tabGeometry.widths[0]>tabGeometry.widths[1],'Tab width follows label length');
   await page.screenshot({path:screenshotDir+'/clients-partner-profile.png',fullPage:true});
   await page.getByRole('tab',{name:'История',exact:true}).click();
