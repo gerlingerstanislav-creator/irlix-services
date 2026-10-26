@@ -40,7 +40,7 @@ defineProps({
         </g>
       </template>
     </svg>
-    <span v-if="showLabel" class="ui-preloader__label">{{ label }}</span>
+    <span v-if="showLabel" class="ui-preloader__label ui-loader__label">{{ label }}</span>
   </div>
 </template>
 

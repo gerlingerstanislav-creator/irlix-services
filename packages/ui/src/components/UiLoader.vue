@@ -10,6 +10,6 @@ defineProps({
 });
 </script>
 <template>
-  <UiPreloader class="ui-loader" :label="label" :overlay="overlay" :page="page"
+  <UiPreloader class="ui-loader" :class="{ 'ui-loader--overlay': overlay, 'ui-loader--small': size === 'small' }" :label="label" :overlay="overlay" :page="page"
     :show-label="showLabel" :size="size" :variant="variant" />
 </template>
