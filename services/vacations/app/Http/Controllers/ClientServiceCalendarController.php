@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 
 /**
  * Minimal cross-contour read model for active Employees, restricted to
- * staff physically belonging to the client-service department subtree.
+ * employees belonging to client-service, plus signed platform administrators.
  * No absence type, files, reason, comment, approval chain or medical data.
  */
 final class ClientServiceCalendarController extends Controller
@@ -24,6 +24,44 @@ final class ClientServiceCalendarController extends Controller
         $year = (int) substr($month, 0, 4);
         $number = (int) substr($month, 5, 2);
 
+        [$activeIds, $employees, $departments] = $this->authorizedDirectory($request, $directory);
+
+        $start = sprintf('%04d-%02d-01', $year, $number);
+        $end = date('Y-m-t', strtotime($start.' 12:00:00 UTC'));
+        $absences = $reads->registry($activeIds, ['from' => $start, 'to' => $end]);
+        return response()->json(['data' => [
+            'employees' => array_map(static fn ($employee) => [
+                'id' => (int) $employee['id'],
+                'full_name' => $employee['full_name'],
+                'department_id' => $employee['department_id'] ?? null,
+                'department_name' => $employee['department_name'] ?? null,
+            ], $employees),
+            'departments' => array_map(static fn ($department) => [
+                'id' => (int) $department['id'],
+                'name' => $department['name'],
+            ], $departments),
+            'absences' => array_map(static fn ($item) => [
+                'id' => $item['id'], 'employee_id' => (int) $item['employee_id'],
+                'starts_on' => $item['starts_on'], 'ends_on' => $item['ends_on'],
+                'status' => $item['status'],
+            ], $absences),
+        ]]);
+    }
+    /** Aggregated by Vacations in one indexed read, without personal details. */
+    public function alerts(Request $request, EmployeesDirectory $directory, AbsenceReadService $reads): JsonResponse
+    {
+        [$activeIds] = $this->authorizedDirectory($request, $directory);
+        $today = \Carbon\CarbonImmutable::today();
+        $levels = $reads->absenceAlerts(
+            $activeIds, $today->toDateString(),
+            $today->addMonthNoOverflow()->toDateString(),
+            $today->addMonthsNoOverflow(3)->toDateString()
+        );
+        return response()->json(['data' => $levels]);
+    }
+
+    private function authorizedDirectory(Request $request, EmployeesDirectory $directory): array
+    {
         $identity = (array) $request->attributes->get('identity', []);
         $jwt = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
         $roles = (array) ($identity['realm_roles'] ?? []);
@@ -62,27 +100,13 @@ final class ClientServiceCalendarController extends Controller
             }
             $departmentId = (int) ($department['parent_id'] ?? 0);
         }
-        abort_unless($inService, 403, 'Календарь доступен только сотрудникам клиентской службы.');
+        // The signed Keycloak bearer has been verified by KeycloakBearer.
+        // A role preview, when present, is verified by Employees before replacement.
+        $platformAdmin = in_array('platform-admin', $roles, true);
+        abort_unless($inService || $platformAdmin, 403,
+            'Календарь доступен только клиентской службе и администраторам платформы.');
 
-        $start = sprintf('%04d-%02d-01', $year, $number);
-        $end = date('Y-m-t', strtotime($start.' 12:00:00 UTC'));
-        $absences = $reads->registry($activeIds, ['from' => $start, 'to' => $end]);
-        return response()->json(['data' => [
-            'employees' => array_map(static fn ($employee) => [
-                'id' => (int) $employee['id'],
-                'full_name' => $employee['full_name'],
-                'department_id' => $employee['department_id'] ?? null,
-                'department_name' => $employee['department_name'] ?? null,
-            ], $employees),
-            'departments' => array_map(static fn ($department) => [
-                'id' => (int) $department['id'],
-                'name' => $department['name'],
-            ], $departments),
-            'absences' => array_map(static fn ($item) => [
-                'id' => $item['id'], 'employee_id' => (int) $item['employee_id'],
-                'starts_on' => $item['starts_on'], 'ends_on' => $item['ends_on'],
-                'status' => $item['status'],
-            ], $absences),
-        ]]);
+        return [$activeIds, $employees, $departments];
     }
+
 }

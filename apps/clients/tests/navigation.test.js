@@ -23,7 +23,7 @@ test('members page requires members.view independently of client management',()=
 test('page policy never grants missing permissions, preserves funnel-only access and admin exception',()=>{
  assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions:{}}),[]);
  assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions:{'attempts.analytics.view':{allowed:true}}}),['attempts']);
- assert.deepEqual(allowedClientSections({platform_admin:true,roles:['department-manager'],permissions}),Object.keys(sectionPermissions).filter(section=>section!=='specialists'));
+ assert.deepEqual(allowedClientSections({platform_admin:true,roles:['department-manager'],permissions}),Object.keys(sectionPermissions));
  assert.deepEqual(allowedClientSections({roles:['platform-tester'],permissions:{'clients.view':{allowed:true,scope:'all'}}}),['clients']);
 });
 
@@ -95,12 +95,12 @@ test('partners and specialists use a dedicated menu section and inline editors',
  assert.match(roster,/statusText/);
 });
 
-test('specialists calendar is granted by organizational client-service membership, not manager/admin role',()=>{
+test('specialists calendar is granted to client-service staff and platform administrators only',()=>{
  const employee={id:99}, client_service_employee_ids=[employee.id];
  const staff={employee,client_service_employee_ids,permissions:{}};
  assert.ok(allowedClientSections(staff).includes('specialists'));
  assert.ok(!allowedClientSections({...staff,client_service_employee_ids:[]}).includes('specialists'));
- assert.ok(!allowedClientSections({platform_admin:true,employee,permissions}).includes('specialists'));
+ assert.ok(allowedClientSections({platform_admin:true,employee,permissions}).includes('specialists'));
  assert.ok(!allowedClientSections({roles:['client-service-head'],employee,permissions}).includes('specialists'));
 });
 test('specialists backend contracts restrict the global roster by actual client service membership',()=>{
@@ -108,9 +108,10 @@ test('specialists backend contracts restrict the global roster by actual client 
  const clients=readFileSync(new URL('../../../services/clients/app/Http/Controllers/ClientSpecialistsController.php',import.meta.url),'utf8');
  const roster=readFileSync(new URL('../src/components/SpecialistsAbsenceRoster.vue',import.meta.url),'utf8');
  assert.match(vacations,/client-service/);
- assert.match(vacations,/abort_unless\(\$inService, 403/);
+ assert.match(vacations,/abort_unless\(\$inService \|\| \$platformAdmin, 403/);
  assert.match(vacations,/in_array\(\$actorId, \$activeIds, true\)/);
  assert.doesNotMatch(vacations,/['"]type['"]\s*=>\s*\$item/);
  assert.match(clients,/client_service_employee_ids/);
+ assert.match(clients,/platform_admin/);
  assert.match(roster,/client-service-calendar\?month=/);
 });

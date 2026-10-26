@@ -126,17 +126,22 @@ onMounted(load);
   </UiFilterBar>
   <div v-if="error && !selected" class="error-banner">{{ error }} <button @click="load">Повторить</button></div>
   <UiLoader v-if="loading" page label="Загрузка партнёров" />
-  <div v-else class="partner-tree">
+  <div v-else class="partner-tree clients-registry">
    <div v-for="partner in groups" :key="partner.id" class="partner-group">
-    <div class="partner-parent">
-     <UiTreeToggle variant="plus" :expanded="expanded.has(partner.id)" :label="expanded.has(partner.id) ? 'Свернуть' : 'Развернуть'" @click="expanded.has(partner.id) ? expanded.delete(partner.id) : expanded.add(partner.id)" />
-     <button type="button" class="partner-name" :disabled="partner.id === 'unassigned'" @click="open('partner', partner)"><strong>{{ partner.name }}</strong> <small>({{ partner.specialists.length }})</small></button>
+    <div class="partner-parent client-row">
+     <span class="partner-parent__main">
+       <UiTreeToggle :expanded="expanded.has(partner.id)" :label="expanded.has(partner.id) ? 'Свернуть партнёра' : 'Развернуть партнёра'" @click="expanded.has(partner.id) ? expanded.delete(partner.id) : expanded.add(partner.id)" />
+       <button type="button" class="partner-name" :disabled="partner.id === 'unassigned'" @click="open('partner', partner)"><strong>{{ partner.name }}</strong></button>
+       <span class="partner-meta">{{ partner.location || '' }}</span>
+       <span class="partner-count">{{ partner.specialists.length }} специалистов</span>
+     </span>
      <span v-if="!Number(partner.active)" class="partner-muted">Неактивен</span>
      <UiButton v-if="canManage && partner.id !== 'unassigned'" compact @click="open('specialist', null, partner.id)">＋ Специалист</UiButton>
     </div>
     <template v-if="expanded.has(partner.id) || query.trim()">
-     <div v-for="s in partner.specialists" :key="s.id" class="partner-child">
-      <button class="partner-name" type="button" @click="open('specialist', s)">{{ s.full_name }}</button>
+     <div v-for="s in partner.specialists" :key="s.id" class="partner-child client-row">
+      <span class="partner-child__name"><span class="partner-leaf" aria-hidden="true"></span><button class="partner-name" type="button" @click="open('specialist', s)">{{ s.full_name }}</button></span>
+      <span v-if="s.comment" class="partner-muted partner-comment">{{ s.comment }}</span>
       <span v-if="!Number(s.active)" class="partner-muted">Неактивен</span>
      </div>
      <div v-if="!partner.specialists.length" class="partner-child partner-muted">Специалистов пока нет</div>
@@ -147,6 +152,7 @@ onMounted(load);
   <UiDrawer :open="!!selected" :title="title" width="560px" @close="selected=null">
    <div v-if="selected" class="partner-card">
     <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
+    <p v-if="!canManage && !isNew" class="partner-readonly">Только просмотр: для редактирования карточки требуется право управления справочником.</p>
     <div class="partner-fields">
      <article v-for="field in fields" :key="field.key" class="partner-field">
       <span class="partner-field__label">{{ field.label }}</span>
@@ -210,4 +216,21 @@ onMounted(load);
 .partner-field__actions button:first-child { color:var(--irlix-color-primary-text); }
 .partner-actions { display:flex; gap:8px; padding:16px 0; }
 @media(max-width:520px) { .partner-field { grid-template-columns:1fr; gap:2px; } .partner-field__label { padding:0; } }
+
+.partner-tree {width:100%;min-width:0;overflow:auto}
+.partner-group {margin:0;border-bottom:1px solid var(--irlix-color-border)}
+.partner-parent.client-row {display:flex;align-items:center;gap:12px;padding:4px 12px;min-height:45px;background:var(--irlix-color-surface);border-bottom:1px solid var(--irlix-color-border)}
+.partner-parent__main {display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.partner-parent__main .partner-name {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.partner-meta,.partner-count {font-size:var(--irlix-font-size-caption);color:var(--irlix-color-text-muted);white-space:nowrap}
+.partner-count {margin-left:4px}
+.partner-child.client-row {display:flex;align-items:center;gap:12px;min-height:40px;padding:5px 12px 5px 53px;background:var(--irlix-color-surface)}
+.partner-child__name {display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.partner-child__name .partner-name {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.partner-leaf {position:relative;flex:none;width:18px;height:20px;border-left:1px dashed var(--irlix-color-border);border-bottom:1px dashed var(--irlix-color-border);transform:translateY(-10px)}
+.partner-comment {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:25%}
+.partner-readonly {color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption);padding:7px 0;margin:0}
+.partner-field__edit {display:inline-flex;flex:none;align-items:center;justify-content:center;min-width:28px;min-height:28px;color:var(--irlix-color-text)!important}
+.partner-field__edit :deep(svg) {width:17px;height:17px;stroke:currentColor;stroke-width:1.7}
+
 </style>
