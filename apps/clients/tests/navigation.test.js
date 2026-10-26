@@ -7,13 +7,13 @@ test('Clients staff see pages granted by the permission matrix',()=>{
  for(const role of ['account-manager','sales-manager','accounting-head','sales-head','client-service-head']) {
   const pages=allowedClientSections({roles:[role],permissions});
   assert.ok(pages.includes('positions'));assert.ok(pages.includes('requests'));
-  assert.ok(pages.includes('members'));assert.ok(!pages.includes('tenders'));
+  assert.ok(pages.includes('members'));assert.ok(pages.includes('specialists'));assert.ok(!pages.includes('tenders'));
  }
 });
 test('production heads can access every page explicitly granted by the matrix',()=>{
  assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions}),Object.keys(sectionPermissions));
  assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions:{'clients.view':{allowed:true,scope:'team'}}}),['clients']);
- assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions:{'clients.view':{allowed:true,scope:'team'},'members.view':{allowed:true,scope:'team'}}}),['clients','members']);
+ assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions:{'clients.view':{allowed:true,scope:'team'},'members.view':{allowed:true,scope:'team'}}}),['clients','specialists','members']);
 });
 test('members page requires members.view independently of client management',()=>{
  const access={roles:['account-manager'],permissions:{'clients.view':{allowed:true,scope:'all'},'clients.manage':{allowed:true,scope:'all'}}};
@@ -31,6 +31,7 @@ test('Clients routes use documented URLs and preserve legacy query and hash', as
  const { routes } = await import('../src/routes.js');
  const named = Object.fromEntries(routes.filter(r=>r.name).map(r=>[r.name,r]));
  assert.equal(named.clients.path, '/clients/');
+ assert.equal(named.specialists.path, '/specialists/');
  assert.equal(named.reports.path, '/reporting-periods/');
  assert.equal(named['attempt-funnel'].path, '/attempt-funnel/');
  assert.equal(named['attempt-funnel'].meta.section, 'attempts');
@@ -80,4 +81,16 @@ test('scroll pagination has a visible bottom loader, retries, and no hidden pref
  assert.match(app,/Ошибка подгрузки\. Повторить/);
  assert.match(app,/if \(!section \|\| !hasMore\.value \|\| loading\.value \|\| loadingMore\.value/);
  assert.match(css,/@keyframes clients-load-spin/);
+});
+
+test('partners and specialists use a dedicated menu section and inline editors',()=>{
+ const sidebar=readFileSync(new URL('../src/components/ClientsSidebar.vue',import.meta.url),'utf8');
+ const partner=readFileSync(new URL('../src/components/PartnersRegistry.vue',import.meta.url),'utf8');
+ const roster=readFileSync(new URL('../src/components/SpecialistsAbsenceRoster.vue',import.meta.url),'utf8');
+ assert.match(sidebar,/id: 'members', label: 'Подключения', icon: 'list', groupStart: true/);
+ assert.match(sidebar,/id: 'specialists', label: 'Специалисты'/);
+ assert.doesNotMatch(partner,/class="partner-pencil"/);
+ assert.match(partner,/editingField === field.key/);
+ assert.match(roster,/<UiPeriodPicker v-model="month" mode="month" \/>/);
+ assert.match(roster,/statusText/);
 });
