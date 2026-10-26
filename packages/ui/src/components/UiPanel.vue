@@ -4,6 +4,7 @@
 
 <style scoped>
 .ui-panel {
+  position: relative;
   background: var(--irlix-color-surface);
   border: 1px solid var(--irlix-color-border);
   border-radius: var(--irlix-radius-md);

@@ -13,7 +13,7 @@ export const catalogSections = [
     { id: 'forms', label: 'Поля формы' }, { id: 'filters', label: 'Селекты и поиск' }, { id: 'checkbox', label: 'Чекбоксы' }, { id: 'filter-rail', label: 'Панель фильтров и группировки' },
   ] },
   { id: 'statuses', label: 'Статусы и загрузка', icon: 'status', examples: [
-    { id: 'badges', label: 'Статусы и подтверждения' }, { id: 'loaders', label: 'Индикаторы загрузки' },
+    { id: 'badges', label: 'Статусы и подтверждения' }, { id: 'loaders', label: 'Прелоадеры' },
   ] },
   { id: 'tabs', label: 'Вкладки и переключатели', icon: 'dashboard', examples: [
     { id: 'view-controls', label: 'Вкладки и виды' },
