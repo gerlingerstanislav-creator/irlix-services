@@ -70,6 +70,8 @@ const partnerCatalog = ref([]);
 // active partner organizations; active is not part of that DTO.
 const partnerOptions = computed(() => partnerCatalog.value.filter(s=>(s.active===undefined||Boolean(Number(s.active)))&&s.partner_id).map(s=>({value:String(s.id),label:s.partner_name+' — '+s.full_name})));
 const selectedLead = ref(null);
+const leadCardContacts = ref([]);
+const leadCardRequests = ref([]);
 const selectedClient = ref(null);
 const workflowCardOpen=ref(false);
 const requestMode = ref(rememberedView('requests.mode', 'tree', ['tree','list','kanban']));
@@ -284,6 +286,8 @@ async function loadSection() {
   Object.assign(overview, {clients:[], leads:[], contacts:[], requests:[], reportingPeriods:[]});
   catalogClients.value = [];
   leadContextId = null;
+  leadCardContacts.value = [];
+  leadCardRequests.value = [];
   try {
     const section = sectionForView(view.value);
     if (!allowedSections.value.includes(view.value) && view.value !== 'attempt-funnel') return;
@@ -321,13 +325,17 @@ async function ensureLeadContext(id) {
     const response = await api('/api/clients/overview?'+new URLSearchParams({section:'lead-context',lead_id:String(id)}));
     if (generation !== viewGeneration || Number(selectedLead.value?.id) !== id) return;
     leadContextId = id;
-    overview.contacts = response.data?.contacts || [];
-    overview.requests = response.data?.requests || [];
+    leadCardContacts.value = response.data?.contacts || [];
+    leadCardRequests.value = response.data?.requests || [];
     selectedLead.value = response.data?.lead || selectedLead.value;
   } catch (e) { if (generation === viewGeneration) error.value = e.message || String(e); }
 }
 watch(selectedLead, lead => {
-  if (lead?.id && initialized.value) ensureLeadContext(Number(lead.id));
+  if (lead?.id && initialized.value) {
+    leadCardContacts.value = [];
+    leadCardRequests.value = [];
+    ensureLeadContext(Number(lead.id));
+  }
 });
 async function load() {
   loading.value = true; error.value = '';
@@ -613,7 +621,7 @@ onBeforeUnmount(() => clearTimeout(filterDebounce));
       </div>
     </main>
   <ClientMembersRegistry v-if="selectedClientMember" :clients="clients" :employees="employees" :can-manage="can('members.manage')" :focused-client-id="Number(selectedClientMember.clientId)" :focused-member-id="Number(selectedClientMember.id)" only-details @close="selectedClientMember=null" @changed="refreshCurrent" />
-  <LeadCard :lead="selectedLead" :employees="employees" :contacts="overview.contacts" :requests="overview.requests" :statuses="leadStatuses" :can-manage="can('leads.manage')" @close="selectedLead=null" @changed="refreshCurrent" @create-request="lead=>openForm('request',{target_id:`lead:${lead.id}`})" @convert="lead=>openForm('convertLead',{lead_id:lead.id,name:lead.name,sales_employee_id:String(lead.responsible_employee_id),account_employee_id:''})"/>
+  <LeadCard :lead="selectedLead" :employees="employees" :contacts="leadCardContacts" :requests="leadCardRequests" :statuses="leadStatuses" :can-manage="can('leads.manage')" @close="selectedLead=null" @changed="refreshCurrent" @create-request="lead=>openForm('request',{target_id:`lead:${lead.id}`})" @convert="lead=>openForm('convertLead',{lead_id:lead.id,name:lead.name,sales_employee_id:String(lead.responsible_employee_id),account_employee_id:''})"/>
   <ClientCard @open-lead="openLeadFromClient" :z-index="workflowCardOpen?1150:500" :client-id="selectedClient ? Number(selectedClient.id) : null" :employees="employees" :account-options="accountManagerOptions" :clients="clients" :technology-options="requestTechnologyOptions" :can-manage="selectedClient?.can_manage!==false&&can('clients.manage')" @close="selectedClient=null" @changed="handleClientChanged" />
   <ClientTransferControl v-if="selectedClient && selectedClient?.can_manage!==false&&can('clients.manage')&&!selectedClient?.account_employee_id" :client-id="Number(selectedClient.id)" :options="clientServiceTreeOptions" @changed="handleClientChanged" />
   <ContactPersonCard :open="contactCardOpen" :contact-id="selectedContactId" :clients="clients" @close="closeContactCard" @changed="handleContactChanged" />
