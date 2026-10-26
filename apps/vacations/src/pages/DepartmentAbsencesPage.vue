@@ -10,7 +10,7 @@ import AbsenceTable from '../components/AbsenceTable.vue';
 const props=defineProps({year:{type:Number,required:true},departments:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},canCreateForEmployee:{type:Boolean,default:false},refreshToken:{type:Number,default:0}});
 const emit=defineEmits(['action','error','changed']);
 const currentMonth=new Date().getMonth()+1;
-const activeMonth=ref(currentMonth),departmentIds=ref([]),search=ref(''),view=ref('calendar'),items=ref([]),historicalEmployees=ref([]),historicalDepartments=ref([]),productionCalendar=ref({}),loading=ref(false),showCreate=ref(false);
+const activeMonth=ref(currentMonth),departmentIds=ref([]),search=ref(''),view=ref('calendar'),items=ref([]),historicalEmployees=ref([]),historicalDepartments=ref([]),productionCalendar=ref({}),loading=ref(false),showCreate=ref(false),hoveredAbsenceId=ref(null);
 
 const buildDepartmentOptions=(departments)=>{
   const byParent=new Map();
@@ -101,6 +101,7 @@ const isVisualStart=(g,a,day)=>day===1||a.starts_on===dayDate(day)||!g.employmen
 const isVisualEnd=(g,a,day)=>day===days.value.length||a.ends_on===dayDate(day)||!g.employment_segments.some(segment=>segment.from<=dayDate(day+1)&&segment.to>=dayDate(day+1));
 const shortName=(name)=>{const parts=String(name||'').trim().split(/\s+/);return parts.length>2?parts.slice(0,2).join(' '):String(name||'')};
 const absenceTone=a=>({paid_vacation:'vacation',sick_leave:'medical',maternity_leave:'medical',day_off:'neutral',unpaid_vacation:'neutral'}[a.type]||'neutral');
+const clearHoveredAbsence=id=>{if(hoveredAbsenceId.value===id)hoveredAbsenceId.value=null;};
 onMounted(()=>{load();loadProductionCalendar()});
 watch(()=>props.refreshToken,load);
 watch(()=>props.year,()=>{load();loadProductionCalendar()});
@@ -130,7 +131,7 @@ watch(()=>props.year,()=>{load();loadProductionCalendar()});
     <UiLoader v-if="loading" page label="Загрузка отсутствий подразделения" />
     <div v-else-if="!grouped.length" class="empty"><strong>Нет сотрудников, работавших в выбранном месяце</strong><span>Измените месяц, подразделение или поисковый запрос.</span></div>
     <AbsenceTable v-else-if="view==='list'" :items="listItems" show-employee show-progress @action="emit('action',$event)"/>
-    <div v-else class="calendar-wrap"><table class="absence-calendar"><thead><tr><th class="calendar-person">Сотрудник</th><th v-for="day in days" :key="day" :class="{'calendar-non-working':isNonWorkingDay(day)}" :title="dayTitle(day)">{{ day }}</th></tr></thead><tbody><tr v-for="group in grouped" :key="group.employee_id"><td class="calendar-person"><strong>{{ shortName(group.employee_name)||`#${group.employee_id}` }}</strong><small>{{ group.department_name||'—' }}</small></td><td v-for="day in days" :key="day" :class="{'calendar-non-working':isNonWorkingDay(day)}" :title="dayTitle(day)"><div v-for="absence in dayItems(group,day)" :key="absence.id" class="calendar-absence" :class="[`calendar-absence--${absenceTone(absence)}`,{'calendar-absence--start':isVisualStart(group,absence,day),'calendar-absence--end':isVisualEnd(group,absence,day)}]" :title="`${typeLabels[absence.type]||absence.type}: ${formatDate(absence.starts_on)} — ${formatDate(absence.ends_on)}`" @click="emit('action',{action:'view',item:absence})"><span></span></div></td></tr></tbody></table></div>
+    <div v-else class="calendar-wrap"><table class="absence-calendar"><thead><tr><th class="calendar-person">Сотрудник</th><th v-for="day in days" :key="day" :class="{'calendar-non-working':isNonWorkingDay(day)}" :title="dayTitle(day)">{{ day }}</th></tr></thead><tbody><tr v-for="group in grouped" :key="group.employee_id"><td class="calendar-person"><strong>{{ shortName(group.employee_name)||`#${group.employee_id}` }}</strong><small>{{ group.department_name||'—' }}</small></td><td v-for="day in days" :key="day" :class="{'calendar-non-working':isNonWorkingDay(day)}" :title="dayTitle(day)"><div v-for="absence in dayItems(group,day)" :key="absence.id" class="calendar-absence" :class="[`calendar-absence--${absenceTone(absence)}`,{'calendar-absence--start':isVisualStart(group,absence,day),'calendar-absence--end':isVisualEnd(group,absence,day),'calendar-absence--hovered':hoveredAbsenceId===absence.id}]" @mouseenter="hoveredAbsenceId=absence.id" @mouseleave="clearHoveredAbsence(absence.id)" :title="`${typeLabels[absence.type]||absence.type}: ${formatDate(absence.starts_on)} — ${formatDate(absence.ends_on)}`" @click="emit('action',{action:'view',item:absence})"><span></span></div></td></tr></tbody></table></div>
   </UiPanel>
 
   <AbsenceCreateModal :open="showCreate" :employees="employees" for-employee title="Запланировать отсутствие сотруднику" eyebrow="ОТСУТСТВИЕ СОТРУДНИКА" @close="showCreate=false" @changed="created"/>
