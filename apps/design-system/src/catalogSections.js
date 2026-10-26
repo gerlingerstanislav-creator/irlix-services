@@ -7,7 +7,7 @@ export const catalogSections = [
     { id: 'registry', label: 'Реестры и состояния' }, { id: 'tables', label: 'Таблицы с группами' }, { id: 'hierarchy', label: 'Иерархия' }, { id: 'kanban', label: 'Канбан' },
   ] },
   { id: 'buttons-actions', label: 'Кнопки и действия', icon: 'target', examples: [
-    { id: 'buttons', label: 'Кнопки' }, { id: 'card-actions', label: 'Иконки в действиях' }, { id: 'icons', label: 'Каталог иконок' },
+    { id: 'buttons', label: 'Кнопки' }, { id: 'card-actions', label: 'Меню действий и иконки' }, { id: 'icons', label: 'Каталог иконок' },
   ] },
   { id: 'fields', label: 'Поля ввода и выбор', icon: 'settings', examples: [
     { id: 'forms', label: 'Поля формы' }, { id: 'filters', label: 'Селекты и поиск' }, { id: 'checkbox', label: 'Чекбоксы' }, { id: 'filter-rail', label: 'Панель фильтров и группировки' },
