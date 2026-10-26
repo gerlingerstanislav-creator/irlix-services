@@ -1047,8 +1047,8 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
         <div class="legend">
           <span><i class="swatch final"></i>Финально подтверждено</span>
           <span><i class="swatch prelim"></i>Подтверждено сотрудником</span>
-          <span><i class="swatch absence-confirmed"></i>Предоставленное отсутствие</span>
-          <span><i class="swatch absence-pending"></i>Неподтверждённое отсутствие</span>
+          <span><i class="swatch management-absence-confirmed"></i>Предоставленное отсутствие</span>
+          <span><i class="swatch management-absence-pending"></i>Неподтверждённое отсутствие</span>
           <span><i class="swatch inactive"></i>Нет подключения</span>
         </div>
 
@@ -1100,17 +1100,13 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
                     v-for="cell in row.cells"
                     :key="cell.date"
                     class="matrix-cell"
-                    :class="[cell.className, { 'has-absence': cell.hasAbsence, 'has-description': cell.active && !!cell.description, 'client-locked': cell.locked, 'range-selected': cellSelected(row, cell.date) }]"
+                    :class="[cell.className, { 'has-absence': cell.hasAbsence, 'range-selected': cellSelected(row, cell.date) }]"
                     :aria-label="`${cell.date}: ${cell.description || 'Описание не заполнено'}`"
                     @mousedown="startSelection($event, row, cell.date)"
                     @mouseenter="enterCell($event, row, cell.date)"
                     @dblclick="openManagerEdit(row, cell.date)"
                   >
                     <span v-if="cell.hasAbsence" class="absence-half" aria-hidden="true"></span>
-                    <svg v-if="cell.locked" class="client-lock" viewBox="0 0 12 14" aria-label="Отправлено на согласование или согласовано клиентом" role="img">
-                      <path d="M3.5 6V4a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-                      <rect x="1.5" y="6" width="9" height="7" rx="1.5" fill="currentColor"/>
-                    </svg>
                     <span v-if="cell.active"><b>{{ Number(cell.hours.toFixed(2)) }}</b></span>
                   </td>
                 </tr>
