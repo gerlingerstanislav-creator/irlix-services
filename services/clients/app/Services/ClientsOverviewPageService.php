@@ -92,6 +92,13 @@ final class ClientsOverviewPageService
         if ($section === 'contacts' && isset($filters['query']) && is_string($filters['query']) && trim($filters['query']) !== '') {
             $query->where('full_name', 'ilike', '%'.str_replace(['%', '_'], ['\\%', '\\_'], trim($filters['query'])).'%');
         }
+        if ($section === 'contacts' && isset($filters['client_id']) && ctype_digit((string) $filters['client_id']) && (int) $filters['client_id'] > 0) {
+            $id = (int) $filters['client_id'];
+            $query->whereExists(fn ($sub) => $sub->selectRaw('1')->from('contact_relations as relation')
+                ->whereColumn('relation.contact_person_id', 'contact_people.id')
+                ->where('relation.entity_type', 'client')->where('relation.entity_id', $id)
+                ->where('relation.active', true));
+        }
         $total = (clone $query)->count();
         $batch = $query->forPage($page, $perPage)->get();
         $rows = match ($section) {
