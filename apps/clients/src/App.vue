@@ -212,8 +212,36 @@ const sectionForView = section => ({
 })[section] || null;
 const needsCatalog = section => ['leads','contacts','requests','positions','attempts','members','reports'].includes(section);
 const needsLeads = section => ['requests','positions','attempts'].includes(section);
+const sectionParams = (section, page) => {
+  const params = {section, page:String(page), per_page:'80'};
+  if (section === 'contacts') {
+    if (query.value.trim()) params.query = query.value.trim();
+    if (contactClientFilter.value) params.client_id = contactClientFilter.value;
+  }
+  if (section === 'clients') {
+    if (query.value.trim()) {
+      params.query = query.value.trim();
+      const needle = query.value.trim().toLowerCase();
+      params.manager_employee_ids = JSON.stringify(employees.value
+        .filter(employee => displayEmployeeName(employee.full_name).toLowerCase().includes(needle))
+        .map(employee => Number(employee.id)));
+    }
+    if (clientFilters.responsible) params.responsible = clientFilters.responsible;
+    if (clientFilters.department) {
+      params.department_employee_ids = JSON.stringify(employees.value
+        .filter(employee => String(employee.department_id || '') === String(clientFilters.department))
+        .map(employee => Number(employee.id)));
+    }
+    if (clientFilters.technology) {
+      params.technologies = JSON.stringify([...clientTechnologyDescendants.value.get(clientFilters.technology) || new Set([clientFilters.technology])]);
+    }
+    if (clientFilters.activity) params.activity = clientFilters.activity;
+    params.date = localDateValue();
+  }
+  return new URLSearchParams(params);
+};
 async function fetchOverviewPage(section, page, generation) {
-  const result = await api('/api/clients/overview?'+new URLSearchParams({section, page:String(page), per_page:'80'}));
+  const result = await api('/api/clients/overview?'+sectionParams(section, page));
   if (generation !== viewGeneration) return;
   const key = section === 'reports' ? 'reportingPeriods' : section;
   const rows = key === 'clients' ? normalizeClients(result.data?.[key] || []) : (result.data?.[key] || []);
@@ -504,6 +532,21 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', onContentScroll, true);
 });
 watch(loadMoreSentinel, () => nextTick(setupScrollObserver), {flush:'post'});
+let filterDebounce = null;
+watch([
+  query,
+  contactClientFilter,
+  () => clientFilters.responsible,
+  () => clientFilters.department,
+  () => clientFilters.technology,
+  () => clientFilters.activity,
+], () => {
+  if (!initialized.value || !['clients','contacts'].includes(view.value)) return;
+  clearTimeout(filterDebounce);
+  filterDebounce = setTimeout(() => { filterDebounce = null; refreshCurrent(); }, 240);
+});
+onBeforeUnmount(() => clearTimeout(filterDebounce));
+
 </script>
 
 <template>
