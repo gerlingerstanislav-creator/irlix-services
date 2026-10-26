@@ -327,6 +327,16 @@ const path = require('node:path');
         await previewPage.locator('img').screenshot({path:path.join(qaDir,filename),timeout:15000});
       }
     } finally { await previewPage.close(); }
+    // A Brandbook session must never override revoked Employees entitlements.
+    // Reject rather than falling back to the former hard-coded Brandbook-only menu.
+    await page.route('**/api/employees/access/me', route =>
+      route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ data: { employee_id: 42, roles: ['hr'],
+          services: { dashboard: true, brandbook: false } } }) }));
+    await page.goto(base + '/brandbook/identity/', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => document.body.textContent.includes('403'));
+    assert.equal(await page.locator('main.brandbook-page').count(), 0,
+      'revoked Brandbook entitlement must not render SPA content');
     assert.deepEqual(pageErrors, [], 'no runtime script errors');
     assert.ok(protectedRequests.some(url => url.includes('/api/employees/access/me')),
       'real Employees access lookup is required to render the service launcher');
