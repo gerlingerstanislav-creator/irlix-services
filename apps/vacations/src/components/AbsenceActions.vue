@@ -65,7 +65,7 @@ onBeforeUnmount(() => {
     <button ref="trigger" class="context-trigger" type="button" aria-label="Действия" title="Действия" @click.stop="toggle">⋮</button>
     <Teleport to="body">
       <div v-if="open" class="context-popover context-popover-fixed" :style="popoverStyle" @click.stop>
-        <button v-for="action in props.actions" :key="action" type="button" :class="{ danger: action === 'return_to_planned' }" @click="choose(action)">
+        <button v-for="action in props.actions" :key="action" type="button" :class="{ danger: ['return_to_planned', 'delete'].includes(action) }" @click="choose(action)">
           {{ actionLabels[action] || action }}
         </button>
       </div>

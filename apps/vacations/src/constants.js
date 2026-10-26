@@ -29,6 +29,7 @@ export const actionLabels = {
   return_to_planned: 'Вернуть на доработку',
   withdraw: 'Отозвать заявку',
   reject: 'Отклонить с комментарием',
+  delete: 'Удалить навсегда',
   history: 'История',
 };
 
