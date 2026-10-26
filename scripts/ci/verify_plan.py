@@ -37,6 +37,34 @@ def verify_finance(compose, sudo, host):
 
 
 
+def verify_design_system(host):
+    """SSO protection and real app identity must both pass at their own origins."""
+    headers_and_status = subprocess.check_output([
+        "curl", "-sS", "-D", "-", "-o", "/dev/null", "-w", "\n%{http_code}",
+        "-H", f"Host: {host}", "--connect-timeout", "2", "--max-time", "10",
+        "http://127.0.0.1/design-system/",
+    ], text=True)
+    headers, status = headers_and_status.rsplit("\n", 1)
+    assert status == "302", f"Design System anonymous gate: expected 302, got {status}"
+    redirect = re.search(r"(?im)^Location:\s*(\S+)", headers)
+    assert redirect and redirect.group(1).endswith(
+        "/?design-system=1&return=/design-system/"
+    ), "Design System anonymous gate must redirect to Portal SSO"
+
+    for path in ("/", "/components/", "/navigation/"):
+        response = subprocess.check_output([
+            "curl", "-sS", "--connect-timeout", "2", "--max-time", "10",
+            "--retry", "5", "--retry-all-errors", "--retry-delay", "1",
+            "-w", "\n%{http_code}", "http://127.0.0.1:8083" + path,
+        ], text=True)
+        body, status = response.rsplit("\n", 1)
+        assert status == "200", f"Design System origin {path}: expected 200, got {status}"
+        assert "<title>irlix design system</title>" in body.lower(), (
+            f"Design System origin {path}: wrong frontend, expected Design System"
+        )
+    print("[verify] design-system: anonymous SSO 302; origin SPA and deep links 200", flush=True)
+
+
 def verify_brandbook(host):
     """Distinguish an anonymous 302 login redirect from a working Brandbook SPA."""
     headers_and_status = subprocess.check_output([
@@ -103,6 +131,9 @@ def main():
         path = c.get("health_path") or c["page_path"]
         if c["id"] == "brandbook":
             verify_brandbook(host)
+            continue
+        if c["id"] == "design-system":
+            verify_design_system(host)
             continue
         try:
             body = subprocess.check_output(["curl", "-H", f"Host: {host}", "-fsS", "--connect-timeout", "2", "--max-time", "10",
