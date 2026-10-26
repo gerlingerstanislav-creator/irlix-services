@@ -1,12 +1,14 @@
 // Regression for catalog-owned history, grouped menu and shared component controls.
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const { configureAuthenticatedPreview } = require('./auth-fixture.cjs');
 
 (async () => {
   const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_EXECUTABLE, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
   try {
     const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
     const base = process.env.DESIGN_SYSTEM_PREVIEW || 'http://127.0.0.1:5196';
+    await configureAuthenticatedPreview(page, base);
     const errors = [];
     const protectedRequests = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -35,12 +37,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     // Scroll settles after the initial font load; reload must preserve the direct link.
     await page.reload();
     await atGroup('fields', 'Поля ввода и выбор');
-    assert.equal(await page.getByRole('button', { name: 'Открыть аккаунт', exact: true }).count(), 0);
-    assert.equal(await page.getByRole('dialog', { name: 'Аккаунт', exact: true }).count(), 0);
-    assert.equal(await page.getByText('Демо пользователь', { exact: true }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: 'Открыть аккаунт', exact: true }).count(), 1);
+    await page.getByRole('button', { name: 'Открыть аккаунт', exact: true }).click();
+    assert.equal(await page.getByRole('dialog', { name: 'Аккаунт', exact: true }).count(), 1);
+    assert.equal(await page.getByText('Демо сотрудник', { exact: true }).count(), 1);
+    await page.getByRole('button', { name: 'Открыть аккаунт', exact: true }).click();
     assert.equal(await page.getByRole('link', { name: '← Дашборд', exact: true }).count(), 0);
     await page.getByRole('button', { name: 'Открыть список сервисов' }).click();
-    assert.deepEqual(await page.locator('.services-popover .service-label').allTextContents(), ['Design System']);
+    assert.deepEqual(await page.locator('.services-popover .service-label').allTextContents(), ['Дашборд', 'Сотрудники', 'Отсутствия', 'Design System']);
     await page.getByRole('button', { name: 'Открыть список сервисов' }).click();
     assert.deepEqual(await page.locator('main > [data-catalog-group]').evaluateAll(nodes => nodes.map(node => [node.dataset.catalogGroup, node.querySelector('h2').textContent])), groups);
     assert.equal(await page.locator('main .ui-registry-table').count(), 1, 'one canonical shared registry');
@@ -95,7 +99,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       await atGroup('foundations', 'Основы');
     }
     assert.deepEqual(errors, []);
-    assert.deepEqual(protectedRequests, [], 'anonymous catalog and launcher must not request API/OIDC');
+    assert.ok(protectedRequests.some(url => url.includes('/api/employees/access/me')), 'launcher must use verified Employees entitlements');
     console.log('Catalog navigation Chromium PASS: eight grouped dividers/menu targets, desktop/mobile clicks without reload, history/deep links/reload/legacy migration, manual scroll state, checkbox/drawers/themes, no viewport overflow');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

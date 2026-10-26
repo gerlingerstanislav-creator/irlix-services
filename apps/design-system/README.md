@@ -1,8 +1,8 @@
 # Design System catalog
 
-The live catalog at `/design-system/` renders the same `@irlix/ui` components and tokens as business services. It is a public frontend application without login, a backend, protected API requests or live business data. Direct links and reload work anonymously.
+The live catalog at `/design-system/` renders the same `@irlix/ui` components and tokens as business services. It is an authenticated frontend application without its own backend or live business data. Host nginx and legacy Portal fallback protect all pages, assets and deep links via Employees/Keycloak; a short-lived HttpOnly cookie is scoped to `/design-system/`.
 
-Default shell: `UiAppShell` supplies the live sidebar and topbar with service name and automatic breadcrumbs. The navigation section additionally demonstrates linked ancestor breadcrumbs. Account controls are disabled through the shared `accountEnabled` prop; the launcher receives an empty entitlement map and shows only the public Design System entry.
+Default shell: `UiAppShell` supplies the live sidebar and topbar with service name and automatic breadcrumbs. The navigation section additionally demonstrates linked ancestor breadcrumbs. Account controls use the real corporate identity. The launcher reads authenticated Employees `access/me` and shows only that employee's effective allowed services, including Design System.
 
 The catalog is one scrolling page with eight groups: Основы; Таблицы и списки; Кнопки и действия; Поля ввода и выбор; Статусы и загрузка; Вкладки и переключатели; Карточки и панели; Навигация. `src/catalogSections.js` owns sidebar labels, group order, headings and anchors. Every group has a titled horizontal divider; shared-component examples have subordinate headings.
 
@@ -22,4 +22,4 @@ DESIGN_SYSTEM_PREVIEW=http://127.0.0.1:5196 node apps/design-system/tests/naviga
 DESIGN_SYSTEM_PREVIEW=http://127.0.0.1:5196 node apps/design-system/tests/registry.browser.cjs
 ```
 
-Both tests run without authentication fixtures. The navigation test asserts anonymous boot and launcher interaction make no API/OIDC requests and expose no fake account.
+Both tests use synthetic Employees tokens and entitlements for Vite preview; production authorization is separately enforced by server-side Employees/nginx. No user data is put into these fixtures.

@@ -1,4 +1,9 @@
 <script setup>
+defineProps({
+  serviceAccess: { type: Object, required: true },
+  currentUser: { type: Object, required: true },
+});
+const emit = defineEmits(['logout']);
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
 import { catalogSections as nav } from './catalogSections.js';
@@ -29,7 +34,7 @@ function demoDrag(event,item) { demoDragged.value=item.id; event.dataTransfer.ef
 function demoOver(event,status) { if(!demoDragged.value)return; event.preventDefault();demoTarget.value=status; }
 function demoDrop(event,status) {event.preventDefault(); const item=demoKanbanItems.value.find(i=>i.id===demoDragged.value); if(item)item.status=status;demoDragged.value=null;demoTarget.value='';}
 
-const publicServiceAccess = { services: {} };
+
 
 
 // Generate the palette catalog from the same source that every service consumes.
@@ -100,7 +105,7 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
 </script>
 
 <template>
-  <UiAppShell :account-enabled="false" :service-access="publicServiceAccess" service="design-system" :section="section" :items="nav" :current-user="null" @update:section="navigate">
+  <UiAppShell :account-enabled="true" :service-access="serviceAccess" :current-user="currentUser" service="design-system" :section="section" :items="nav" @update:section="navigate" @logout="emit('logout')">
     <main class="ds-page">
       <UiErrorState v-if="activeRoute.name === 'not-found'" :status="404" back-href="/design-system/" back-label="К дизайн-системе" />
       <template v-else>
