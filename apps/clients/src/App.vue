@@ -1,6 +1,6 @@
 <script setup>
 import { displayEmployeeName } from './displayEmployeeName';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiTooltip, UiViewSwitch, UiRegistryTable, UiErrorState } from '@irlix/ui';
 import ClientsSidebar from './components/ClientsSidebar.vue';
@@ -28,6 +28,16 @@ const route = useRoute();
 const router = useRouter();
 const view = computed(() => route.meta.section || 'not-found');
 const loading = ref(false);
+const loadingMore = ref(false);
+const hasMore = ref(false);
+const nextPage = ref(1);
+const totalRows = ref(0);
+const moreError = ref('');
+const loadMoreSentinel = ref(null);
+const initialized = ref(false);
+const catalogClients = ref([]);
+let viewGeneration = 0;
+let scrollObserver = null;
 const error = ref('');
 const query = ref('');
 const contactClientFilter = ref('');
@@ -188,26 +198,98 @@ const changeAttemptMode = (mode) => {
   if (route.name !== target) router.push({ name: target, query: route.query, hash: route.hash });
 };
 async function api(url, options = {}) { const response = await fetch(url, { ...options, headers: { Accept:'application/json', 'Content-Type':'application/json', ...(options.headers || {}) } }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.message || Object.values(body.errors || {}).flat().join(', ') || `HTTP ${response.status}`); return body; }
+const normalizeClients = rows => rows.map(c => ({
+  ...c, id:Number(c.id),
+  projects:(c.projects || []).map(p => ({ ...p, id:Number(p.id), displayName:p.name || 'Основной проект',
+    members:(p.members || []).map(m => ({...m, id:Number(m.id), terms:(m.terms || []).map(t => ({...t,id:Number(t.id)}))})) })),
+  client_members:(c.client_members || []).map(m => ({...m,id:Number(m.id),terms:(m.terms || []).map(t=>({...t,id:Number(t.id)})),projects:(m.projects||[]).map(p=>({...p,id:Number(p.id)}))})),
+}));
+const sectionForView = section => ({
+  clients:'clients', leads:'leads', contacts:'contacts', requests:'requests',
+  positions:'requests', attempts:'requests', reports:'reports',
+})[section] || null;
+const needsCatalog = section => ['leads','contacts','requests','positions','attempts','members','reports'].includes(section);
+const needsLeads = section => ['requests','positions','attempts'].includes(section);
+async function fetchOverviewPage(section, page, generation) {
+  const result = await api('/api/clients/overview?'+new URLSearchParams({section, page:String(page), per_page:'80'}));
+  if (generation !== viewGeneration) return;
+  const key = section === 'reports' ? 'reportingPeriods' : section;
+  const rows = key === 'clients' ? normalizeClients(result.data?.[key] || []) : (result.data?.[key] || []);
+  overview[key] = page === 1 ? rows : [...overview[key], ...rows];
+  hasMore.value = !!result.meta?.has_more;
+  nextPage.value = page + 1;
+  totalRows.value = result.meta?.total || 0;
+  await nextTick();
+  setupScrollObserver();
+}
+async function loadMore() {
+  const section = sectionForView(view.value);
+  if (!section || !hasMore.value || loading.value || loadingMore.value || moreError.value) return;
+  const generation = viewGeneration;
+  loadingMore.value = true;
+  try { await fetchOverviewPage(section, nextPage.value, generation); }
+  catch (e) { if (generation === viewGeneration) moreError.value = e.message || String(e); }
+  finally { if (generation === viewGeneration) { loadingMore.value = false; await nextTick(); setupScrollObserver(); } }
+}
+function onContentScroll(event) {
+  const node = event?.target;
+  if (!node?.closest?.('.content') || node.closest('.ui-drawer, .ui-search-select__menu')) return;
+  if (node.scrollHeight > node.clientHeight + 20 && node.scrollHeight - node.scrollTop - node.clientHeight < 420) loadMore();
+}
+function setupScrollObserver() {
+  scrollObserver?.disconnect();
+  scrollObserver = null;
+  if (!hasMore.value || !loadMoreSentinel.value || typeof IntersectionObserver === 'undefined') return;
+  scrollObserver = new IntersectionObserver(entries => {
+    if (entries.some(entry => entry.isIntersecting)) loadMore();
+  }, {rootMargin:'320px'});
+  scrollObserver.observe(loadMoreSentinel.value);
+}
+async function loadSection() {
+  const generation = ++viewGeneration;
+  loading.value = true;
+  moreError.value = ''; hasMore.value = false; nextPage.value = 1; totalRows.value = 0;
+  scrollObserver?.disconnect();
+  Object.assign(overview, {clients:[], leads:[], contacts:[], requests:[], reportingPeriods:[]});
+  catalogClients.value = [];
+  try {
+    const section = sectionForView(view.value);
+    if (!allowedSections.value.includes(view.value) && view.value !== 'attempt-funnel') return;
+    const tasks = [];
+    if (section) tasks.push(fetchOverviewPage(section, 1, generation));
+    if (needsCatalog(view.value)) tasks.push(api('/api/clients/overview?section=catalog').then(result => {
+      if (generation === viewGeneration) catalogClients.value = normalizeClients(result.data?.clients || []);
+    }));
+    if (needsLeads(view.value)) tasks.push(api('/api/clients/overview?section=lead-catalog').then(result => {
+      if (generation === viewGeneration) overview.leads = result.data?.leads || [];
+    }));
+    await Promise.all(tasks);
+  } catch (e) { if (generation === viewGeneration) error.value = e.message || String(e); }
+  finally { if (generation === viewGeneration) { loading.value = false; await nextTick(); setupScrollObserver(); } }
+}
+async function refreshCurrent() { error.value=''; await loadSection(); }
 async function load() {
   loading.value = true; error.value = '';
   try {
-    const [directory, data, access] = await Promise.all([api('/api/employees/clients-directory'), api('/api/clients/overview'), api('/api/clients/permissions/me')]);
+    const [directory, access] = await Promise.all([api('/api/employees/clients-directory'), api('/api/clients/permissions/me')]);
     contourAccess.value = access.data || { permissions: {} };
-    // Do not replace unknown/forbidden deep links with the first permitted section.
     if (attemptModes.value.length && !attemptModes.value.includes(attemptMode.value)) attemptMode.value = attemptModes.value[0];
     employees.value = directory.data?.employees || [];
     departments.value = directory.data?.departments || [];
     actorEmployeeId.value = Number(directory.data?.actor?.id) || null;
     accountingEmployeeId.value = directory.data?.accounting ? (Number(directory.data?.actor?.id) || null) : null;
-    Object.assign(overview, data.data || {});
-    overview.clients = (overview.clients || []).map(c => ({ ...c, id:Number(c.id), projects:(c.projects || []).map(p => ({ ...p, id:Number(p.id), displayName:p.name || 'Основной проект', members:(p.members || []).map(m => ({ ...m, id:Number(m.id), terms:(m.terms || []).map(t => ({ ...t, id:Number(t.id) })) })) })), client_members:(c.client_members || []).map(m => ({ ...m, id:Number(m.id), terms:(m.terms || []).map(t => ({ ...t, id:Number(t.id) })), projects:(m.projects || []).map(p => ({...p, id:Number(p.id)})) })) }));
-    overview.leads = overview.leads || []; overview.contacts = overview.contacts || []; overview.requests = overview.requests || []; overview.reportingPeriods = overview.reportingPeriods || [];
-    if(selectedLead.value) selectedLead.value=overview.leads.find(item=>Number(item.id)===Number(selectedLead.value.id))||null;
-    try { const catalog = await api('/api/specialists/catalog'); specialistTechnologies.value = catalog.data?.technologies || []; } catch { specialistTechnologies.value = []; }
-  } catch (e) { error.value = e.message || String(e); } finally { loading.value = false; }
+    initialized.value = true;
+    const tasks = [loadSection()];
+    if (['clients','requests','positions','attempts','members'].includes(view.value)) {
+      tasks.push(api('/api/specialists/catalog').then(catalog => {
+        specialistTechnologies.value = catalog.data?.technologies || [];
+      }).catch(() => { specialistTechnologies.value = []; }));
+    }
+    await Promise.all(tasks);
+  } catch (e) { error.value = e.message || String(e); loading.value = false; }
 }
 
-const clients = computed(() => overview.clients || []);
+const clients = computed(() => overview.clients.length ? overview.clients : catalogClients.value);
 const clientOptions = computed(() => clients.value.map(c => ({ value:String(c.id), label:c.name })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const requestTargetOptions=computed(()=>[
   ...clients.value.map(item=>({value:`client:${item.id}`,label:item.name,meta:'клиент'})),
