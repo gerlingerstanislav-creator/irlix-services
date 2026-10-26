@@ -16,6 +16,8 @@
 
 `migration` API и `migration-ops` являются отдельными backend-компонентами; `resource-monitor` — отдельный фоновый collector **без HTTP listener**, собирает Docker/host metrics в приватное хранилище; Platform Core читает snapshots read-only. Dashboard обращается к Employees (effective permissions) и к Vacations/Timesheets attention API.
 
+**Timesheets backend:** Laravel API `/api/timesheets/`, собственная PostgreSQL schema `timesheets`; пользовательские и служебные endpoints зарегистрированы через контроллеры, бизнес-операции и freeze/revision выполняются в application-сервисах с локальными Eloquent-моделями. Источники идентичности/подключений — Clients, сотрудников — Employees, отсутствий — Vacations; Finance читает согласованные факты по отдельному защищённому контракту. Это структурный рефакторинг, логические связи карты сервисов и внешние API остаются прежними. Подробности: `services/timesheets/ARCHITECTURE_REFACTOR.md`.
+
 Dashboard (`/`) относится к горизонтальному контуру **«Сотрудники»** вместе с Employees и Vacations; это соответствует группе `employees` в общем каталоге. Контур «Платформа» содержит отдельную административную «Систему» и инфраструктурные компоненты, но не Dashboard. При переносе компонента между контурами его логические API-связи сохраняются, если сами интеграции не менялись.
 
 Неактивные или планируемые frontend (`available:false`) не считаются развёрнутыми и отсутствуют на карте, даже если остаются в продуктовом каталоге. Модули с `showInLauncher:false` также не отображаются как самостоятельные frontend-приложения.
