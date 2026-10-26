@@ -13,6 +13,7 @@ RUN find /app/app /app/routes /app/bootstrap /app/database/migrations /app/bin -
     && php /app/tests/domain_smoke.php \
     && php /app/tests/workflow_sequence_smoke.php \
     && php /app/tests/eloquent_contract_smoke.php \
+    && php /app/tests/admin_delete_smoke.php \
     && php /app/tests/eloquent_architecture.php
 
 FROM php:8.4-cli-alpine
