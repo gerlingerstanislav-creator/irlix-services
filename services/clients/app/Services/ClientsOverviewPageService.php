@@ -11,7 +11,6 @@ use App\Models\ContactRelation;
 use App\Models\Lead;
 use App\Models\LeadEvent;
 use App\Models\LeadLegalEntity;
-use App\Models\LegacyProjectMember;
 use App\Models\MemberTerm;
 use App\Models\Position;
 use App\Models\Project;
@@ -201,31 +200,22 @@ final class ClientsOverviewPageService
     {
         $ids = $batch->pluck('id')->all();
         if (!$ids) return [];
-        $projects = Project::query()->whereIn('client_id', $ids)
-            ->orderByDesc('is_default')->orderByRaw('name nulls first')->get();
-        $legacy = LegacyProjectMember::query()->whereIn('project_id', $projects->pluck('id')->all())
-            ->orderBy('specialist_name')->get();
-        $terms = MemberTerm::query()->whereIn('project_member_id', $legacy->pluck('id')->all())
-            ->orderBy('valid_from')->get()->groupBy('project_member_id');
-        $members = $legacy->groupBy('project_id');
-        $projectsByClient = $projects->groupBy('client_id');
+        // The new page contract renders canonical ClientMember relations.
+        // Legacy project-members remain on the old /overview endpoint only.
+        $projectsByClient = Project::query()->select(['id', 'client_id', 'name', 'is_default'])
+            ->whereIn('client_id', $ids)
+            ->orderByDesc('is_default')->orderByRaw('name nulls first')
+            ->get()->groupBy('client_id');
         $clientMembers = app(ClientMemberOverviewService::class)->groupedByClient($ids);
 
-        return $batch->map(function (Client $client) use ($projectsByClient, $members, $terms, $clientMembers) {
+        return $batch->map(function (Client $client) use ($projectsByClient, $clientMembers) {
             $row = $client->getRawOriginal();
             $row['logo_url'] = !empty($row['logo_storage_path'])
                 ? '/api/clients/clients/'.$client->id.'/logo?v='.rawurlencode(basename($row['logo_storage_path']))
                 : null;
             unset($row['logo_storage_path'], $row['logo_mime_type']);
-            $row['projects'] = ($projectsByClient->get($client->id) ?? collect())->map(function (Project $project) use ($members, $terms) {
-                return [
-                    ...$project->getRawOriginal(),
-                    'members' => ($members->get($project->id) ?? collect())->map(fn (LegacyProjectMember $member) => [
-                        ...$member->getRawOriginal(),
-                        'terms' => ($terms->get($member->id) ?? collect())->map(fn ($term) => $term->getRawOriginal())->all(),
-                    ])->all(),
-                ];
-            })->all();
+            $row['projects'] = ($projectsByClient->get($client->id) ?? collect())
+                ->map(fn (Project $project) => [...$project->getRawOriginal(), 'members' => []])->all();
             $row['client_members'] = $clientMembers[$client->id] ?? [];
             return $row;
         })->all();
