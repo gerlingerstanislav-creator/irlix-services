@@ -1,7 +1,7 @@
 // Page visibility is separate from entity permissions: Clients staff still work
 // with positions inside requests, while production heads have two workflow pages.
 export const sectionPermissions = {
-  clients:'clients.view', partners:'clients.view', members:'members.view', leads:'leads.view', contacts:'contacts.view',
+  clients:'clients.view', partners:'clients.view', specialists:'members.view', members:'members.view', leads:'leads.view', contacts:'contacts.view',
   requests:'requests.view', positions:'positions.view', attempts:'attempts.view',
   cashflow:'cashflow.view', reports:'reports.view', permissions:'permissions.view',
 };

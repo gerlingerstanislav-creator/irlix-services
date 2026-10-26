@@ -3,7 +3,7 @@
 export const routes = [
   { path: '/', redirect: to => ({ name: 'clients', query: to.query, hash: to.hash }) },
   { path: '/clients/', name: 'clients', meta: { section: 'clients' } },
-  ...['partners','leads','contacts','requests','positions','attempts','members','cashflow','permissions']
+  ...['partners','specialists','leads','contacts','requests','positions','attempts','members','cashflow','permissions']
     .map(name => ({ path: '/' + name + '/', name, meta: { section: name } })),
   { path: '/reporting-periods/', name: 'reports', meta: { section: 'reports' } },
   // Links created by the previous router must keep working without losing context.

@@ -45,6 +45,8 @@ class PartnersController extends Controller
         $this->authorizeAction($request, 'clients.manage');
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'location' => ['nullable', 'string', 'max:255'],
+            'vat_payer' => ['sometimes', 'boolean'],
             'description' => ['nullable', 'string', 'max:2000'],
             'active' => ['sometimes', 'boolean'],
         ]);
@@ -59,6 +61,8 @@ class PartnersController extends Controller
         abort_unless($this->partners()->partnerExists($partner), 404);
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'location' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'vat_payer' => ['sometimes', 'boolean'],
             'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'active' => ['sometimes', 'boolean'],
         ]);
