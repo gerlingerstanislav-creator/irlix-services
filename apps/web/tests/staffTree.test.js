@@ -49,9 +49,9 @@ test('employee registry position filter is multi-select and action forms are mod
   assert.match(app, /const positionFilter = ref\(\[\]\)/);
   assert.match(app, /#filter-position[\s\S]*multiple/);
   assert.match(app, /positionFilter\.value\.some/);
-  assert.match(card, /openActionModal\('dismiss'\)/);
-  assert.match(card, /openActionModal\('cooperation'\)/);
-  assert.match(card, /openActionModal\('salary'\)/);
+  assert.match(card, /actionModal === 'dismiss'/);
+  assert.match(card, /actionModal === 'cooperation'/);
+  assert.match(card, /actionModal === 'salary'/);
   assert.match(card, /Пересмотр зарплаты/);
   assert.match(card, /salaryForm\.position_id/);
 });

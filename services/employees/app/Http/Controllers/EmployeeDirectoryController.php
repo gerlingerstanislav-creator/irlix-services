@@ -64,9 +64,15 @@ final class EmployeeDirectoryController extends Controller
     {
         $actor = $this->actor($request);
         if (!$actor) return response()->json(['message' => 'Employee profile is not linked to this account'], 404);
-        return response()->json(['data' => $this->directory->vacationsDirectory(
-            $actor, (array) $request->attributes->get('employees_access', [])
-        )]);
+        $access = (array) $request->attributes->get('employees_access', []);
+        if ($request->has('historical_year')) {
+            $year = filter_var($request->query('historical_year'), FILTER_VALIDATE_INT);
+            if ($year === false || $year < 2000 || $year > 2100) {
+                return response()->json(['message' => 'Invalid historical year'], 422);
+            }
+            return response()->json(['data' => $this->directory->vacationsHistoricalDirectory($access, $year)]);
+        }
+        return response()->json(['data' => $this->directory->vacationsDirectory($actor, $access)]);
     }
 
     public function specialists(Request $request): JsonResponse

@@ -43,6 +43,20 @@ final class WorkspaceController extends Controller
         });
     }
 
+    public function departmentRoster(Request $request): JsonResponse
+    {
+        return $this->handle($request, function (array $employee, array $access) use ($request) {
+            if (!$this->authorization->isElevated($access)) {
+                throw new DomainException('Недостаточно прав для просмотра отпусков подразделения');
+            }
+            $year = filter_var($request->query('year'), FILTER_VALIDATE_INT);
+            if ($year === false || $year < 2000 || $year > 2100) {
+                return response()->json(['message' => 'Invalid historical year'], 422);
+            }
+            return response()->json(['data' => $this->employees->vacationsHistoricalDirectory($request, $year)]);
+        });
+    }
+
     public function show(Request $request, int $absence): JsonResponse
     {
         return $this->handle($request, function (array $employee, array $access) use ($request, $absence) {
@@ -50,7 +64,31 @@ final class WorkspaceController extends Controller
             $actorId = (int) $employee['id'];
             $targetId = (int) $item['employee_id'];
             $isAssignedApprover = $this->reads->isAssignedApprover($absence, $actorId);
-            if (!$isAssignedApprover) $this->authorization->assertCanAccessEmployee($request, $access, $actorId, $targetId);
+            $historicalReadOnly = false;
+            $historicalPerson = null;
+            if (!$isAssignedApprover) {
+                try {
+                    $this->authorization->assertCanAccessEmployee($request, $access, $actorId, $targetId);
+                } catch (DomainException $original) {
+                    $year = filter_var($request->query('historical_year'), FILTER_VALIDATE_INT);
+                    if (!$this->authorization->isElevated($access) || $year === false || $year < 2000 || $year > 2100) {
+                        throw $original;
+                    }
+                    $historicalDirectory = $this->employees->vacationsHistoricalDirectory($request, $year);
+                    $historicalVisible = false;
+                    foreach ($historicalDirectory['employees'] ?? [] as $person) {
+                        if ((int) $person['id'] !== $targetId) continue;
+                        $historicalPerson = $person;
+                        foreach ($person['employment_segments'] ?? [] as $segment) {
+                            if ($segment['from'] <= ($item['ends_on'] ?: '9999-12-31')
+                                && $segment['to'] >= $item['starts_on']) $historicalVisible = true;
+                        }
+                    }
+                    if (!$historicalVisible) throw $original;
+                    // Historical membership permits viewing this absence, never performing actions.
+                    $historicalReadOnly = true;
+                }
+            }
 
             $directory = $this->directoryMap($request, $employee, $access);
             $attachmentCount = $this->reads->attachmentCount($absence);
@@ -70,11 +108,17 @@ final class WorkspaceController extends Controller
             $approvals = $this->enrichApprovals($this->absences->approvalsFor($absence), $this->approverNameMap($request));
             $pending = $this->pendingApprovalForActor($approvals, $request, $access, $actorId, $targetId);
 
-            $item['employee_name'] = $directory[$targetId]['full_name'] ?? ($targetId === $actorId ? ($employee['full_name'] ?? null) : null);
-            $item['department_name'] = $directory[$targetId]['department_name'] ?? ($targetId === $actorId ? ($employee['department_name'] ?? null) : null);
+            $item['employee_name'] = $directory[$targetId]['full_name']
+                ?? $historicalPerson['full_name']
+                ?? ($targetId === $actorId ? ($employee['full_name'] ?? null) : null);
+            $item['department_name'] = $historicalReadOnly
+                ? ($historicalPerson['department_name'] ?? null)
+                : ($directory[$targetId]['department_name'] ?? ($targetId === $actorId ? ($employee['department_name'] ?? null) : null));
             $item['attachment_count'] = $attachmentCount;
-            $item['available_actions'] = $this->availableActions($item, $access, $actorId, $pending, $attachmentCount);
-            $item['pending_approval_id'] = $pending['id'] ?? null;
+            $item['available_actions'] = $historicalReadOnly
+                ? ['view', 'history']
+                : $this->availableActions($item, $access, $actorId, $pending, $attachmentCount);
+            $item['pending_approval_id'] = $historicalReadOnly ? null : ($pending['id'] ?? null);
             $item['pending_approval_stage'] = $pending['stage'] ?? null;
             $item['approval_progress'] = $approvals;
 
@@ -91,7 +135,15 @@ final class WorkspaceController extends Controller
         return $this->handle($request, function (array $employee, array $access) use ($request) {
             if (!$this->authorization->isElevated($access)) throw new DomainException('Недостаточно прав для просмотра отпусков подразделения');
 
-            $directoryPayload = $this->employees->vacationsDirectory($request);
+
+            $historical = $request->has('historical_year');
+            $year = $historical ? filter_var($request->query('historical_year'), FILTER_VALIDATE_INT) : null;
+            if ($historical && ($year === false || $year < 2000 || $year > 2100)) {
+                return response()->json(['message' => 'Invalid historical year'], 422);
+            }
+            $directoryPayload = $historical
+                ? $this->employees->vacationsHistoricalDirectory($request, $year)
+                : $this->employees->vacationsDirectory($request);
             $directory = array_values($directoryPayload['employees'] ?? []);
             $byId = [];
             foreach ($directory as $person) $byId[(int) $person['id']] = $person;
@@ -105,8 +157,38 @@ final class WorkspaceController extends Controller
             }
             if (!$employeeIds) return response()->json(['data' => [], 'meta' => ['count' => 0]]);
 
-            $items = $this->reads->registry($employeeIds, $request->query());
+
+            $filters = $request->query();
+            if ($historical) {
+                // A historical scope is ONLY valid for this requested year, not for every absence
+                // ever recorded for an employee who happened to work in that department.
+                $yearFrom = sprintf('%04d-01-01', $year);
+                $yearTo = sprintf('%04d-12-31', $year);
+                $filters['from'] = max($yearFrom, (string) ($filters['from'] ?? $yearFrom));
+                $filters['to'] = min($yearTo, (string) ($filters['to'] ?? $yearTo));
+                if ($filters['from'] > $filters['to']) {
+                    return response()->json(['data' => [], 'meta' => ['count' => 0]]);
+                }
+            }
+            $items = $this->reads->registry($employeeIds, $filters);
+            if ($historical) {
+                $items = array_values(array_filter($items, static function (array $absence) use ($byId): bool {
+                    $segments = $byId[(int) $absence['employee_id']]['employment_segments'] ?? [];
+                    foreach ($segments as $segment) {
+                        if ($segment['from'] <= ($absence['ends_on'] ?: '9999-12-31')
+                            && $segment['to'] >= $absence['starts_on']) return true;
+                    }
+                    return false;
+                }));
+            }
             $actorId = (int) $employee['id'];
+            $currentEmployeeIds = null;
+            if ($historical) {
+                $currentEmployeeIds = array_fill_keys(array_map(
+                    static fn ($p) => (int) $p['id'],
+                    $this->employees->vacationsDirectory($request)['employees'] ?? []
+                ), true);
+            }
             $absenceIds = array_map(fn ($item) => (int) $item['id'], $items);
             $attachmentCounts = $this->attachmentCounts($absenceIds);
             $approvalTasks = $this->approvalTasks($absenceIds, $this->approverNameMap($request));
@@ -114,12 +196,15 @@ final class WorkspaceController extends Controller
             foreach ($items as &$item) {
                 $targetId = (int) $item['employee_id'];
                 $item['employee_name'] = $byId[$targetId]['full_name'] ?? null;
+
                 $item['department_id'] = $byId[$targetId]['department_id'] ?? null;
                 $item['department_name'] = $byId[$targetId]['department_name'] ?? null;
                 $item['attachment_count'] = $attachmentCounts[(int) $item['id']] ?? 0;
                 $tasks = $approvalTasks[(int) $item['id']] ?? [];
                 $pending = $this->pendingApprovalForActor($tasks, $request, $access, $actorId, $targetId);
-                $item['available_actions'] = $this->availableActions($item, $access, $actorId, $pending, (int) $item['attachment_count']);
+                $item['available_actions'] = $historical && !isset($currentEmployeeIds[$targetId])
+                    ? ['view', 'history']
+                    : $this->availableActions($item, $access, $actorId, $pending, (int) $item['attachment_count']);
                 $item['pending_approval_id'] = $pending['id'] ?? null;
                 $item['pending_approval_stage'] = $pending['stage'] ?? null;
                 $item['approval_progress'] = $tasks;

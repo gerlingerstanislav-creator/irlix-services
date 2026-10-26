@@ -70,6 +70,11 @@ final class EmployeesDirectory
         return $this->get($request, '/vacations-directory');
     }
 
+    public function vacationsHistoricalDirectory(Request $request, int $year): array
+    {
+        return $this->get($request, '/vacations-directory?historical_year='.$year);
+    }
+
     public function employees(Request $request): array
     {
         return $this->getList($request, '/employees');
