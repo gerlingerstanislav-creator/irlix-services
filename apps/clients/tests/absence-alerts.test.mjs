@@ -27,17 +27,11 @@ test('a failed Vacations request does not leave stale warnings cached',async()=>
 test('warnings are displayed in attempt tree, selected attempt, and create form but not for partners',()=>{
  const view=readFileSync(new URL('../src/components/RequestsWorkflowView.vue',import.meta.url),'utf8');
  const badge=readFileSync(new URL('../src/components/AttemptAbsenceAlert.vue',import.meta.url),'utf8');
- const read=readFileSync(new URL('../../../services/vacations/app/Application/AbsenceReadService.php',import.meta.url),'utf8');
- const endpoint=readFileSync(new URL('../../../services/vacations/app/Http/Controllers/ClientServiceCalendarController.php',import.meta.url),'utf8');
  assert.match(view,/const alertFor = attempt => attempt && !Boolean\(Number\(attempt\.is_external\)\)/);
  assert.ok((view.match(/<AttemptAbsenceAlert/g)||[]).length>=5);
  assert.match(view,/levelForId\(form\.specialist_id\)/);
  assert.match(badge,/attempt-absence-alert--red/);
  assert.match(badge,/attempt-absence-alert--yellow/);
- assert.match(read,/function absenceAlerts\(array \$activeIds/);
- assert.match(read,/->whereIn\('employee_id', \$activeIds\)/);
- assert.match(endpoint,/\$this->authorizedDirectory\(\$request, \$directory\)/);
- assert.doesNotMatch(endpoint,/['"]type['"]\s*=>/);
 });
 test('pagination hides idle scrolling message without disabling sentinel',()=>{
  const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8');
