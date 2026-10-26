@@ -29,5 +29,5 @@ test('department calendar and list share name-filtered data, management keeps na
   }
   assert.match(sources[0], /visibleItems=computed\(\(\)=>\{.*matchingItems\.value/);
   assert.match(sources[0], /grouped=computed\(\(\)=>\{.*visibleItems\.value/);
-  assert.match(sources[0], /:items="visibleItems"/);
+  assert.match(sources[0], /:items="listItems"/);
 });
