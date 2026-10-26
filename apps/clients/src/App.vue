@@ -278,22 +278,27 @@ function setupScrollObserver() {
   }, {rootMargin:'320px'});
   scrollObserver.observe(loadMoreSentinel.value);
 }
-async function loadSection() {
+async function loadSection(preserveRows = false) {
   const generation = ++viewGeneration;
-  loading.value = true;
-  moreError.value = ''; hasMore.value = false; nextPage.value = 1; totalRows.value = 0;
+  if (!preserveRows) loading.value = true;
+  moreError.value = ''; hasMore.value = false; nextPage.value = 1;
+  if (!preserveRows) totalRows.value = 0;
   scrollObserver?.disconnect();
-  Object.assign(overview, {clients:[], leads:[], contacts:[], requests:[], reportingPeriods:[]});
-  catalogClients.value = [];
-  leadContextId = null;
-  leadCardContacts.value = [];
-  leadCardRequests.value = [];
+  if (!preserveRows) {
+    Object.assign(overview, {clients:[], leads:[], contacts:[], requests:[], reportingPeriods:[]});
+    catalogClients.value = [];
+    leadContextId = null;
+  }
+  if (!preserveRows) {
+    leadCardContacts.value = [];
+    leadCardRequests.value = [];
+  }
   try {
     const section = sectionForView(view.value);
     if (!allowedSections.value.includes(view.value) && view.value !== 'attempt-funnel') return;
     const tasks = [];
     if (section) tasks.push(fetchOverviewPage(section, 1, generation));
-    if (needsCatalog(view.value)) tasks.push(api('/api/clients/overview?section=catalog').then(result => {
+    if (needsCatalog(view.value) && (!preserveRows || !catalogClients.value.length)) tasks.push(api('/api/clients/overview?section=catalog').then(result => {
       if (generation === viewGeneration) catalogClients.value = normalizeClients(result.data?.clients || []);
     }));
     if (needsLeads(view.value)) tasks.push(api('/api/clients/overview?section=lead-catalog').then(result => {
@@ -311,7 +316,7 @@ async function loadSection() {
       ensureLeadContext(Number(selectedLead.value.id));
     }
   } catch (e) { if (generation === viewGeneration) error.value = e.message || String(e); }
-  finally { if (generation === viewGeneration) { loading.value = false; await nextTick(); setupScrollObserver(); } }
+  finally { if (generation === viewGeneration) { if (!preserveRows) loading.value = false; await nextTick(); setupScrollObserver(); } }
 }
 async function refreshCurrent() { error.value=''; await loadSection(); }
 function openLeadFromClient(lead) {
@@ -556,7 +561,7 @@ watch([
 ], () => {
   if (!initialized.value || !['clients','contacts'].includes(view.value)) return;
   clearTimeout(filterDebounce);
-  filterDebounce = setTimeout(() => { filterDebounce = null; refreshCurrent(); }, 240);
+  filterDebounce = setTimeout(() => { filterDebounce = null; error.value=''; loadSection(true); }, 240);
 });
 onBeforeUnmount(() => clearTimeout(filterDebounce));
 
