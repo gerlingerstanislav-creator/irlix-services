@@ -4,6 +4,7 @@ import base64
 import json
 import os
 import secrets
+import subprocess
 import time
 import urllib.error
 import urllib.parse
@@ -98,12 +99,15 @@ _, effective, _ = request(API + f"/users/{user_id}/role-mappings/realm/composite
 require(set(ROLES).issubset({r["name"] for r in effective}),
         "Minimal mapping POST returned success without an effective role assignment")
 
-def token_roles():
+def mint_token():
     _, response, _ = request(REALM + "/protocol/openid-connect/token", "POST", {
         "grant_type": "password", "client_id": "irlix-authz-ci",
         "username": USER, "password": PASSWORD,
     }, form=True)
-    parts = response["access_token"].split(".")
+    return response["access_token"]
+
+def token_roles():
+    parts = mint_token().split(".")
     require(len(parts) == 3, "Keycloak access token is not a JWT")
     payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) % 4)))
     require(payload.get("azp") == "irlix-authz-ci", "wrong client in signed Keycloak token")
@@ -153,6 +157,24 @@ for name in sorted(all_persona_roles):
         _, rep, _ = request(url, bearer=admin)
     representations[name] = {"id": rep["id"], "name": name}
 
+def check_clients_jwt(token, expected):
+    # Only isolated, runtime-issued JWTs; never print or commit tokens.
+    env = os.environ.copy()
+    env["IRLIX_CI_BEARER"] = token
+    env["IRLIX_CI_STATUS"] = str(expected)
+    subprocess.run([
+        "docker", "run", "--rm", "--network", "host",
+        "--env", "APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "--env", "APP_ENV=testing",
+        "--env", "IRLIX_AUTHZ_JWT_ENABLED=true",
+        "--env", "KEYCLOAK_URL=http://127.0.0.1:18885/keycloak/auth",
+        "--env", "KEYCLOAK_ISSUER=http://127.0.0.1:18885/keycloak/auth/realms/irlix",
+        "--env", "KEYCLOAK_REALM=irlix",
+        "--env", "KEYCLOAK_CLIENT_ID=irlix-authz-ci",
+        "--env", "IRLIX_CI_BEARER", "--env", "IRLIX_CI_STATUS",
+        "irlix-auth-ci-clients", "php", "/app/tests/keycloak_real_jwt_smoke.php",
+    ], env=env, check=True, timeout=90)
+
 current = set(token_roles()) & set(representations)
 for persona, wanted in PERSONAS.items():
     revoke = current - wanted
@@ -172,6 +194,15 @@ for persona, wanted in PERSONAS.items():
     assert {r["name"] for r in effective} & all_persona_roles == wanted, (
         f"Effective Keycloak role mismatch for {persona}"
     )
+    if persona in {"account-manager", "no-service-access", "platform-admin"}:
+        signed_jwt = mint_token()
+        check_clients_jwt(signed_jwt, 200 if persona == "account-manager" else 403)
+        if persona == "account-manager":
+            header, payload, signature = signed_jwt.split(".")
+            tampered = header + "." + payload + "." + (
+                "B" if signature.startswith("A") else "A"
+            ) + signature[1:]
+            check_clients_jwt(tampered, 401)
     current = wanted
 
 # A dismissed person must not be able to acquire a new access token.
