@@ -38,6 +38,10 @@ watch(departmentOptions,(options)=>{
   const next=options.length===1?[options[0].value]:departmentIds.value.filter(id=>allowed.has(String(id)));
   if(next.length!==departmentIds.value.length||next.some((id,i)=>String(id)!==String(departmentIds.value[i])))departmentIds.value=next;
 },{immediate:true});
+const departmentSelection=computed({
+  get:()=>departmentOptions.value.length===1?(departmentIds.value[0]??''):departmentIds.value,
+  set:(value)=>{departmentIds.value=Array.isArray(value)?value:(value===''||value==null?[]:[value])},
+});
 const viewOptions=[{value:'calendar',label:'Календарь'},{value:'list',label:'Список'}];
 const yearValue=computed(()=>Number(props.year));
 const yearRange=computed(()=>({from:`${yearValue.value}-01-01`,to:`${yearValue.value}-12-31`}));
@@ -86,9 +90,9 @@ watch(()=>props.year,()=>{load();loadProductionCalendar()});
   <UiPanel class="vacations-page-panel">
     <UiFilterBar class="vacations-filterbar department-filterbar">
       <input v-model="search" type="search" placeholder="Поиск по ФИО" aria-label="Поиск по ФИО"/>
-      <UiSearchSelect v-model="departmentIds" class="filter-department" :options="departmentOptions"
+      <UiSearchSelect v-model="departmentSelection" class="filter-department" :options="departmentOptions"
         :disabled="departmentOptions.length<=1" :clearable="departmentOptions.length>1"
-        multiple placeholder="Все подразделения" search-placeholder="Поиск подразделения" aria-label="Подразделения"/>
+        :multiple="departmentOptions.length>1" placeholder="Все подразделения" search-placeholder="Поиск подразделения" aria-label="Подразделения"/>
     </UiFilterBar>
     <div class="month-cards" aria-label="Фильтр по месяцам">
       <button v-for="card in monthCards" :key="card.month" type="button" class="month-card" :class="{active:activeMonth===card.month}" @click="activeMonth=card.month">
