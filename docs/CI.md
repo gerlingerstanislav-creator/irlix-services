@@ -24,6 +24,20 @@ The Finance DB bootstrap command in `docker-compose.finance.yml` must escape she
 
 The shared `UiRegistryTable` intentionally renders a header table and a body table, both receiving the original `tableClass`. Production Chromium smoke tests must locate the visible **body** table (`table.ui-registry-table__table--body.employee-table`) for row interactions, and assert the matching header exists; `.employee-table` by itself matches two nodes and fails Playwright strict mode. Any migration of a service to a shared UI component must update the browser smoke selectors in the same PR. The effective production result requires the post-deploy Chromium stage to pass, not merely CI verified / deploy success.
 
+### Authenticated frontend smoke contract
+
+Design System is SSO-gated like Brandbook, not a public SPA. In production smoke,
+anonymous requests to `/design-system/`, `/design-system/components/` and
+`/design-system/navigation/` must return **302 to Portal's SSO entry**, never
+HTTP 200. `scripts/verify-timesheets.sh` verifies both protected deep links
+separately from the truly public direct SPA routes. `scripts/ci/verify_plan.py`
+checks the SSO gate and confirms the *actual app identity* at the loopback
+origin `127.0.0.1:8083`, including deep links; it likewise verifies Brandbook
+identity at `127.0.0.1:8105`. A 302 HTML response or Portal's generic HTML
+fallback cannot be counted as a healthy protected frontend. Real authenticated
+browser navigation must still be tested separately when a signed user session is
+available; anonymous/origin smoke does not assert authenticated E2E success.
+
 ### Production smoke when image deployment is skipped
 
 For a `main` CI on a test-only or documentation-only change, the image deployment planner may correctly return `deploy=skipped`. The auth/browser verification job still runs the synthetic Employees navigation smoke against the existing production stand; this catches stale browser tests without rebuilding unrelated images. Keycloak bootstrap and full verify-stand remain conditioned on a successful actual deployment. A passing `CI verified` build gate does not replace the final browser result.
