@@ -2,9 +2,36 @@
 require __DIR__.'/client_members_bootstrap.php';
 use Illuminate\Support\Facades\DB;
 clientSchemaLegacy();clientExpand();
+Illuminate\Support\Facades\DB::connection()->getSchemaBuilder()->create('contact_people',function($t){
+    $t->id();$t->string('full_name');$t->timestamps();
+});
+foreach (['2026_10_26_000001_add_partner_profile_fields.php',
+          '2026_10_26_000002_partner_profile_relations.php'] as $file) {
+    (require dirname(__DIR__).'/database/migrations/'.$file)->up();
+}
+
 DB::table('clients')->insert([['id'=>1,'name'=>'Synthetic one'],['id'=>2,'name'=>'Synthetic two']]);
 $partners=new App\Http\Controllers\PartnersController();
 $org=$partners->storePartner(clientRequest(['name'=>'Synthetic partner']))->getData(true)['data']['id'];
+$profile=$partners->showProfile(clientRequest([], 'GET'),$org)->getData(true)['data'];
+clientCheck($profile['partner']['name']==='Synthetic partner','Partner card loads partner');
+$linked=$partners->linkContact(clientRequest(['full_name'=>'Synthetic Contact','position'=>'Manager']),$org)->getData(true)['data'];
+clientCheck(count($linked['contacts'])===1 && $linked['contacts'][0]['position']==='Manager','Partner contact is independently linked');
+$relation=$linked['contacts'][0]['id'];
+$contactId=$linked['contacts'][0]['contact_person_id'];
+$partners->linkContact(clientRequest(['contact_id'=>$contactId,'position'=>'Director']),$org);
+clientCheck(DB::table('partner_contact_relations')->count()===1,'Duplicate contact links reuse stable relation');
+$partners->updateContactRelation(clientRequest(['active'=>false],'PATCH'),$org,$relation);
+clientCheck((int) DB::table('partner_contact_relations')->find($relation)->active===0,'Contact relation can be disabled without deletion');
+$partners->storeLegalEntity(clientRequest(['name'=>'Synthetic LLC','inn'=>'1234567890','full_name'=>'Synthetic Legal Company']),$org);
+$entity=DB::table('partner_legal_entities')->first();
+$partners->updateLegalEntity(clientRequest(['address'=>'Synthetic address'],'PATCH'),$org,$entity->id);
+clientCheck(DB::table('partner_legal_entities')->find($entity->id)->address==='Synthetic address','Legal entity has independent history and updates');
+$partners->addNote(clientRequest(['text'=>'Synthetic comment']),$org);
+clientCheck(DB::table('partner_history_events')->where('type','comment')->count()===1,'Partner comments are appended to history');
+$notAdmin=clientRequest([], 'GET');$notAdmin->attributes->set('client_contour_access',['platform_admin'=>false,'permissions'=>[]]);
+clientReject(fn()=>$partners->showProfile($notAdmin,$org),403,'Non privileged user reads partner card');
+clientCheck(DB::table('partner_history_events')->count()>=4,'Partner writes append auditable events');
 $partner=$partners->storeSpecialist(clientRequest(['partner_id'=>$org,'full_name'=>'Synthetic Specialist']))->getData(true)['data']['id'];
 $ctl=new App\Http\Controllers\ClientMembersController();
 $m=$ctl->store(clientRequest(['partner_specialist_id'=>$partner]),1)->getData(true)['data']['id'];
