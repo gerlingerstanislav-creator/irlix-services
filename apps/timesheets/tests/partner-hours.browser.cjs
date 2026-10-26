@@ -80,6 +80,16 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.match(await row.locator('.name strong').innerText(), /Synthetic Partner \(Партнер\)/);
     assert.equal(await row.locator('.name small').innerText(), '01.10.2026–31.10.2026');
     assert.equal(await page.getByRole('button', { name: 'ТШ партнёров', exact: true }).count(), 0);
+    // Active days with zero hours must be grey rather than inheriting the
+    // colour used by a non-zero value on the same approval background.
+    const zeroValue = row.locator('.matrix-cell').nth(1).locator('b');
+    const positiveValue = row.locator('.matrix-cell').first().locator('b');
+    assert.equal(await zeroValue.innerText(), '0');
+    assert.equal(await zeroValue.evaluate(el => el.classList.contains('zero-hours')), true);
+    assert.notEqual(
+      await zeroValue.evaluate(el => getComputedStyle(el).color),
+      await positiveValue.evaluate(el => getComputedStyle(el).color)
+    );
     const screenshotDir = process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
     require('node:fs').mkdirSync(screenshotDir, { recursive: true });
     await page.screenshot({ path: screenshotDir + '/timesheets-partners-in-management.png', fullPage: true });
@@ -99,6 +109,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await row.getByRole('button', { name: 'Финально подтвердить специалиста за месяц' }).click();
     await page.waitForFunction(() => [...document.querySelectorAll('.matrix tbody tr')]
       .some(row => row.textContent.includes('Synthetic Partner') && row.querySelector('.final')));
+    // The final approval turns working days green, but a zero must still be
+    // grey while non-zero hours remain white.
+    assert.equal(await zeroValue.evaluate(el => el.classList.contains('zero-hours')), true);
+    assert.equal(await positiveValue.evaluate(el => el.classList.contains('zero-hours')), false);
+    assert.notEqual(
+      await zeroValue.evaluate(el => getComputedStyle(el).color),
+      await positiveValue.evaluate(el => getComputedStyle(el).color)
+    );
     assert.deepEqual(writes.filter(x => !x.path.endsWith('/partner-hours')).map(x => x.body), [
       { client_member_id: 42, work_date: '2026-10-01', confirmed: true },
       { client_member_id: 42, month: '2026-10', approved: true },
