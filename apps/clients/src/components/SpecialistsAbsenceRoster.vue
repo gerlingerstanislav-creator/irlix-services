@@ -11,7 +11,6 @@ const search = ref('');
 const roster = ref([]);
 const departments = ref([]);
 const absences = ref([]);
-const calendar = ref({});
 const clientMembers = ref([]);
 const clients = ref([]);
 const loading = ref(false);
@@ -27,7 +26,6 @@ const statuses = {
  manager_review: 'Согласование с руководителем', hr_final_review: 'Предоставление',
  confirmed: 'Предоставлено', rejected: 'Отклонено', cancelled: 'Отменено',
 };
-const year = computed(() => Number(month.value.slice(0, 4)));
 const from = computed(() => month.value + '-01');
 const to = computed(() => {
  const parts = month.value.split('-').map(Number);
@@ -67,18 +65,17 @@ const byPerson = computed(() => {
 });
 const datesFor = id => byPerson.value.get(Number(id)) || [];
 const dayKey = day => month.value + '-' + String(day).padStart(2, '0');
-const dayAbsences = (person, day) => datesFor(person.id).filter(a => norm(a.starts_on) <= dayKey(day)
- && norm(a.ends_on || '9999-12-31') >= dayKey(day)
-);
+const dayAbsences = (person, day) => datesFor(person.id).filter(a =>
+ norm(a.starts_on) <= dayKey(day) && norm(a.ends_on || '9999-12-31') >= dayKey(day));
+const isStart = (absence, day) => day === 1 || norm(absence.starts_on) === dayKey(day);
+const isEnd = (absence, day) => day === days.value.length || norm(absence.ends_on) === dayKey(day);
 const dayOff = day => {
  const key = dayKey(day);
- if (calendar.value[key]) return !calendar.value[key].is_working;
  const dow = new Date(key + 'T12:00:00Z').getUTCDay();
  return dow === 0 || dow === 6;
 };
 const statusText = absence => statuses[absence.status] || absence.status || 'Неизвестен';
 const detail = absence => 'Отсутствие — ' + statusText(absence) + ' (' + norm(absence.starts_on) + ' — ' + norm(absence.ends_on || '…') + ')';
-const summary = person => [...new Set(datesFor(person.id).map(a => statusText(a)))].join(', ') || '—';
 
 async function get(path) {
  const response = await auth.fetch(path, { headers: { Accept: 'application/json' } });
@@ -96,7 +93,6 @@ async function load() {
   roster.value = payload?.employees || [];
   departments.value = payload?.departments || [];
   absences.value = payload?.absences || [];
-  calendar.value = {};
  } catch (e) {
   if (request === rosterRequest) {
    error.value = e.message;
@@ -132,26 +128,38 @@ watch(selectedClient, loadMembers);
  <section class="specialists-roster" aria-label="Специалисты">
   <UiFilterBar class="specialists-roster__filters">
    <input v-model="search" type="search" class="specialists-roster__search" aria-label="Поиск по ФИО" placeholder="Поиск по ФИО">
-   <UiSearchSelect v-model="selectedDepartment" :options="departmentOptions" clearable placeholder="Все подразделения" aria-label="Подразделение" />
-   <UiSearchSelect v-model="selectedClient" :options="clientOptions" clearable placeholder="Все клиенты" aria-label="Клиент" />
-   <UiPeriodPicker v-model="month" mode="month" />
+   <div class="specialists-roster__control specialists-roster__control--department">
+    <UiSearchSelect v-model="selectedDepartment" :options="departmentOptions" clearable placeholder="Все подразделения" aria-label="Подразделение" />
+   </div>
+   <div class="specialists-roster__control specialists-roster__control--client">
+    <UiSearchSelect v-model="selectedClient" :options="clientOptions" clearable placeholder="Все клиенты" aria-label="Клиент" />
+   </div>
+   <div class="specialists-roster__period"><UiPeriodPicker v-model="month" mode="month" /></div>
   </UiFilterBar>
-  <p v-if="error" class="specialists-roster__error" role="alert">{{ error }}. Просмотр разрешён сотрудникам клиентской службы.</p>
+  <p v-if="error" class="specialists-roster__error" role="alert">{{ error }}. Просмотр разрешён клиентской службе и администраторам платформы.</p>
   <p v-else-if="clientError" class="specialists-roster__error" role="alert">Не удалось загрузить подключения выбранного клиента: {{ clientError }}</p>
   <UiLoader v-if="loading || clientLoading" page label="Загрузка календаря специалистов" />
   <div v-else-if="!error && !clientError" class="specialists-roster__scroll">
    <table class="specialists-roster__table">
-    <thead><tr><th class="specialists-roster__name">Специалист</th><th class="specialists-roster__summary">Отсутствия / статус</th><th v-for="day in days" :key="day" :class="{ 'is-weekend': dayOff(day) }">{{ day }}</th></tr></thead>
+    <thead>
+     <tr><th class="specialists-roster__name">Специалист</th>
+      <th v-for="day in days" :key="day" :class="{ 'is-weekend': dayOff(day) }">{{ day }}</th>
+     </tr>
+    </thead>
     <tbody>
      <tr v-for="person in people" :key="person.id">
       <td class="specialists-roster__name"><strong>{{ person.full_name }}</strong><small>{{ person.department_name || '—' }}</small></td>
-      <td class="specialists-roster__summary">{{ datesFor(person.id).length ? 'Отсутствие — ' + summary(person) : '—' }}</td>
       <td v-for="day in days" :key="day" :class="{ 'is-weekend': dayOff(day) }">
-       <div v-for="absence in dayAbsences(person, day)" :key="absence.id" class="specialists-roster__absence"
-        :title="detail(absence)" :aria-label="detail(absence)"><span></span></div>
+       <div v-for="absence in dayAbsences(person, day)" :key="absence.id"
+        class="specialists-roster__absence" :class="{
+          'specialists-roster__absence--start': isStart(absence, day),
+          'specialists-roster__absence--end': isEnd(absence, day)
+        }" :title="detail(absence)" :aria-label="detail(absence)" role="img">
+        <span></span>
+       </div>
       </td>
      </tr>
-     <tr v-if="!people.length"><td :colspan="days.length + 2" class="specialists-roster__empty">Сотрудники по выбранным фильтрам не найдены</td></tr>
+     <tr v-if="!people.length"><td :colspan="days.length + 1" class="specialists-roster__empty">Специалисты по выбранным фильтрам не найдены</td></tr>
     </tbody>
    </table>
   </div>
@@ -159,21 +167,29 @@ watch(selectedClient, loadMembers);
 </template>
 
 <style scoped>
-.specialists-roster { min-width:0; padding:0; }
-.specialists-roster__filters { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:8px 12px; }
-.specialists-roster__search { height:var(--irlix-control-height,32px); min-width:190px; flex:1; padding:0 12px; font:inherit; background:var(--irlix-color-surface); color:var(--irlix-color-text); border:1px solid var(--irlix-color-border); border-radius:var(--irlix-control-radius,8px); }
-.specialists-roster__scroll { width:100%; overflow:auto; max-height:calc(100vh - 145px); }
-.specialists-roster__table { border-collapse:separate; border-spacing:0; min-width:1050px; width:100%; font-size:var(--irlix-font-size-table,12px); }
-.specialists-roster__table th,.specialists-roster__table td { border-right:1px solid var(--irlix-color-border); border-bottom:1px solid var(--irlix-color-border); padding:4px 3px; text-align:center; min-width:28px; height:39px; }
-.specialists-roster__table thead th { position:sticky; top:0; z-index:3; background:var(--irlix-color-surface-muted); }
-.specialists-roster__name { position:sticky; left:0; z-index:2; min-width:235px !important; width:235px; text-align:left !important; padding:6px 12px !important; background:var(--irlix-color-surface); }
-.specialists-roster__summary { position:sticky; left:235px; z-index:2; min-width:195px !important; width:195px; text-align:left !important; padding:6px 10px !important; background:var(--irlix-color-surface); font-size:var(--irlix-font-size-caption,12px); }
-thead .specialists-roster__name,thead .specialists-roster__summary { z-index:4; background:var(--irlix-color-surface-muted); }
-.specialists-roster__name strong { display:block; font-weight:600; }
-.specialists-roster__name small { display:block; color:var(--irlix-color-text-muted); margin-top:2px; }
-.specialists-roster__table .is-weekend { background:var(--irlix-color-surface-muted); }
-.specialists-roster__absence { width:100%; min-width:18px; height:25px; border-radius:3px; background:var(--irlix-color-primary-soft); display:flex; align-items:center; justify-content:center; border:1px solid var(--irlix-color-primary); }
-.specialists-roster__absence span { width:5px; height:5px; border-radius:50%; background:var(--irlix-color-primary); }
-.specialists-roster__empty { text-align:center !important; padding:30px !important; color:var(--irlix-color-text-muted); }
-.specialists-roster__error { margin:12px; padding:12px; color:var(--irlix-status-danger-text); background:var(--irlix-color-surface-muted); border:1px solid var(--irlix-status-danger-border); border-radius:var(--irlix-radius-sm,8px); }
+.specialists-roster{min-width:0;padding:0}
+.specialists-roster__filters{display:flex;align-items:center;flex-wrap:nowrap;gap:8px;padding:8px 12px;overflow-x:auto;min-height:52px}
+.specialists-roster__search{box-sizing:border-box;flex:0 0 220px;width:220px;height:var(--irlix-control-height,32px);padding:0 12px;font:inherit;background:var(--irlix-color-surface);color:var(--irlix-color-text);border:1px solid var(--irlix-color-border);border-radius:var(--irlix-control-radius,8px)}
+.specialists-roster__control{flex:0 0 210px;width:210px;min-width:0}
+.specialists-roster__control--client{flex-basis:200px;width:200px}
+.specialists-roster__control :deep(.ui-search-select){width:100%;min-width:0}
+.specialists-roster__period{margin-left:auto;flex:none}
+.specialists-roster__scroll{width:100%;overflow:auto;max-height:calc(100vh - 145px)}
+.specialists-roster__table{border-collapse:collapse;table-layout:fixed;min-width:1100px;width:100%;font-size:var(--irlix-font-size-caption,12px)}
+.specialists-roster__table th,.specialists-roster__table td{box-sizing:border-box;border-right:1px solid var(--irlix-color-border);border-bottom:1px solid var(--irlix-color-border);height:39px;text-align:center;padding:0}
+.specialists-roster__table thead th{position:sticky;top:0;z-index:3;background:var(--irlix-color-surface-muted);color:var(--irlix-color-text)}
+.specialists-roster__table .specialists-roster__name{position:sticky;left:0;z-index:2;width:235px;min-width:235px;text-align:left;padding:4px 12px;background:var(--irlix-color-surface)}
+.specialists-roster__table thead .specialists-roster__name{z-index:4;background:var(--irlix-color-surface-muted)}
+.specialists-roster__name strong,.specialists-roster__name small{display:block}
+.specialists-roster__name strong{font-size:var(--irlix-font-size-table,12px);line-height:1.15;font-weight:600}
+.specialists-roster__name small{margin-top:2px;color:var(--irlix-color-text-muted)}
+.specialists-roster__table .is-weekend{background:var(--irlix-color-surface-muted)}
+.specialists-roster__table thead .is-weekend{color:var(--irlix-status-danger-text)}
+.specialists-roster__absence{width:100%;height:100%;min-height:38px;display:flex;align-items:center;justify-content:center}
+.specialists-roster__absence>span{display:block;height:10px;width:100%;background:var(--irlix-status-info-bg,#4b80e0)}
+.specialists-roster__absence--start>span{width:calc(100% - 3px);margin-left:3px;border-radius:5px 0 0 5px}
+.specialists-roster__absence--end>span{width:calc(100% - 3px);margin-right:3px;border-radius:0 5px 5px 0}
+.specialists-roster__absence--start.specialists-roster__absence--end>span{width:calc(100% - 6px);margin:0 3px;border-radius:5px}
+.specialists-roster__empty{text-align:center!important;padding:30px!important;color:var(--irlix-color-text-muted)}
+.specialists-roster__error{margin:12px;padding:12px;color:var(--irlix-status-danger-text);background:var(--irlix-color-surface-muted);border:1px solid var(--irlix-status-danger-border);border-radius:var(--irlix-radius-sm,8px)}
 </style>
