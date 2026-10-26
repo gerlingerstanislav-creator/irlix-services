@@ -42,14 +42,15 @@ class WorkflowLiveness(unittest.TestCase):
     def test_long_running_release_steps_are_bounded(self):
         workflow = WORKFLOW.read_text()
         for name in ['Configure SSH', 'Upload release and plan', 'Transfer verified GHCR images to server', 'Deploy verified images', 'Bootstrap Keycloak', 'Verify stand', 'Verify deployed Employees navigation in Chromium', 'Snapshot Employees before test migration']:
-            self.assertRegex(workflow, r'- name: '+re.escape(name)+r'\n(?:        if: .+\n)?        timeout-minutes: \d+')
+            self.assertRegex(workflow, r'- name: '+re.escape(name)+r'\n(?:        (?:#.*|if: .+)\n)*        timeout-minutes: \d+')
         self.assertIn('ServerAliveCountMax 3', workflow)
         self.assertIn('ConnectTimeout 15', workflow)
 
-    def test_production_browser_requires_successful_deploy(self):
+    def test_production_browser_runs_after_deploy_or_safe_noop(self):
         workflow = WORKFLOW.read_text()
-        self.assertIn("- name: Verify deployed Employees navigation in Chromium\n"
-                      "        if: needs.deploy.result == 'success'", workflow)
+        self.assertRegex(workflow, r"- name: Verify deployed Employees navigation in Chromium\\n"
+                      r"(?:        #.*\\n)*"
+                      r"        if: needs.deploy.result == 'success' \\|\\| needs.deploy.result == 'skipped'")
 
     def test_ghcr_pull_has_bounded_retry_and_fails_before_container_recreation(self):
         deploy = (WORKFLOW.parents[2] / "scripts/deploy-from-ghcr.sh").read_text()
