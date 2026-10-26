@@ -5,6 +5,7 @@ import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPer
 import { auth } from './auth';
 import { api } from './api';
 import { clientPeriodApproved } from './approval-state.js';
+import { buildManagementGroups } from './management-grouping.js';
 import { resolveSectionAccess } from './section-access.js';
 
 const initialParams = new URLSearchParams(window.location.search);
@@ -32,15 +33,6 @@ const bulkModal = ref(null);
 const bulkHoursInput = ref(null);
 const savingBulk = ref(false);
 const bulkError = ref('');
-const cellTooltip = ref(null);
-const tooltipElement = ref(null);
-let tooltipHideTimer;
-let tooltipSequence = 0;
-const keepCellTooltip = () => window.clearTimeout(tooltipHideTimer);
-const leaveCell = () => {
-  keepCellTooltip();
-  tooltipHideTimer = window.setTimeout(() => { cellTooltip.value = null; }, 80);
-};
 const analyticsMode = ref('employees');
 const analyticsDepartmentFilter = ref('');
 const analyticsClientFilter = ref('');
@@ -221,7 +213,6 @@ watch([() => route.name, month], () => {
   cancelSelection();
   bulkModal.value = null;
   editModal.value = null;
-  cellTooltip.value = null;
   if (pageAccess.value !== 'allowed') return;
   // The page's month stays in the URL without mutating browser history behind Router's back.
   if (route.query.month !== month.value || route.query.section !== undefined) {
@@ -337,55 +328,113 @@ const confirmDates = async (dates, confirmed = true) => {
   }
 };
 
+const pushIndex = (map, key, value) => {
+  if (!map.has(key)) map.set(key, []);
+  map.get(key).push(value);
+};
+// Index management payload once per response. Do not scan all entries/assignments
+// separately for every day of every row.
+const managementIndex = computed(() => {
+  const assignmentsByEmployee = new Map();
+  const entriesByEmployeeDate = new Map();
+  const absencesByEmployee = new Map();
+  const finalByEmployee = new Map();
+  const partnerMembersById = new Map();
+  const partnerEntriesByMemberDate = new Map();
+  const reportingPeriodsByClient = new Map();
+  const partnerLockedPeriodsByClient = new Map();
+
+  for (const assignment of management.value?.assignments || [])
+    pushIndex(assignmentsByEmployee, Number(assignment.employee_id), assignment);
+  for (const entry of management.value?.entries || [])
+    pushIndex(entriesByEmployeeDate, `${Number(entry.employee_id)}:${entry.work_date}`, entry);
+  for (const absence of management.value?.absences || [])
+    pushIndex(absencesByEmployee, Number(absence.employee_id), absence);
+  for (const approval of management.value?.final_approvals || []) {
+    const employeeId = Number(approval.employee_id);
+    if (!finalByEmployee.has(employeeId)) finalByEmployee.set(employeeId, new Set());
+    finalByEmployee.get(employeeId).add(Number(approval.client_member_id));
+  }
+  for (const member of partnerManagement.value?.members || [])
+    pushIndex(partnerMembersById, Number(member.client_member_id), member);
+  // Keep the first record on duplicate keys, just like the former Array.find.
+  for (const entry of partnerManagement.value?.entries || []) {
+    const key = `${Number(entry.client_member_id)}:${entry.work_date}`;
+    if (!partnerEntriesByMemberDate.has(key)) partnerEntriesByMemberDate.set(key, entry);
+  }
+  for (const period of management.value?.client_reporting_periods || [])
+    pushIndex(reportingPeriodsByClient, Number(period.client_id), period);
+  for (const period of partnerManagement.value?.locked_reporting_periods || [])
+    pushIndex(partnerLockedPeriodsByClient, Number(period.client_id), period);
+
+  return {
+    assignmentsByEmployee,
+    entriesByEmployeeDate,
+    absencesByEmployee,
+    finalByEmployee,
+    staffPrelim: new Set((management.value?.confirmations || [])
+      .map((item) => `${Number(item.employee_id)}:${item.work_date}`)),
+    staffExceptions: new Set((management.value?.final_approval_exceptions || [])
+      .map((item) => `${Number(item.employee_id)}:${Number(item.client_member_id)}:${item.work_date}`)),
+    partnerMembersById,
+    partnerEntriesByMemberDate,
+    partnerPrelim: new Set((partnerManagement.value?.confirmations || [])
+      .map((item) => `${Number(item.client_member_id)}:${item.work_date}`)),
+    partnerFinal: new Set((partnerManagement.value?.final_approvals || [])
+      .map((item) => Number(item.client_member_id))),
+    partnerExceptions: new Set((partnerManagement.value?.final_approval_exceptions || [])
+      .map((item) => `${Number(item.client_member_id)}:${item.work_date}`)),
+    reportingPeriodsByClient,
+    partnerLockedPeriodsByClient,
+  };
+});
+const managementAbsenceFor = (date, employeeId) =>
+  (managementIndex.value.absencesByEmployee.get(Number(employeeId)) || []).find(
+    (item) => item.starts_on <= date && item.ends_on >= date
+  );
+const managementClientPeriodApproved = (clientId, date) =>
+  (managementIndex.value.reportingPeriodsByClient.get(Number(clientId)) || []).some((period) =>
+    period.period_start <= date && period.period_end >= date
+    && ['ТШ на согласовании', 'ТШ согласованы', 'Акт на согласовании', 'Акт согласован', 'Счет оплачен'].includes(period.status));
 const visibleAssignmentsForEmployee = (employeeId) =>
-  (management.value?.assignments || []).filter((assignment) => Number(assignment.employee_id) === Number(employeeId));
+  managementIndex.value.assignmentsByEmployee.get(Number(employeeId)) || [];
 const clientAssignments = (employeeId, clientId) => visibleAssignmentsForEmployee(employeeId)
   .filter((assignment) => Number(assignment.client_id) === Number(clientId));
 const partnerEntryFor = (clientMemberId, date) =>
-  (partnerManagement.value?.entries || []).find((entry) =>
-    Number(entry.client_member_id) === Number(clientMemberId) && entry.work_date === date);
+  managementIndex.value.partnerEntriesByMemberDate.get(`${Number(clientMemberId)}:${date}`);
 const partnerActive = (clientMemberId, date) =>
-  (partnerManagement.value?.members || []).some((member) =>
-    Number(member.client_member_id) === Number(clientMemberId)
-    && member.valid_from <= date && (!member.valid_to || member.valid_to >= date));
+  (managementIndex.value.partnerMembersById.get(Number(clientMemberId)) || []).some((member) =>
+    member.valid_from <= date && (!member.valid_to || member.valid_to >= date));
 const partnerPeriodLocked = (clientId, date) =>
-  (partnerManagement.value?.locked_reporting_periods || []).some((period) =>
-    Number(period.client_id) === Number(clientId)
-    && period.period_start <= date && period.period_end >= date);
+  (managementIndex.value.partnerLockedPeriodsByClient.get(Number(clientId)) || []).some((period) =>
+    period.period_start <= date && period.period_end >= date);
 const partnerFinal = (clientMemberId, clientId, date) =>
   partnerPeriodLocked(clientId, date)
-  || ((partnerManagement.value?.final_approvals || []).some((a) =>
-    Number(a.client_member_id) === Number(clientMemberId))
-    && !(partnerManagement.value?.final_approval_exceptions || []).some((a) =>
-      Number(a.client_member_id) === Number(clientMemberId) && a.work_date === date));
+  || (managementIndex.value.partnerFinal.has(Number(clientMemberId))
+    && !managementIndex.value.partnerExceptions.has(`${Number(clientMemberId)}:${date}`));
 const partnerPrelim = (clientMemberId, date) =>
-  (partnerManagement.value?.confirmations || []).some((a) =>
-    Number(a.client_member_id) === Number(clientMemberId) && a.work_date === date);
+  managementIndex.value.partnerPrelim.has(`${Number(clientMemberId)}:${date}`);
 const mgmtEntriesFor = (employeeId, date) =>
-  (management.value?.entries || []).filter((entry) => Number(entry.employee_id) === Number(employeeId) && entry.work_date === date);
+  managementIndex.value.entriesByEmployeeDate.get(`${Number(employeeId)}:${date}`) || [];
 const mgmtHours = (employeeId, date, clientId, projectId = null) => {
   const projects = new Set(clientAssignments(employeeId, clientId).filter((assignment) => (!projectId || Number(assignment.client_member_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date)).map((assignment) => Number(assignment.client_member_id)));
   return mgmtEntriesFor(employeeId, date).filter((entry) => projects.has(Number(entry.client_member_id))).reduce((sum, entry) => sum + Number(entry.hours || 0), 0);
 };
 const mgmtPrelim = (employeeId, date) =>
-  (management.value?.confirmations || []).some((item) => Number(item.employee_id) === Number(employeeId) && item.work_date === date);
+  managementIndex.value.staffPrelim.has(`${Number(employeeId)}:${date}`);
 const mgmtFinal = (employeeId, date, clientId, projectId = null) => {
   const projects = clientAssignments(employeeId, clientId)
     .filter((assignment) => (!projectId || Number(assignment.client_member_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date))
     .map((assignment) => Number(assignment.client_member_id));
   if (!projects.length) return false;
-  if (clientPeriodApproved(management.value, clientId, date)) return true;
-  const approved = new Set(
-    (management.value?.final_approvals || [])
-      .filter((item) => Number(item.employee_id) === Number(employeeId))
-      .map((item) => Number(item.client_member_id))
-  );
-  const exceptions = management.value?.final_approval_exceptions || [];
-  return projects.every((projectId) => approved.has(projectId) && !exceptions.some((item) =>
-    Number(item.employee_id) === Number(employeeId) && Number(item.client_member_id) === projectId && item.work_date === date));
+  if (managementClientPeriodApproved(clientId, date)) return true;
+  const approved = managementIndex.value.finalByEmployee.get(Number(employeeId));
+  const exceptions = managementIndex.value.staffExceptions;
+  return projects.every((projectId) => approved?.has(projectId) && !exceptions.has(
+    `${Number(employeeId)}:${projectId}:${date}`));
 };
 const mgmtCellClass = (employee, date, clientId, projectId = null) => {
-  const absence = absenceFor(date, employee.id, management.value);
+  const absence = managementAbsenceFor(date, employee.id);
   const projects = clientAssignments(employee.id, clientId)
     .filter((assignment) => (!projectId || Number(assignment.client_member_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date));
   const base = !projects.length ? 'inactive' : mgmtFinal(employee.id, date, clientId, projectId) ? 'final' : mgmtPrelim(employee.id, date) ? 'prelim' : '';
@@ -410,7 +459,7 @@ const rowPrelim = (row, date) => row.isPartner
   ? partnerPrelim(row.memberId, date)
   : mgmtPrelim(row.employee.id, date);
 const rowDescription = (row, date) => String(rowEntry(row, date)?.description || '').trim();
-const clientPeriodLocked = (clientId, date) => clientPeriodApproved(management.value, clientId, date);
+const clientPeriodLocked = (clientId, date) => managementClientPeriodApproved(clientId, date);
 const rowActive = (row, date) => row.isPartner ? partnerActive(row.memberId, date)
   : clientAssignments(row.employee.id, row.clientId)
     .some(a => Number(a.client_member_id) === Number(row.memberId) && a.valid_from <= date && (!a.valid_to || a.valid_to >= date));
@@ -426,26 +475,22 @@ const selectedDates = computed(() => {
   const to = selection.start > selection.end ? selection.start : selection.end;
   return monthDays.value.filter(date => date >= from && date <= to && rowActive(selection.row, date));
 });
-const cellSelected = (row, date) => sameRow(row, dragSelection.value?.row) && selectedDates.value.includes(date);
+const selectedDatesSet = computed(() => new Set(selectedDates.value));
+const cellSelected = (row, date) => sameRow(row, dragSelection.value?.row) && selectedDatesSet.value.has(date);
 const cancelSelection = () => { dragSelection.value = null; };
 const startSelection = (event, row, date) => {
   if (event.button !== 0 || event.detail > 1 || row.isPartner || !can('timesheets.management.manage') || !rowActive(row, date) || savingBulk.value) return;
   event.preventDefault();
-  cellTooltip.value = null;
   dragSelection.value = { row, start: date, end: date, moved: false, dragging: true };
 };
 const enterCell = (event, row, date) => {
   const selection = dragSelection.value;
-  if (selection) {
-    if (!selection.dragging) return;
-    if (!(event.buttons & 1)) { cancelSelection(); return; }
-    if (sameRow(row, selection.row)) {
-      selection.end = date;
-      selection.moved ||= date !== selection.start;
-    }
-    return;
+  if (!selection?.dragging) return;
+  if (!(event.buttons & 1)) { cancelSelection(); return; }
+  if (sameRow(row, selection.row)) {
+    selection.end = date;
+    selection.moved ||= date !== selection.start;
   }
-  showCellTooltip(event, row, date);
 };
 const finishSelection = async () => {
   if (!dragSelection.value?.dragging) return;
@@ -462,22 +507,6 @@ const closeBulk = () => {
   if (savingBulk.value) return;
   bulkModal.value = null;
   cancelSelection();
-};
-const showCellTooltip = async (event, row, date) => {
-  if (dragSelection.value || bulkModal.value || editModal.value) return;
-  keepCellTooltip();
-  const sequence = ++tooltipSequence;
-  const rect = event.currentTarget.getBoundingClientRect();
-  const tooltip = { text: rowDescription(row, date) || 'Описание не заполнено', left: rect.left, top: rect.bottom + 6 };
-  cellTooltip.value = tooltip;
-  await nextTick();
-  if (sequence !== tooltipSequence || !cellTooltip.value) return;
-  const bounds = tooltipElement.value?.getBoundingClientRect();
-  if (!bounds) return;
-  cellTooltip.value = { ...tooltip,
-    left: Math.max(8, Math.min(rect.left, window.innerWidth - bounds.width - 8)),
-    top: rect.bottom + 6 + bounds.height > window.innerHeight - 8 ? Math.max(8, rect.top - bounds.height - 6) : rect.bottom + 6,
-  };
 };
 const saveBulk = async () => {
   if (!bulkModal.value || savingBulk.value) return;
@@ -505,7 +534,6 @@ const handleManagerKey = (event) => {
   if (event.key !== 'Escape') return;
   closeBulk();
   if (!savingManagerEdit.value) editModal.value = null;
-  cellTooltip.value = null;
 };
 onMounted(() => {
   window.addEventListener('mouseup', finishSelection);
@@ -513,13 +541,12 @@ onMounted(() => {
   window.addEventListener('keydown', handleManagerKey);
 });
 onBeforeUnmount(() => {
-  keepCellTooltip();
   window.removeEventListener('mouseup', finishSelection);
   window.removeEventListener('blur', cancelSelection);
   window.removeEventListener('keydown', handleManagerKey);
 });
 watch([search, departmentFilter, accountFilter, clientFilter, employeeFilter], () => {
-  cancelSelection(); cellTooltip.value = null;
+  cancelSelection();
 });
 const employeeTotal = (employeeId, clientId, projectId = null) => monthDays.value.reduce((sum, date) => sum + mgmtHours(employeeId, date, clientId, projectId), 0);
 const projectMonthApprovalState = (employeeId, clientId, projectId) => {
@@ -555,7 +582,6 @@ const finalApprove = async (row, approved) => {
 const openManagerEdit = async (row, date) => {
   if (!can('timesheets.management.manage') || !rowActive(row, date)) return;
   cancelSelection();
-  cellTooltip.value = null;
   if (row.isPartner) {
     const member = (partnerManagement.value?.members || []).find((a) =>
       Number(a.client_member_id) === Number(row.memberId) && a.valid_from <= date && (!a.valid_to || a.valid_to >= date));
@@ -719,6 +745,29 @@ const managementRows = computed(() => {
     }));
   return [...staff, ...partners];
 });
+
+// Rebuild expensive day summaries only when source data, month or filters change.
+const managementGroups = computed(() => buildManagementGroups(
+  clientOptions.value,
+  managementRows.value,
+  monthDays.value,
+  (row, date) => {
+    const active = rowActive(row, date);
+    const className = rowCellClass(row, date);
+    const description = rowDescription(row, date);
+    return {
+      date,
+      active,
+      className,
+      final: active && className.split(' ').includes('final'),
+      hours: rowHours(row, date),
+      description,
+      hasAbsence: !row.isPartner && active && !!managementAbsenceFor(date, row.employee.id),
+      locked: active && (row.isPartner
+        ? partnerPeriodLocked(row.clientId, date) : clientPeriodLocked(row.clientId, date)),
+    };
+  }
+));
 
 const analyticsRows = computed(() => {
   if (analyticsMode.value === 'departments') return analytics.value?.departments || [];
@@ -1003,7 +1052,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
           <span><i class="swatch inactive"></i>Нет подключения</span>
         </div>
 
-        <div class="matrix-wrap" @scroll="cellTooltip = null">
+        <div class="matrix-wrap">
           <table class="matrix">
             <thead>
               <tr>
@@ -1014,17 +1063,14 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
               </tr>
             </thead>
             <tbody>
-              <template v-for="client in clientOptions" :key="`client-${client.value}`">
-                <tr
-                  v-if="managementRows.some((row) => String(row.clientId) === String(client.value))"
-                  class="client-group-row"
-                >
+              <template v-for="group in managementGroups" :key="`client-${group.clientId}`">
+                <tr class="client-group-row">
                   <td :colspan="monthDays.length + 3" class="client-group-cell">
-                    <strong>{{ client.label }}</strong>
+                    <strong>{{ group.label }}</strong>
                   </td>
                 </tr>
                 <tr
-                  v-for="row in managementRows.filter((item) => String(item.clientId) === String(client.value))"
+                  v-for="row in group.rows"
                   :key="`${row.isPartner ? 'partner' : 'staff'}-${row.employee.id}-${row.memberId}`"
                 >
                   <td class="sticky name">
@@ -1037,36 +1083,35 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
                         class="icon-btn ok"
                         title="Финально подтвердить специалиста за месяц"
                         aria-label="Финально подтвердить специалиста за месяц"
-                        :disabled="!can('timesheets.management.manage') || !row.memberId || rowMonthApprovalState(row).all"
+                        :disabled="!can('timesheets.management.manage') || !row.memberId || row.monthApproval.all"
                         @click="finalApprove(row, true)"
                       >✓</button>
                       <button
                         class="icon-btn danger"
                         title="Снять финальное подтверждение специалиста за месяц"
                         aria-label="Снять финальное подтверждение специалиста за месяц"
-                        :disabled="!can('timesheets.management.manage') || !row.memberId || !rowMonthApprovalState(row).any"
+                        :disabled="!can('timesheets.management.manage') || !row.memberId || !row.monthApproval.any"
                         @click="finalApprove(row, false)"
                       >×</button>
                     </div>
                   </td>
-                  <td class="sticky total"><strong>{{ rowTotal(row).toFixed(2) }}</strong></td>
+                  <td class="sticky total"><strong>{{ row.monthlyHours.toFixed(2) }}</strong></td>
                   <td
-                    v-for="date in monthDays"
-                    :key="date"
+                    v-for="cell in row.cells"
+                    :key="cell.date"
                     class="matrix-cell"
-                    :class="[rowCellClass(row, date), { 'has-absence': !row.isPartner && rowActive(row, date) && !!absenceFor(date, row.employee.id, management), 'has-description': rowActive(row, date) && !!rowDescription(row, date), 'client-locked': rowActive(row, date) && (row.isPartner ? partnerPeriodLocked(row.clientId, date) : clientPeriodLocked(row.clientId, date)), 'range-selected': cellSelected(row, date) }]"
-                    :aria-label="`${date}: ${rowDescription(row, date) || 'Описание не заполнено'}`"
-                    @mousedown="startSelection($event, row, date)"
-                    @mouseenter="enterCell($event, row, date)"
-                    @mouseleave="leaveCell"
-                    @dblclick="openManagerEdit(row, date)"
+                    :class="[cell.className, { 'has-absence': cell.hasAbsence, 'has-description': cell.active && !!cell.description, 'client-locked': cell.locked, 'range-selected': cellSelected(row, cell.date) }]"
+                    :aria-label="`${cell.date}: ${cell.description || 'Описание не заполнено'}`"
+                    @mousedown="startSelection($event, row, cell.date)"
+                    @mouseenter="enterCell($event, row, cell.date)"
+                    @dblclick="openManagerEdit(row, cell.date)"
                   >
-                    <span v-if="!row.isPartner && rowActive(row, date) && absenceFor(date, row.employee.id, management)" class="absence-half" aria-hidden="true"></span>
-                     <svg v-if="rowActive(row, date) && (row.isPartner ? partnerPeriodLocked(row.clientId, date) : clientPeriodLocked(row.clientId, date))" class="client-lock" viewBox="0 0 12 14" aria-label="Отправлено на согласование или согласовано клиентом" role="img">
-                       <path d="M3.5 6V4a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-                       <rect x="1.5" y="6" width="9" height="7" rx="1.5" fill="currentColor"/>
-                     </svg>
-                    <span v-if="rowActive(row, date)"><b>{{ Number(rowHours(row, date).toFixed(2)) }}</b></span>
+                    <span v-if="cell.hasAbsence" class="absence-half" aria-hidden="true"></span>
+                    <svg v-if="cell.locked" class="client-lock" viewBox="0 0 12 14" aria-label="Отправлено на согласование или согласовано клиентом" role="img">
+                      <path d="M3.5 6V4a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                      <rect x="1.5" y="6" width="9" height="7" rx="1.5" fill="currentColor"/>
+                    </svg>
+                    <span v-if="cell.active"><b>{{ Number(cell.hours.toFixed(2)) }}</b></span>
                   </td>
                 </tr>
               </template>
@@ -1176,9 +1221,6 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
         <button type="submit" class="manager-save" :disabled="savingManagerEdit">{{ savingManagerEdit ? 'Сохранение…' : 'Сохранить' }}</button>
       </form>
     </div>
-    <Teleport to="body">
-      <div v-if="cellTooltip" ref="tooltipElement" role="tooltip" class="timesheet-description-tooltip" :style="{ left: `${cellTooltip.left}px`, top: `${cellTooltip.top}px` }" @mouseenter="keepCellTooltip" @mouseleave="leaveCell">{{ cellTooltip.text }}</div>
-    </Teleport>
     <div v-if="bulkModal" class="overlay" @click.self="closeBulk">
       <form class="modal bulk-hours-modal irlix-ui" role="dialog" aria-modal="true" aria-labelledby="bulk-hours-title" @submit.prevent="saveBulk">
         <div class="modal-head">
