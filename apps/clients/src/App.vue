@@ -177,9 +177,15 @@ async function loadPartnerCatalog() {
 const selectView = (target) => {
   const section = target === 'attempt-funnel' ? 'attempts' : target;
   if (!titles[section] || !allowedSections.value.includes(section) || !router.hasRoute(target)) return;
-  if (target === 'attempt-funnel' && can('attempts.analytics.view')) attemptMode.value = 'funnel';
+  if (target === 'attempt-funnel' && !can('attempts.analytics.view')) return;
+  if (target === 'attempt-funnel') attemptMode.value = 'funnel';
   router.push({ name: target });
   query.value = '';
+};
+const changeAttemptMode = (mode) => {
+  if (!attemptModes.value.includes(mode)) return;
+  const target = mode === 'funnel' ? 'attempt-funnel' : 'attempts';
+  if (route.name !== target) router.push({ name: target, query: route.query, hash: route.hash });
 };
 async function api(url, options = {}) { const response = await fetch(url, { ...options, headers: { Accept:'application/json', 'Content-Type':'application/json', ...(options.headers || {}) } }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.message || Object.values(body.errors || {}).flat().join(', ') || `HTTP ${response.status}`); return body; }
 async function load() {
@@ -373,17 +379,19 @@ async function createQuickLead(){quickLeadSaving.value=true;quickLeadError.value
 async function patch(url, payload) { try { await api(url, { method:'PATCH', body:JSON.stringify(payload) }); await load(); } catch (e) { error.value = e.message; } }
 async function moveLead({lead,status}) { try { lead.status=status; await api(`/api/clients/leads/${lead.id}`,{method:'PATCH',body:JSON.stringify({status})}); await load(); } catch(e) { error.value=e.message||String(e); await load(); } }
 function createFromAttempt(a) { const client = clients.value.find(c => c.id === Number(a.clientId)); const project = client?.projects?.[0]; openForm('member', { client_id:client?.id, project_id:project?.id, specialist_type:a.is_external?'partner':'employee', specialist_name:a.specialist_name, specialist_id:a.specialist_id, source_attempt_id:a.id, hourly_rate:'', hours_per_day:8 }); }
-watch(() => route.fullPath, () => {
-  if (route.name === 'attempt-funnel' && can('attempts.analytics.view')) attemptMode.value = 'funnel';
+watch(() => route.name, name => {
+  // Direct entry and Back/Forward must drive the selected attempt tab.
+  if (name === 'attempt-funnel') attemptMode.value = 'funnel';
+  else if (name === 'attempts') attemptMode.value = can('attempts.view') ? 'kanban' : 'funnel';
   query.value = '';
-});
+}, { immediate: true });
 onMounted(load);
 </script>
 
 <template>
 <UiAppShell class="clients-app" service="clients" service-name="Клиентский сервис" :breadcrumbs="[{label:title}]" :loading="loading">
   <template #sidebar><ClientsSidebar :section="view" :allowed-sections="allowedSections" @update:section="selectView" /></template>
-  <template #breadcrumb-extra><ClientsBreadcrumbs :view="view" :request-mode="requestMode" :report-mode="reportMode" :attempt-mode="attemptMode" :attempt-modes="attemptModes" @update:attempt-mode="attemptMode = $event" @update:request-mode="requestMode = $event" @update:report-mode="reportMode = $event" /></template>
+  <template #breadcrumb-extra><ClientsBreadcrumbs :view="view" :request-mode="requestMode" :report-mode="reportMode" :attempt-mode="attemptMode" :attempt-modes="attemptModes" @update:attempt-mode="changeAttemptMode" @update:request-mode="requestMode = $event" @update:report-mode="reportMode = $event" /></template>
   <template #actions>
         <UiButton v-if="view==='clients' && can('clients.manage')" @click="openForm('client')">＋ Новый клиент</UiButton>
         <UiButton v-if="view==='leads' && can('leads.manage')" @click="openForm('lead')">＋ Новый лид</UiButton>
@@ -396,7 +404,7 @@ onMounted(load);
     <main class="content" :class="{'content--clients':view==='clients','content--cashflow':view==='cashflow'}">
       <div v-if="error" class="error-banner">{{error}}<button @click="load">Повторить</button></div>
       <UiErrorState v-if="!titles[view]" :status="404" back-href="/clients/clients/" back-label="К клиентам" />
-      <UiErrorState v-else-if="!loading && !allowedSections.includes(view)" :status="403" />
+      <UiErrorState v-else-if="!loading && (!allowedSections.includes(view) || (route.name === 'attempt-funnel' && !can('attempts.analytics.view')))" :status="403" />
       <template v-else-if="view==='clients'">
         <div class="clients-registry">
           <div class="clients-registry-controls">
