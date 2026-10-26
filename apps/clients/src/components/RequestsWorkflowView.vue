@@ -133,11 +133,11 @@ async function loadAbsenceAlerts() {
 
 }
 watch([canReadAbsenceAlerts, () => props.view], loadAbsenceAlerts, { immediate: true });
-const alertOptions = computed(() => attemptSpecialistOptions.value.map(option => ({
-  ...option,
-  meta: levelForId(String(option.value).replace(/^employee:/, '')) === 'red'
-    ? '❗' : levelForId(String(option.value).replace(/^employee:/, '')) === 'yellow' ? '⚠' : '',
-})));
+const alertOptions = computed(() => attemptSpecialistOptions.value.map(option => {
+  const level = levelForId(String(option.value).replace(/^employee:/, ''));
+  const sign = level === 'red' ? '❗' : level === 'yellow' ? '⚠' : '';
+  return { ...option, meta: [option.meta, sign].filter(Boolean).join(' · ') };
+}));
 
 
 
