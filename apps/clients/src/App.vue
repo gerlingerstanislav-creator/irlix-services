@@ -15,6 +15,7 @@ import ClientTransferControl from './components/ClientTransferControl.vue';
 import ContactPersonCard from './components/ContactPersonCard.vue';
 import PermissionsView from './components/PermissionsView.vue';
 import PartnersRegistry from './components/PartnersRegistry.vue';
+import SpecialistsAbsenceRoster from './components/SpecialistsAbsenceRoster.vue';
 import ClientMembersRegistry from './components/ClientMembersRegistry.vue';
 import ReportingPeriodsView from './components/ReportingPeriodsView.vue';
 import CashFlowView from './components/CashFlowView.vue';
@@ -93,7 +94,7 @@ const saving = ref(false);
 const contourAccess = ref({ permissions: {}, platform_admin: false });
 const reportCreateOpen = ref(false);
 
-const titles = { clients:'Клиенты', partners:'Партнёры', leads:'Лиды', contacts:'Контактные лица', requests:'Запросы', positions:'Запросы по позициям', attempts:'Попытки подключения', 'attempt-funnel':'Воронка попыток', members:'Подключения', cashflow:'ДДС', reports:'Отчётные периоды', permissions:'Настройки разрешений' };
+const titles = { clients:'Клиенты', specialists:'Специалисты', partners:'Партнёры', leads:'Лиды', contacts:'Контактные лица', requests:'Запросы', positions:'Запросы по позициям', attempts:'Попытки подключения', 'attempt-funnel':'Воронка попыток', members:'Подключения', cashflow:'ДДС', reports:'Отчётные периоды', permissions:'Настройки разрешений' };
 const can = key => !!contourAccess.value.permissions?.[key]?.allowed;
 const allowedSections = computed(() => allowedClientSections(contourAccess.value));
 const attemptModes = computed(() => [
@@ -641,6 +642,7 @@ onBeforeUnmount(() => clearTimeout(filterDebounce));
         </div>
       </template>
       <PartnersRegistry v-else-if="view==='partners'" :can-manage="can('clients.manage')" />
+      <SpecialistsAbsenceRoster v-else-if="view==='specialists'" :clients="clients" />
       <LeadsBoard v-else-if="view==='leads'" :leads="overview.leads" :employees="employees" :statuses="leadStatuses" :can-manage="can('leads.manage')" @open="selectedLead=$event" @move="moveLead"/>
       <template v-else-if="view==='contacts'"><section class="clients-simple-registry"><UiFilterBar><input v-model="query" class="registry-search" type="search" placeholder="Поиск по ФИО"><UiSearchSelect v-model="contactClientFilter" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/></UiFilterBar><div class="irlix-registry-scroll"><UiRegistryTable class="shared-registry-content" table-class="irlix-data-table" :columns="['35%','65%']" min-width="900px" aria-label="Контактные лица" density="compact"><template #head><tr><th>ФИО</th><th>Клиенты / должности</th></tr></template><tr v-for="c in filteredContacts" :key="c.id" class="contact-clickable-row" tabindex="0" role="button" @click="openContactCard(c)" @keydown.enter.prevent="openContactCard(c)" @keydown.space.prevent="openContactCard(c)"><td><strong>{{c.full_name}}</strong></td><td>{{contactBindingsText(c)}}</td></tr></UiRegistryTable><div v-if="hasMore || loadingMore || moreError" ref="loadMoreSentinel" class="clients-load-more" role="status" aria-live="polite"><template v-if="loadingMore"><span class="clients-load-spinner" aria-hidden="true"></span> Загружаем контакты…</template><button v-else-if="moreError" type="button" @click="moreError='';loadMore()">Ошибка подгрузки. Повторить</button><span v-else>Прокрутите для загрузки следующих контактов</span></div></div></section></template>
       <RequestsWorkflowView v-else-if="['requests','positions'].includes(view) || (view==='attempts' && attemptMode==='kanban' && can('attempts.view'))" :view="view" :mode="requestMode" :requests="overview.requests" :clients="clients" :leads="overview.leads" :employees="employees" :departments="departments" :access="contourAccess" :background-blocked="!!selectedClient||!!formKind" @card-open="workflowCardOpen=$event" @open-client="id=>selectedClient=clients.find(client=>Number(client.id)===Number(id))||{id}" :technology-options="requestTechnologyOptions" :direction-options="productionDirectionOptions" :level-options="requestPositionLevels" @request-filters-change="handleRequestFiltersChange" @changed="refreshCurrent" @connect-attempt="createFromAttempt" />

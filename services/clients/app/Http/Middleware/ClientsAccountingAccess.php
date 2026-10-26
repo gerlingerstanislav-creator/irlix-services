@@ -31,6 +31,10 @@ class ClientsAccountingAccess
             return response()->json(['message' => 'Тестировщику платформы закрыт доступ к сервису клиентов.'], 403);
         }
         if ($request->is('api/permissions*')) return $next($request);
+        // The Clients specialists read model separately verifies current
+        // client-service organizational membership and never returns rates.
+        if ($request->method() === 'GET'
+            && $request->is('api/specialists/filter-clients', 'api/specialists/client-members')) return $next($request);
         // The global partner registry has an explicit all-scope policy in its controller.
         if ($request->is('api/partners*') || $request->is('api/partner-specialists*')) return $next($request);
         if ($access['platform_admin']) return $next($request);
@@ -207,7 +211,14 @@ class ClientsAccountingAccess
         $ownsPosition = fn (int $positionId): bool => ((!$isProductionManager || $hasClientServiceRole) && $ownsRequest((int) $requestForPosition($positionId)))
             || $ownsProductionPosition($positionId);
         $ownsAttempt = fn (int $attemptId): bool => $ownsPosition((int) $positionForAttempt($attemptId));
-        $ownsContact = fn (int $contactId): bool => DB::table('contact_relations')->where('contact_person_id', $contactId)->where('active', true)
+        $globalContactsView = $this->accessResolver->allows($access, 'contacts.view')
+            && $this->accessResolver->scope($access, 'contacts.view') === 'all'
+            && $this->accessResolver->allows($access, 'clients.view')
+            && $this->accessResolver->scope($access, 'clients.view') === 'all';
+        $globalContactsManage = $this->accessResolver->allows($access, 'contacts.manage')
+            && $this->accessResolver->scope($access, 'contacts.manage') === 'all'
+            && $globalContactsView;
+        $ownsContact = fn (int $contactId): bool => $globalContactsView || DB::table('contact_relations')->where('contact_person_id', $contactId)->where('active', true)
             ->where(function ($query) use ($ownClients, $responsibleIds): void {
                 $query->where(fn ($client) => $client->where('entity_type', 'client')->whereIn('entity_id', $ownClients ?: [0]))
                     ->orWhere(function ($lead) use ($responsibleIds): void {
@@ -270,7 +281,7 @@ class ClientsAccountingAccess
         elseif (preg_match('#^api/contacts/(\d+)(?:/(?:methods(?:/\d+)?|client-relations(?:/\d+)?|relations))?$#', $path, $m)) {
             $contactId = (int) $m[1];
             $allowed = $ownsContact($contactId);
-            if ($method !== 'GET' && $allowed) {
+            if ($method !== 'GET' && $allowed && !$globalContactsManage) {
                 $allowed = !DB::table('contact_relations')->where('contact_person_id', $contactId)->where(fn ($q) => $q->where('entity_type', '!=', 'client')->orWhereNotIn('entity_id', $ownClients))->exists();
                 if ($request->has('client_id')) $allowed = $allowed && $owns((int) $request->input('client_id'));
                 if ($request->has('entity_type')) $allowed = $allowed && $request->input('entity_type') === 'client' && $owns((int) $request->input('entity_id'));

@@ -7,11 +7,11 @@ test('Clients staff see pages granted by the permission matrix',()=>{
  for(const role of ['account-manager','sales-manager','accounting-head','sales-head','client-service-head']) {
   const pages=allowedClientSections({roles:[role],permissions});
   assert.ok(pages.includes('positions'));assert.ok(pages.includes('requests'));
-  assert.ok(pages.includes('members'));assert.ok(!pages.includes('tenders'));
+  assert.ok(pages.includes('members'));assert.ok(!pages.includes('specialists'));assert.ok(!pages.includes('tenders'));
  }
 });
 test('production heads can access every page explicitly granted by the matrix',()=>{
- assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions}),Object.keys(sectionPermissions));
+ assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions}),Object.keys(sectionPermissions).filter(section=>section!=='specialists'));
  assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions:{'clients.view':{allowed:true,scope:'team'}}}),['clients']);
  assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions:{'clients.view':{allowed:true,scope:'team'},'members.view':{allowed:true,scope:'team'}}}),['clients','members']);
 });
@@ -23,7 +23,7 @@ test('members page requires members.view independently of client management',()=
 test('page policy never grants missing permissions, preserves funnel-only access and admin exception',()=>{
  assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions:{}}),[]);
  assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions:{'attempts.analytics.view':{allowed:true}}}),['attempts']);
- assert.deepEqual(allowedClientSections({platform_admin:true,roles:['department-manager'],permissions}),Object.keys(sectionPermissions));
+ assert.deepEqual(allowedClientSections({platform_admin:true,roles:['department-manager'],permissions}),Object.keys(sectionPermissions).filter(section=>section!=='specialists'));
  assert.deepEqual(allowedClientSections({roles:['platform-tester'],permissions:{'clients.view':{allowed:true,scope:'all'}}}),['clients']);
 });
 
@@ -31,6 +31,7 @@ test('Clients routes use documented URLs and preserve legacy query and hash', as
  const { routes } = await import('../src/routes.js');
  const named = Object.fromEntries(routes.filter(r=>r.name).map(r=>[r.name,r]));
  assert.equal(named.clients.path, '/clients/');
+ assert.equal(named.specialists.path, '/specialists/');
  assert.equal(named.reports.path, '/reporting-periods/');
  assert.equal(named['attempt-funnel'].path, '/attempt-funnel/');
  assert.equal(named['attempt-funnel'].meta.section, 'attempts');
@@ -80,4 +81,36 @@ test('scroll pagination has a visible bottom loader, retries, and no hidden pref
  assert.match(app,/Ошибка подгрузки\. Повторить/);
  assert.match(app,/if \(!section \|\| !hasMore\.value \|\| loading\.value \|\| loadingMore\.value/);
  assert.match(css,/@keyframes clients-load-spin/);
+});
+
+test('partners and specialists use a dedicated menu section and inline editors',()=>{
+ const sidebar=readFileSync(new URL('../src/components/ClientsSidebar.vue',import.meta.url),'utf8');
+ const partner=readFileSync(new URL('../src/components/PartnersRegistry.vue',import.meta.url),'utf8');
+ const roster=readFileSync(new URL('../src/components/SpecialistsAbsenceRoster.vue',import.meta.url),'utf8');
+ assert.match(sidebar,/id: 'members', label: 'Подключения', icon: 'list', groupStart: true/);
+ assert.match(sidebar,/id: 'specialists', label: 'Специалисты'/);
+ assert.doesNotMatch(partner,/class="partner-pencil"/);
+ assert.match(partner,/editingField === field.key/);
+ assert.match(roster,/<UiPeriodPicker v-model="month" mode="month" \/>/);
+ assert.match(roster,/statusText/);
+});
+
+test('specialists calendar is granted by organizational client-service membership, not manager/admin role',()=>{
+ const employee={id:99}, client_service_employee_ids=[employee.id];
+ const staff={employee,client_service_employee_ids,permissions:{}};
+ assert.ok(allowedClientSections(staff).includes('specialists'));
+ assert.ok(!allowedClientSections({...staff,client_service_employee_ids:[]}).includes('specialists'));
+ assert.ok(!allowedClientSections({platform_admin:true,employee,permissions}).includes('specialists'));
+ assert.ok(!allowedClientSections({roles:['client-service-head'],employee,permissions}).includes('specialists'));
+});
+test('specialists backend contracts restrict the global roster by actual client service membership',()=>{
+ const vacations=readFileSync(new URL('../../../services/vacations/app/Http/Controllers/ClientServiceCalendarController.php',import.meta.url),'utf8');
+ const clients=readFileSync(new URL('../../../services/clients/app/Http/Controllers/ClientSpecialistsController.php',import.meta.url),'utf8');
+ const roster=readFileSync(new URL('../src/components/SpecialistsAbsenceRoster.vue',import.meta.url),'utf8');
+ assert.match(vacations,/client-service/);
+ assert.match(vacations,/abort_unless\(\$inService, 403/);
+ assert.match(vacations,/in_array\(\$actorId, \$activeIds, true\)/);
+ assert.doesNotMatch(vacations,/['"]type['"]\s*=>\s*\$item/);
+ assert.match(clients,/client_service_employee_ids/);
+ assert.match(roster,/client-service-calendar\?month=/);
 });
