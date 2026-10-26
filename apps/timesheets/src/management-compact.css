@@ -32,12 +32,12 @@
   color:var(--irlix-color-text) !important;
 }
 .management-page .matrix-cell.final.non-working {
-  /* Slightly deeper mint for finally approved weekends; preliminary days stay pale. */
-  background-color:color-mix(in srgb, var(--irlix-color-confirm-final) 38%, var(--irlix-color-surface)) !important;
-  color:var(--irlix-color-text) !important;
+  /* Final-approved weekends are only slightly lighter than approved workdays. */
+  background-color:color-mix(in srgb, var(--irlix-color-confirm-final) 92%, var(--irlix-color-surface)) !important;
+  color:var(--irlix-color-on-accent) !important;
 }
 .management-page .matrix-cell.final.non-working b {
-  color:var(--irlix-color-text) !important;
+  color:var(--irlix-color-on-accent) !important;
 }
 /* Absence color fills the bottom of the cell up to just beneath centered
    hours (12px line height + 2px gap). The upper portion keeps approval color. */
@@ -48,7 +48,7 @@
   bottom:0;
   left:0;
   z-index:1;
-  background:var(--irlix-color-danger);
+  background:orangered;
   pointer-events:none;
 }
 .management-page .matrix-cell.has-absence.absence-pending .absence-half {
@@ -273,7 +273,7 @@
   border-radius:3px;
   background:linear-gradient(to bottom,
     var(--irlix-color-surface) 0 65%,
-    var(--irlix-color-danger) 65% 100%);
+    orangered 65% 100%);
 }
 .management-page > .legend .swatch.management-absence-pending {
   background:linear-gradient(to bottom,

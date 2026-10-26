@@ -6,6 +6,7 @@ import { auth } from './auth';
 import { api } from './api';
 import { clientPeriodApproved } from './approval-state.js';
 import { buildManagementGroups } from './management-grouping.js';
+import { buildConnectionPeriodLabels } from './management-connection-periods.js';
 import { resolveSectionAccess } from './section-access.js';
 
 const initialParams = new URLSearchParams(window.location.search);
@@ -719,11 +720,14 @@ const filteredEmployees = computed(() => (management.value?.employees || []).fil
   return true;
 }));
 const managementRows = computed(() => {
+  const staffPeriodLabels = buildConnectionPeriodLabels(management.value?.assignments || []);
+  const partnerPeriodLabels = buildConnectionPeriodLabels(partnerManagement.value?.members || []);
   const staff = filteredEmployees.value.flatMap((employee) => {
     const assignments = visibleAssignmentsForEmployee(employee.id);
     return [...new Map(assignments.map((assignment) => [Number(assignment.client_member_id), {
       employee, clientId: Number(assignment.client_id), clientName: assignment.client_name,
       memberId: Number(assignment.client_member_id), memberName: assignment.specialist_name,
+      connectionPeriods: staffPeriodLabels.get(Number(assignment.client_member_id)) || '—',
     }])).values()]
       .filter((row) => !clientFilter.value || String(row.clientId) === String(clientFilter.value))
       .filter((row) => !accountFilter.value || String((assignments.find((a) => Number(a.client_member_id) === row.memberId)?.account_employee_id || '')) === String(accountFilter.value));
@@ -742,6 +746,7 @@ const managementRows = computed(() => {
       employee: { id: `partner:${item.partner_specialist_id}`, full_name: item.specialist_name },
       clientId: Number(item.client_id), clientName: item.client_name,
       memberId: Number(item.client_member_id), memberName: item.specialist_name,
+      connectionPeriods: partnerPeriodLabels.get(Number(item.client_member_id)) || '—',
     }));
   return [...staff, ...partners];
 });
@@ -1074,8 +1079,8 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
                   :key="`${row.isPartner ? 'partner' : 'staff'}-${row.employee.id}-${row.memberId}`"
                 >
                   <td class="sticky name">
-                    <strong>{{ String(row.employee.full_name || '').trim().split(/\s+/).slice(0, 2).join(' ') }}</strong>
-                    <small>{{ row.isPartner ? 'Партнёр · ' : '' }}{{ row.clientName }} · {{ row.memberName }}</small>
+                    <strong>{{ String(row.employee.full_name || '').trim().split(/\s+/).slice(0, 2).join(' ') }}{{ row.isPartner ? ' (Партнер)' : '' }}</strong>
+                    <small :title="row.connectionPeriods">{{ row.connectionPeriods }}</small>
                   </td>
                   <td class="sticky action">
                     <div class="approval-actions">
