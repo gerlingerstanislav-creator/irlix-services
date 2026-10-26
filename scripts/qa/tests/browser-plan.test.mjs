@@ -4,8 +4,8 @@ import { browserPlan, browserCases } from '../browser-plan.mjs';
 
 const ids = p => p.cases.map(x => x.id);
 test('browser scope activates Clients only for Clients source and tests', () => {
-  assert.deepEqual(ids(browserPlan(['apps/clients/src/App.vue'])), ['clients-registry', 'clients-partner-members']);
-  assert.deepEqual(ids(browserPlan([], 'clients')), ['clients-registry', 'clients-partner-members']);
+  assert.deepEqual(ids(browserPlan(['apps/clients/src/App.vue'])), ['clients-registry', 'clients-routing', 'clients-partner-members']);
+  assert.deepEqual(ids(browserPlan([], 'clients')), ['clients-registry', 'clients-routing', 'clients-partner-members']);
 });
 test('migration source activates migration browser scenario', () => {
   assert.deepEqual(ids(browserPlan(['apps/migration/src/main.js'])), ['migration-control', 'migration-control-embedded']);

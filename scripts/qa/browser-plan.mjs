@@ -5,6 +5,7 @@ export const browserCases = Object.freeze([
   { id: 'ui-registry-table', suite: 'ui', app: 'design-system', port: 5196, test: 'apps/design-system/tests/registry.browser.cjs', label: 'Shared registry: fixed header and body-only scroll' },
   { id: 'equipment-registry', suite: 'equipment', app: 'equipment', port: 5195, test: 'apps/equipment/tests/registry.browser.cjs', label: 'Equipment: scroll, columns, form colors, filters and deletion' },
   { id: 'clients-registry', suite: 'clients', app: 'clients', port: 5193, test: 'apps/clients/tests/registry.browser.cjs', label: 'Clients registry: layouts, filters, scrolling' },
+  { id: 'clients-routing', suite: 'clients', app: 'clients', port: 5193, test: 'apps/clients/tests/routing.browser.cjs', label: 'Clients routing: direct links, history, 403/404 and legacy URLs' },
   { id: 'clients-partner-members', suite: 'clients', app: 'clients', port: 5193, test: 'apps/clients/tests/partner-members.browser.cjs', label: 'Clients: partner member edit and save' },
   { id: 'timesheets-partner-hours', suite: 'timesheets', app: 'timesheets', port: 5194, test: 'apps/timesheets/tests/partner-hours.browser.cjs', label: 'Timesheets: partner client hours, daily and final approval' },
   { id: 'migration-control', suite: 'migration', app: 'migration', port: 5173, test: 'apps/migration/tests/migration-control.browser.cjs', label: 'Migration control: stages, diagnostics, exports and history' },

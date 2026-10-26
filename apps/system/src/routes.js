@@ -3,6 +3,8 @@ export const routes = [
  { path:'/resources/',name:'resources',meta:{section:'resources'} },
  { path:'/service-map/',name:'service-map',meta:{section:'service-map'} },
  { path:'/migration/control/',name:'migration-control',meta:{section:'migration-control'} },
- { path:'/migration/',redirect:{name:'migration-control'} },
+ { path:'/migration/',redirect:to=>({name:'migration-control',query:to.query,hash:to.hash}) },
+ // The historical standalone /migration/console/ host redirect lands here.
+ { path:'/migration/console/',redirect:to=>({name:'migration-control',query:to.query,hash:to.hash}) },
  { path:'/:pathMatch(.*)*',name:'not-found',meta:{section:null} },
 ];

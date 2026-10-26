@@ -34,6 +34,12 @@ app.use(router);
 router.isReady().then(() => app.mount('#app'));
 
 (async()=>{try{if(!await auth.init())return;
+// Auth can restore a different deep link via history.replaceState during OIDC callback.
+// Reconcile Vue Router after callback processing (the router was installed earlier).
+await router.isReady();
+const restoredPath = window.location.pathname.replace(/^\/system(?=\/|$)/, '') || '/';
+const restoredTarget = restoredPath + window.location.search + window.location.hash;
+if (router.currentRoute.value.fullPath !== restoredTarget) await router.replace(restoredTarget);
 const response=await auth.fetch('/api/employees/access/me',{headers:{Accept:'application/json'},cache:'no-store'});
 if(!response.ok)throw new Error('Role check failed');
 access.value=(await response.json())?.data||null;authorized.value=isPlatformAdministratorAccess(access.value);
