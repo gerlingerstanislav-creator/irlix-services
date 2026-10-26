@@ -1,6 +1,7 @@
 /* Timesheets management matrix:fit a full month on a typical laptop viewport. */
 .management-page .matrix th.non-working {
-  background-color:var(--irlix-color-surface-muted);
+  /* Non-working columns should be lighter than ordinary grey day headers. */
+  background-color:var(--irlix-color-surface);
   color:var(--irlix-color-text);
 }
 .management-page .matrix-cell {
@@ -8,7 +9,7 @@
   user-select:none;
 }
 .management-page .matrix-cell.non-working {
-  background-color:var(--irlix-color-surface-muted) !important;
+  background-color:var(--irlix-color-surface) !important;
 }
 .management-page .matrix-cell.absence-confirmed,
 .management-page .matrix-cell.absence-pending {
@@ -27,11 +28,16 @@
   color:var(--irlix-color-on-accent) !important;
 }
 .management-page .matrix-cell.prelim.non-working {
-  background-color:var(--irlix-color-surface-muted) !important;
+  background-color:color-mix(in srgb, var(--irlix-color-confirm-preliminary) 45%, var(--irlix-color-surface)) !important;
+  color:var(--irlix-color-text) !important;
 }
 .management-page .matrix-cell.final.non-working {
-  background-color:var(--irlix-color-primary) !important;
-  color:var(--irlix-color-on-accent);
+  /* Light mint weekend cells, rather than the old dark emerald fill. */
+  background-color:color-mix(in srgb, var(--irlix-color-confirm-final) 25%, var(--irlix-color-surface)) !important;
+  color:var(--irlix-color-text) !important;
+}
+.management-page .matrix-cell.final.non-working b {
+  color:var(--irlix-color-text) !important;
 }
 /* Absence color fills the bottom of the cell up to just beneath centered
    hours (12px line height + 2px gap). The upper portion keeps approval color. */
@@ -65,19 +71,6 @@
 .management-page .matrix-cell.inactive > span > b {
   display:none;
 }
-.management-page .matrix-cell.has-description::after {
-  content:'';
-  position:absolute;
-  right:0;
-  bottom:0;
-  width:7px;
-  height:10px;
-  background:var(--irlix-color-surface-muted) !important;
-  z-index:4;
-  clip-path:polygon(100% 0, 100% 100%, 0 100%);
-  pointer-events:none;
-}
-.management-page .matrix-cell.final.has-description::after { background:var(--irlix-color-surface-muted) !important; }
 .management-page .matrix-cell.range-selected {
   box-shadow:inset 0 0 0 2px var(--irlix-color-primary);
 }
@@ -270,16 +263,20 @@
 .manager-edit-modal .project-card textarea { min-height:54px; }
 .manager-edit-modal .manager-save { margin-top:8px; }
 
-/* Client reporting-period lock is independent of employee and manager approvals. */
-.management-page .matrix-cell .client-lock {
-  position:absolute;
-  top:1px;
-  right:1px;
-  width:10px;
-  height:12px;
-  z-index:4;
-  color:var(--irlix-color-text);
-  pointer-events:none;
+
+/* Management absence legend mirrors the actual lower-cell absence fill.
+   The employee's approval colour occupies the area ABOVE this strip. */
+.management-page > .legend .swatch.management-absence-confirmed,
+.management-page > .legend .swatch.management-absence-pending {
+  display:inline-block;
+  border:1px solid var(--irlix-color-border);
+  border-radius:3px;
+  background:linear-gradient(to bottom,
+    var(--irlix-color-surface) 0 65%,
+    var(--irlix-color-danger) 65% 100%);
 }
-.management-page .matrix-cell.final .client-lock { color:var(--irlix-color-on-accent); }
-.management-page .matrix-cell.inactive .client-lock { display:none; }
+.management-page > .legend .swatch.management-absence-pending {
+  background:linear-gradient(to bottom,
+    var(--irlix-color-surface) 0 65%,
+    var(--irlix-color-absence-border) 65% 100%);
+}
