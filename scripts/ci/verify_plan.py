@@ -46,7 +46,7 @@ def verify_brandbook(host):
     ], text=True)
     headers, status = headers_and_status.rsplit("\n", 1)
     assert status == "302", f"Brandbook anonymous gate: expected 302, got {status}"
-    redirect = re.search(r"(?im)^Location:\\s*(\\S+)", headers)
+    redirect = re.search(r"(?im)^Location:\s*(\S+)", headers)
     assert redirect and redirect.group(1).endswith("/?brandbook=1"), (
         "Brandbook anonymous gate must redirect to Portal SSO entry"
     )
