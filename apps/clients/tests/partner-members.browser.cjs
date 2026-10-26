@@ -70,6 +70,12 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.setViewportSize({width:900,height:650});
   assert.ok(await page.locator('.specialists-roster__scroll').evaluate(el=>innerHeight-el.getBoundingClientRect().bottom<8),'Roster fills a shorter viewport');
   await page.setViewportSize({width:1366,height:900});
+  // The sidebar expands its hover labels over the left edge of the workspace.
+  await page.mouse.move(800,500);
+  await page.waitForFunction(() => {
+   const labels=document.querySelector('.irlix-app-sidebar .nav-label-viewport');
+   return labels && getComputedStyle(labels).pointerEvents==='none';
+  });
   await page.getByRole('button',{name:'Synthetic Employee',exact:true}).click();
   await page.getByText('synthetic@example.test',{exact:true}).waitFor();
   for(const label of ['ФИО','Электронная почта','Подразделение','Город','Телефон','Telegram'])
