@@ -9,8 +9,8 @@ const designSystem = read('../../../apps/design-system/src/App.vue');
 const d1 = 'M7.3125 7.67267H11.3897L24.6875 27.7584H20.6103L14.8396 19.0566L11.3897 24.2653H7.3125L12.801 15.9688L7.3125 7.67267Z';
 const d2 = 'M20.6103 4.17932L16.1568 10.9162L18.1954 13.9727L24.6875 4.17932H20.6103Z';
 assert.ok(sidebar.includes(d1) && sidebar.includes(d2), 'canonical source paths must exist in sidebar');
-assert.equal(preloader.split(d1).length - 1, 4);
-assert.equal(preloader.split(d2).length - 1, 4);
+assert.equal(preloader.split(d1).length - 1, 6);
+assert.equal(preloader.split(d2).length - 1, 6);
 assert.match(preloader, /default: 'trace'/);
 assert.match(loader, /default: 'trace'/);
 for (const variant of ['assembly', 'trace', 'glitch']) {
