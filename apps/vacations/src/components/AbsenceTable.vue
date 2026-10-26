@@ -82,8 +82,15 @@ const iconPath=(task)=>{
         </tr>
       </template>
       
-        <tr v-for="item in items" :key="`${absenceId(item)}-${item.id}`" class="clickable-row" @click="emit('action',{action:'view',item})">
+        <tr v-for="item in items"
+          :key="item.is_employee_without_absences ? `employee-${item.employee_id}` : `${absenceId(item)}-${item.id}`"
+          :class="{ 'clickable-row': !item.is_employee_without_absences }"
+          @click="!item.is_employee_without_absences && emit('action',{action:'view',item})">
           <td v-if="showEmployee" class="employee-column"><strong>{{ shortName(item.employee_name)||`#${item.employee_id}` }}</strong><small>{{ item.department_name||'—' }}</small></td>
+          <template v-if="item.is_employee_without_absences">
+            <td :colspan="registryColumns.length-(showEmployee ? 1 : 0)" class="empty-absence-label">—</td>
+          </template>
+          <template v-else>
           <td class="period-column"><span class="period-text">{{ formatDate(item.starts_on) }} — {{ formatDate(item.ends_on) }}</span></td>
           <td class="days-column">{{ item.calendar_days??'—' }}</td>
           <td class="type-column"><span class="vacation-type-badge">{{ typeLabels[item.type]||item.type }}</span></td>
@@ -112,6 +119,7 @@ const iconPath=(task)=>{
           <td v-if="showActions" class="actions-cell actions-column" @click.stop>
             <AbsenceActions v-if="actionsOf(item).length" :actions="actionsOf(item)" @action="action=>emit('action',{action,item})"/>
           </td>
+          </template>
         </tr>
       
     </UiRegistryTable>

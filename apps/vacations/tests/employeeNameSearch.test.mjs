@@ -23,11 +23,10 @@ test('handles blank names/queries and Unicode-normalized text', () => {
 test('department calendar and list share name-filtered data, management keeps name search', () => {
   const pages = ['DepartmentAbsencesPage.vue', 'ManageAbsencesPage.vue'];
   const sources = pages.map((name) => readFileSync(fileURLToPath(new URL('../src/pages/'+name, import.meta.url)), 'utf8'));
-  for (const source of sources) {
-    assert.match(source, /Поиск по ФИО/);
-    assert.match(source, /matchesEmployeeName\(/);
-  }
+  for (const source of sources) assert.match(source, /Поиск по ФИО/);
+  assert.match(sources[0], /visibleDepartmentEmployees\(/); // delegates name matching to the roster helper
+  assert.match(sources[1], /matchesEmployeeName\(/);
   assert.match(sources[0], /visibleItems=computed\(\(\)=>\{.*matchingItems\.value/);
   assert.match(sources[0], /grouped=computed\(\(\)=>\{.*visibleItems\.value/);
-  assert.match(sources[0], /:items="visibleItems"/);
+  assert.match(sources[0], /:items="listItems"/);
 });
