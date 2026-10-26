@@ -27,7 +27,8 @@ test('management cells keep the editor and selection but have no lock or descrip
 });
 
 test('weekend approvals are visibly lighter and readable', () => {
-  assert.match(compact, /\.matrix-cell\.final\.non-working\s*\{[^}]*color-mix\(in srgb, var\(--irlix-color-confirm-final\) 25%, var\(--irlix-color-surface\)\)/);
+  assert.match(compact, /\.matrix-cell\.final\.non-working\s*\{[^}]*color-mix\(in srgb, var\(--irlix-color-confirm-final\) 38%, var\(--irlix-color-surface\)\)/);
+  assert.match(compact, /\\.matrix-cell\\.prelim\\.non-working\\s*\\{[^}]*color-mix\\(in srgb, var\\(--irlix-color-confirm-preliminary\\) 45%, var\\(--irlix-color-surface\\)\\)/);
   assert.match(compact, /\.matrix-cell\.final\.non-working b\s*\{[^}]*color:var\(--irlix-color-text\)/);
   assert.match(compact, /\.matrix th\.non-working\s*\{[^}]*background-color:var\(--irlix-color-surface\)/);
 });
