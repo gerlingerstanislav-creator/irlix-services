@@ -129,6 +129,20 @@ main.mctrl .mctrl-alert{margin-block:6px}
 
 /* Read-only source connection actions must remain discoverable without a report. */
 .mctrl-tree-node--service>.ui-button{flex-shrink:0;margin-inline-start:4px}
+/* Per-service import settings belong immediately after the service title,
+   including the setup table before the first operation. */
+.mctrl-setup-table .mctrl-tree-node--service{padding-left:0}
+.mctrl-service-settings-trigger.ui-button{
+ display:inline-flex;align-items:center;justify-content:center;
+ flex:0 0 30px;width:30px;min-width:30px;min-height:30px;
+ padding:4px;color:var(--irlix-color-text-muted);
+}
+.mctrl-service-settings-trigger.ui-button:hover,
+.mctrl-service-settings-trigger.ui-button:focus-visible{
+ color:var(--irlix-color-text);
+ background:var(--irlix-color-surface-muted);
+}
+
 .mctrl-tree-settings-only>td{color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-table)}
 .mctrl-blocked-reason{margin:2px 0 7px;font-size:var(--irlix-font-size-table);
  color:var(--irlix-color-text-muted);line-height:1.35}
