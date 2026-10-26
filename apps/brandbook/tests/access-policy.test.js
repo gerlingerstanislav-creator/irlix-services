@@ -25,8 +25,8 @@ test('Host routes protect the origin, every asset, and deny internal gate access
   assert.match(gated,/auth_request \/_brandbook_gate;/);
   assert.match(gated,/proxy_pass http:\/\/127\.0\.0\.1:8105\//);
   assert.match(gated,/error_page 401 = @brandbook_login;/);
-  const login = nginx.match(/location @brandbook_login \\{([^}]*)\\}/)?.[1] || '';
-  assert.match(login,/return 302 \\/\\?brandbook=1;/);
+  const login = nginx.match(/location @brandbook_login \{([^}]*)\}/)?.[1] || '';
+  assert.match(login,/return 302 \/\?brandbook=1;/);
   assert.match(gated,/private, no-store/);
   const internal = nginx.match(/location = \/_brandbook_gate \{([^}]*)\}/)?.[1] || '';
   assert.match(internal,/\binternal;/);
@@ -82,8 +82,8 @@ test('Portal legacy Brandbook route retains Employees SSO gate and SPA fallback'
   assert.match(gate, /proxy_set_header Cookie \$http_cookie/);
   assert.match(route, /auth_request \/_brandbook_fallback_gate;/);
   assert.match(route, /error_page 401 = @brandbook_login_fallback;/);
-  const login = nginx.match(/location @brandbook_login_fallback \\{([^}]*)\\}/)?.[1] || '';
-  assert.match(login, /return 302 \\/\\?brandbook=1;/);
+  const login = nginx.match(/location @brandbook_login_fallback \{([^}]*)\}/)?.[1] || '';
+  assert.match(login, /return 302 \/\?brandbook=1;/);
   assert.match(route, /proxy_pass http:\/\/brandbook;/);
   assert.match(nginx, /location = \/brandbook \{ return 301 \/brandbook\/; \}/);
 });
