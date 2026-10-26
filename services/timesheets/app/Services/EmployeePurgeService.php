@@ -85,7 +85,6 @@ final class EmployeePurgeService
             }
             TimesheetLegacySource::query()->where('employee_id', $employee)->delete();
             TimesheetEntry::query()->where('employee_id', $employee)->delete();
-            TimesheetEntry::query()->where('account_employee_id', $employee)->update(['account_employee_id' => null]);
             FinalApprovalException::query()->where('employee_id', $employee)->delete();
             PartnerDailyConfirmation::query()->where('confirmed_by_employee_id', $employee)
                 ->update(['confirmed_by_employee_id' => null]);
