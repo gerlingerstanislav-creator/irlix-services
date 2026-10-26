@@ -36,6 +36,41 @@ def verify_finance(compose, sudo, host):
     print("[verify] Finance anonymous access and read-only source contracts OK", flush=True)
 
 
+
+def verify_brandbook(host):
+    """Distinguish an anonymous 302 login redirect from a working Brandbook SPA."""
+    headers_and_status = subprocess.check_output([
+        "curl", "-sS", "-D", "-", "-o", "/dev/null", "-w", "\n%{http_code}",
+        "-H", f"Host: {host}", "--connect-timeout", "2", "--max-time", "10",
+        "http://127.0.0.1/brandbook/",
+    ], text=True)
+    headers, status = headers_and_status.rsplit("\n", 1)
+    assert status == "302", f"Brandbook anonymous gate: expected 302, got {status}"
+    redirect = re.search(r"(?im)^Location:\\s*(\\S+)", headers)
+    assert redirect and redirect.group(1).endswith("/?brandbook=1"), (
+        "Brandbook anonymous gate must redirect to Portal SSO entry"
+    )
+
+    # A 302 response has nginx-generated <html> and previously passed the
+    # generic frontend check even when the Brandbook origin was missing.
+    # Check the actual frontend on its host loopback port, without bypassing
+    # or weakening the external server-side authorization gate.
+    for path, marker in (
+        ("/", "<html"),
+        ("/identity/", "<html"),
+        ("/colors/", "<html"),
+        ("/downloads/irlix-logo-dark-background.svg", "<svg"),
+    ):
+        response = subprocess.check_output([
+            "curl", "-sS", "--connect-timeout", "2", "--max-time", "10",
+            "--retry", "5", "--retry-all-errors", "--retry-delay", "1",
+            "-w", "\n%{http_code}", "http://127.0.0.1:8105" + path,
+        ], text=True)
+        body, status = response.rsplit("\n", 1)
+        assert status == "200", f"Brandbook origin {path}: expected 200, got {status}"
+        assert marker in body.lower(), f"Brandbook origin {path}: unexpected response body"
+    print("[verify] brandbook: anonymous SSO redirect 302; origin SPA, deep links and SVG 200", flush=True)
+
 def main():
     plan = json.loads((ROOT / ".ci/deploy-plan.json").read_text())
     data = registry()
@@ -59,6 +94,9 @@ def main():
         if not selected.intersection([c["service"], *c.get("aliases", [])]):
             continue
         path = c.get("health_path") or c["page_path"]
+        if c["id"] == "brandbook":
+            verify_brandbook(host)
+            continue
         try:
             body = subprocess.check_output(["curl", "-H", f"Host: {host}", "-fsS", "--connect-timeout", "2", "--max-time", "10",
                                             "--retry", "5", "--retry-all-errors", "--retry-delay", "1", "http://127.0.0.1" + path], text=True)
