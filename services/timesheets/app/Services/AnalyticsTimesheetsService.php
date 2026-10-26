@@ -261,6 +261,6 @@ final class AnalyticsTimesheetsService
         'employees' => $rows,
         'departments' => $byDepartment,
         'access' => $access,
-    ];;
+    ];
     }
 }
