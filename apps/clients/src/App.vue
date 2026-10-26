@@ -582,8 +582,8 @@ onBeforeUnmount(() => clearTimeout(filterDebounce));
       </template>
     <main class="content" :class="{'content--clients':view==='clients','content--cashflow':view==='cashflow'}">
       <div v-if="error" class="error-banner">{{error}}<button @click="load">Повторить</button></div>
-      <UiLoader v-if="loading" page label="Загрузка клиентского сервиса" />
-      <UiErrorState v-else-if="!titles[view]" :status="404" back-href="/clients/clients/" back-label="К клиентам" />
+      <UiLoader v-if="loading" overlay label="Загрузка клиентского сервиса" />
+      <UiErrorState v-if="!titles[view]" :status="404" back-href="/clients/clients/" back-label="К клиентам" />
       <UiErrorState v-else-if="!loading && (!allowedSections.includes(view) || (route.name === 'attempt-funnel' && !can('attempts.analytics.view')))" :status="403" />
       <template v-else-if="view==='clients'">
         <div class="clients-registry">
