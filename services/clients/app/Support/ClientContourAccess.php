@@ -75,6 +75,9 @@ class ClientContourAccess
         if ($jwtMode && count($identityIds) !== 1) abort(403, 'Verified employee identity is missing or ambiguous');
         $employeeResponse = $jwtMode ? null : $http->get($base.'/self');
         $directoryResponse = $http->get($base.'/clients-directory');
+        if ($directoryResponse->successful()) {
+            $request->attributes->set('clients_employees_directory', (array) $directoryResponse->json('data', []));
+        }
         $accessResponse = $jwtMode ? null : $http->get($base.'/access/me');
         $contextResponse = $jwtMode ? null : $http->get($base.'/self/absence-approval-context');
         abort_unless($directoryResponse->successful()
