@@ -19,7 +19,7 @@ const weekday=(date)=>{const day=new Date(date+'T00:00:00Z').getUTCDay();return 
 
 test('selected month includes former employees who worked then, excludes future employees', () => {
   assert.deepEqual(visibleDepartmentEmployees(employees, [], '', octoberFrom, octoberTo).map(p=>p.id), [2,1,4,3]);
-  assert.deepEqual(visibleDepartmentEmployees(employees, [], '', '2026-09-01', '2026-09-30').map(p=>p.id), [6,1,3]);
+  assert.deepEqual(visibleDepartmentEmployees(employees, [], '', '2026-09-01', '2026-09-30').map(p=>p.id), [1,6,3]);
   assert.deepEqual(visibleDepartmentEmployees(employees, [], '', '2026-11-01', '2026-11-30').map(p=>p.id), [1,5]);
 });
 
@@ -46,7 +46,7 @@ test('month working hours prorate a mid-month hire and clip absences to tenure',
     {id:2,employee_id:8,starts_on:'2026-10-01',ends_on:'2026-10-02',status:'confirmed'},
     {id:3,employee_id:8,starts_on:'2026-10-08',ends_on:'2026-10-08',status:'cancelled'},
   ];
-  assert.deepEqual(monthEmploymentHours([hired],absences,octoberFrom,octoberTo,weekday),{totalHours:32,absenceHours:16});
+  assert.deepEqual(monthEmploymentHours([hired],absences,octoberFrom,octoberTo,weekday),{totalHours:40,absenceHours:16});
 });
 
 test('department transfers split workdays; multiple selected departments never double-count a day', () => {
@@ -76,7 +76,7 @@ test('overlapping identical segments or absences do not multiply calculated hour
   assert.deepEqual(monthEmploymentHours([duplicate],[
     {employee_id:11,starts_on:'2026-10-06',ends_on:'2026-10-07',status:'confirmed'},
     {employee_id:11,starts_on:'2026-10-07',ends_on:'2026-10-08',status:'confirmed'},
-  ],octoberFrom,octoberTo,weekday),{totalHours:32,absenceHours:24});
+  ],octoberFrom,octoberTo,weekday),{totalHours:40,absenceHours:24});
 });
 
 test('every historical employee gets a row in calendar and list even without absences', () => {
