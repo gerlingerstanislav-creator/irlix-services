@@ -26,7 +26,8 @@ RUN php /app/tests/permissions_routes_smoke.php \
     && php /app/tests/account_handoff_eloquent_smoke.php \
     && php /app/tests/registry_and_legacy_members_smoke.php \
     && php /app/tests/lead_lifecycle_eloquent_smoke.php \
-    && php /app/tests/eloquent_architecture_slices.php
+    && php /app/tests/eloquent_architecture_slices.php \
+    && php /app/tests/employee_purge_smoke.php
 RUN find /app/app /app/routes /app/bootstrap /app/database/migrations -name '*.php' -print0 | xargs -0 -n1 php -l
 
 FROM php:8.4-cli-alpine
