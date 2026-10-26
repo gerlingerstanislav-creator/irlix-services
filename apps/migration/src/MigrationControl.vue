@@ -1,6 +1,6 @@
 <script setup>
 import {computed,onBeforeUnmount,onMounted,ref,watch} from 'vue';
-import {UiButton,UiDrawer,UiLoader,UiPageHeader,UiSearchSelect} from '@irlix/ui';
+import {UiButton,UiDrawer,UiIcon,UiLoader,UiPageHeader,UiSearchSelect} from '@irlix/ui';
 import MigrationControlTree from './MigrationControlTree.vue';
 import MigrationAdministration from './MigrationAdministration.vue';
 import {
@@ -296,10 +296,15 @@ onBeforeUnmount(()=>{
         <td><div class="mctrl-tree-row-actions"><UiButton variant="secondary" compact :disabled="busy" @click="openBackups('all','snapshot')">Создать точку</UiButton><UiButton variant="secondary" compact @click="openBackups('all','restore')">Откат к точке</UiButton></div></td>
        </tr></tbody>
       <tbody><tr v-for="key in ['employees','vacations','clients','timesheets']" :key="key">
-        <th scope="row">{{serviceTitles[key]}}</th>
+        <th scope="row"><div class="mctrl-tree-node mctrl-tree-node--service">
+          <strong class="mctrl-tree-title">{{serviceTitles[key]}}</strong>
+          <UiButton variant="ghost" compact class="mctrl-service-settings-trigger"
+            :aria-label="'Настройки подключения: '+serviceTitles[key]"
+            :title="'Настройки подключения · '+serviceTitles[key]"
+            @click="configureService(key)"><UiIcon name="settings"/></UiButton>
+        </div></th>
         <td><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':serviceAge(key).stale}">{{serviceAge(key).label}}</span></td>
         <td><div class="mctrl-tree-row-actions">
-         <UiButton variant="secondary" compact :aria-label="'Настройки подключения: '+serviceTitles[key]" @click="configureService(key)">Настроить</UiButton>
          <UiButton variant="secondary" compact :disabled="busy" @click="openBackups(key,'snapshot')">Создать точку</UiButton>
          <UiButton variant="secondary" compact @click="openBackups(key,'restore')">Откат к точке</UiButton>
         </div></td>
