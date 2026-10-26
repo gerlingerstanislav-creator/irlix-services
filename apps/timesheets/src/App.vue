@@ -5,6 +5,7 @@ import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPer
 import { auth } from './auth';
 import { api } from './api';
 import { clientPeriodApproved } from './approval-state.js';
+import { resolveSectionAccess } from './section-access.js';
 
 const initialParams = new URLSearchParams(window.location.search);
 const route = useRoute();
@@ -17,6 +18,7 @@ const partnerManagement = ref(null);
 const analytics = ref(null);
 const auditRows = ref([]);
 const loading = ref(false);
+const permissionsPhase = ref('loading');
 const message = ref('');
 const error = ref('');
 const selectedDate = ref(new Date().toISOString().slice(0, 10));
@@ -78,6 +80,9 @@ const menuItems = computed(() => [
   { id: 'analytics', icon: 'chart', label: 'Коммерческая загрузка' },
 ].filter(item => item.id === 'mine' ? can('timesheets.mine.view') : can(`timesheets.${item.id}.view`)));
 const bottomItems = computed(() => can('timesheets.audit.view') ? [{ id: 'audit', icon: 'audit', label: 'История действий' }] : []);
+const sectionAllowed = computed(() => [...menuItems.value, ...bottomItems.value].some(item => item.id === section.value));
+const pageAccess = computed(() => resolveSectionAccess(section.value, permissionsPhase.value, sectionAllowed.value));
+const pageLoading = computed(() => pageAccess.value === 'loading' || (pageAccess.value === 'allowed' && loading.value));
 const absenceLabels = {
   paid_vacation: 'Оплачиваемый отпуск',
   unpaid_vacation: 'Неоплачиваемый отпуск',
@@ -217,7 +222,7 @@ watch([() => route.name, month], () => {
   bulkModal.value = null;
   editModal.value = null;
   cellTooltip.value = null;
-  if (section.value === 'not-found' || ![...menuItems.value,...bottomItems.value].some(item => item.id === section.value)) return;
+  if (pageAccess.value !== 'allowed') return;
   // The page's month stays in the URL without mutating browser history behind Router's back.
   if (route.query.month !== month.value || route.query.section !== undefined) {
     const query = { ...route.query, month: month.value };
@@ -229,13 +234,20 @@ watch([() => route.name, month], () => {
 watch(() => route.query.month, value => {
   if (typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value) && month.value !== value) month.value = value;
 });
-onMounted(async () => {
+const loadPermissions = async () => {
+  permissionsPhase.value = 'loading';
+  error.value = '';
   try {
     const response = await api('/api/clients/permissions/me');
     contourPermissions.value = response.data?.permissions || {};
-    if ([...menuItems.value, ...bottomItems.value].some(item => item.id === section.value)) await refresh();
-  } catch (e) { toast(e.message, true); }
-});
+    permissionsPhase.value = 'ready';
+    if (sectionAllowed.value) await refresh();
+  } catch (e) {
+    permissionsPhase.value = 'error';
+    toast(e.message, true);
+  }
+};
+onMounted(loadPermissions);
 
 const entryDraft = (assignment) => {
   const entry = entriesFor(selectedDate.value).find((item) => Number(item.client_member_id) === Number(assignment.client_member_id));
@@ -798,7 +810,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
     />
 
     <main class="workspace" :class="{ 'workspace-mine': section === 'mine' }">
-      <UiAppTopbar service="timesheets" :section="section" :items="[...menuItems,...bottomItems]" :loading="loading">
+      <UiAppTopbar service="timesheets" :section="section" :items="[...menuItems,...bottomItems]" :loading="pageLoading">
         <template v-if="section === 'analytics'" #breadcrumb-extra>
           <span class="irlix-breadcrumbs__separator" aria-hidden="true">—</span>
           <UiViewSelect
@@ -811,16 +823,17 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
           <UiPeriodPicker v-if="section !== 'audit'" v-model="month" />
         </template>
       </UiAppTopbar>
-      <UiErrorState v-if="section === 'not-found'" :status="404" back-href="/timesheets/mine/" back-label="Мои таймшиты" />
-      <UiErrorState v-else-if="!loading && ![...menuItems,...bottomItems].some(item => item.id === section)" :status="403" />
+      <UiErrorState v-if="pageAccess === 'not-found'" :status="404" back-href="/timesheets/mine/" back-label="Мои таймшиты" />
+      <UiErrorState v-else-if="pageAccess === 'error'" :status="503" description="Не удалось проверить права доступа. Повторите попытку." retryable @retry="loadPermissions" />
+      <UiErrorState v-else-if="pageAccess === 'forbidden'" :status="403" />
       <div v-if="error" class="toast error">{{ error }}</div>
       <div v-if="message" class="toast success">{{ message }}</div>
 
 
 
-      <div v-if="loading" class="loading">Загрузка…</div>
+      <div v-if="pageLoading" class="loading" role="status">Загрузка…</div>
 
-      <section v-else-if="section === 'mine' && workspace" class="mine-grid">
+      <section v-else-if="pageAccess === 'allowed' && section === 'mine' && workspace" class="mine-grid">
         <div class="panel calendar-panel">
           <div class="legend">
             <span><i class="swatch prelim"></i>Подтверждено мной</span>
@@ -973,7 +986,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
         </aside>
       </section>
 
-      <section v-else-if="section === 'management' && management" class="management-page">
+      <section v-else-if="pageAccess === 'allowed' && section === 'management' && management" class="management-page">
         <UiFilterBar class="management-filters">
           <input v-model="search" class="management-search" type="search" placeholder="Поиск сотрудника" />
           <UiSearchSelect v-model="employeeFilter" :options="employeeOptions" placeholder="Специалисты" search-placeholder="Поиск специалиста" />
@@ -1064,7 +1077,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
 
       
 
-      <section v-else-if="section === 'analytics' && analytics" class="analytics-page">
+      <section v-else-if="pageAccess === 'allowed' && section === 'analytics' && analytics" class="analytics-page">
         <UiFilterBar class="analytics-filters">
           <UiSearchSelect v-model="analyticsDepartmentFilter" :options="analyticsDepartmentOptions"
             placeholder="Подразделение: все" search-placeholder="Поиск подразделения" aria-label="Фильтр по подразделению" />
@@ -1125,7 +1138,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
         </div>
       </section>
 
-      <section v-else-if="section === 'audit'" class="audit-page">
+      <section v-else-if="pageAccess === 'allowed' && section === 'audit'" class="audit-page">
         <div class="table-wrap">
           <UiRegistryTable class="shared-registry-content" :columns="['20%','20%','15%','15%','15%','15%']" min-width="1000px" aria-label="История изменений таймшитов" density="compact">
             <template #head><tr><th>Дата</th><th>Действие</th><th>Кто</th><th>Сотрудник</th><th>Проект</th><th>День</th></tr></template>
