@@ -41,6 +41,7 @@ class ClientsController extends Controller
                 $httpRequest->only(['query', 'responsible', 'department_employee_ids', 'manager_employee_ids', 'technologies', 'activity', 'date', 'client_id']),
                 $httpRequest->attributes->get('clients_overview_client_ids'),
                 $httpRequest->attributes->get('clients_overview_lead_employee_ids'),
+                $httpRequest->attributes->get('clients_overview_contact_ids'),
             ));
         }
         return response()->json(['data' => app(\App\Services\ClientsOverviewService::class)->overview($access)]);
