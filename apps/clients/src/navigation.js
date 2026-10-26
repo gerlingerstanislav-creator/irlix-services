@@ -10,7 +10,7 @@ export function allowedClientSections(access = {}) {
   const actorId = Number(access.employee?.id || 0);
   const serviceStaff = actorId > 0 && (access.client_service_employee_ids || []).some(id => Number(id) === actorId);
   return Object.entries(sectionPermissions).filter(([section, permission]) => {
-    if (section === 'specialists') return serviceStaff;
+    if (section === 'specialists') return admin || serviceStaff;
     if (['partners','members'].includes(section) && !admin && (access.roles || []).includes('platform-tester')) return false;
     if (section === 'partners' && !admin && access.permissions?.['clients.view']?.scope !== 'all') return false;
     if (!admin && section === 'positions' && !access.permissions?.['positions.view']?.allowed) return false;
