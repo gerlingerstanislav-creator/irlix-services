@@ -8,7 +8,9 @@
 .employee-modal { width:min(620px, 100%); max-height:calc(100vh - 36px); overflow:auto; background:var(--irlix-color-surface); border-radius:12px; box-shadow:0 14px 50px color-mix(in srgb, var(--irlix-color-shadow-base) 15%, transparent); }
 .employee-modal > header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--irlix-color-border); }
 .employee-modal h2 { margin:0; font-size:var(--irlix-font-size-section-title); }
-.employee-close, .employee-card-top button { border:0; background:transparent; font-size:var(--irlix-font-size-page-title); cursor:pointer; color:var(--irlix-color-text); padding:2px 6px; }
+.employee-close, .employee-card-close { border:0; background:transparent; font-size:var(--irlix-font-size-page-title); cursor:pointer; color:var(--irlix-color-text); padding:2px 6px; }
+.employee-card-close { width:32px; height:32px; display:grid; place-items:center; }
+.employee-card-close:focus-visible { outline:2px solid var(--irlix-color-primary); outline-offset:2px; }
 .employee-onboarding-note { margin:14px 18px; padding:7px 10px; border-left:2px solid var(--irlix-color-primary); color:var(--irlix-color-text); line-height:1.4; font-size:var(--irlix-font-size-table); }
 .employee-form-error, .employee-card-error { margin:0 18px 12px; padding:8px 10px; border-radius:7px; background:var(--irlix-color-surface-muted); color:var(--irlix-status-danger-text); font-size:var(--irlix-font-size-caption); }
 .employee-form-grid { display:grid; gap:9px; padding:0 18px; }
@@ -26,7 +28,9 @@
 .employee-card-resize-handle::after { content:''; position:absolute; top:0; bottom:0; left:4px; width:2px; background:transparent; transition:background .12s ease; }
 .employee-card-resize-handle:hover::after, .employee-drawer-resizing .employee-card-resize-handle::after { background:var(--irlix-color-primary); }
 .employee-drawer-resizing { cursor:ew-resize !important; user-select:none; }
-.employee-card-top { position:sticky; top:0; z-index:3; display:flex; align-items:center; justify-content:space-between; padding:8px 14px; background:var(--irlix-color-surface); border-bottom:1px solid var(--irlix-color-border); color:var(--irlix-color-text); font-size:var(--irlix-font-size-caption); }
+.employee-card-top { position:sticky; top:0; z-index:3; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 14px; background:var(--irlix-color-surface); border-bottom:1px solid var(--irlix-color-border); color:var(--irlix-color-text); font-size:var(--irlix-font-size-caption); }
+.employee-card-top > span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.employee-card-top-actions { display:flex; align-items:center; gap:5px; flex:none; }
 .employee-card-hero { display:grid; grid-template-columns:58px minmax(0,1fr) auto; gap:14px; align-items:center; padding:18px 22px 12px; }
 .employee-avatar { width:58px; height:58px; display:grid; place-items:center; border-radius:12px; background:var(--irlix-color-surface-muted); font-size:var(--irlix-font-size-page-title); }
 .employee-card-hero h2 { margin:0 0 3px; font-size:var(--irlix-font-size-section-title); }
@@ -37,7 +41,6 @@
 .employee-card-tabs button { min-height:35px; border:0; border-radius:7px; background:transparent; color:var(--irlix-color-text); font-size:var(--irlix-font-size-caption); font-weight:650; cursor:pointer; padding:6px 8px; }
 .employee-card-tabs button.active { background:var(--irlix-color-surface); color:var(--irlix-color-text); box-shadow:0 1px 3px color-mix(in srgb, var(--irlix-color-shadow-base) 8%, transparent); }
 .employee-card-content { min-width:0; padding:14px 22px 30px; }
-.employee-card-actions, .lifecycle-actions { display:flex; justify-content:flex-end; gap:6px; margin-bottom:8px; flex-wrap:wrap; }
 .lifecycle-form { display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); align-items:end; gap:7px; margin:8px 0 14px; padding:9px; border:1px solid var(--irlix-color-border); border-radius:8px; background:var(--irlix-color-surface-muted); }
 .employee-info-view h3 { margin:14px 0 6px; font-size:var(--irlix-font-size-body); }
 .employee-info-view dl { margin:0; }
