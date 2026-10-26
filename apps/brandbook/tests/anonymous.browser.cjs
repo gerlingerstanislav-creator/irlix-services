@@ -1,4 +1,4 @@
-// Standalone Vite preview smoke only; production role enforcement belongs to host nginx and Employees.
+// Standalone Vite preview with synthetic SSO responses; production role enforcement belongs to host nginx and Employees.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const fs = require('node:fs');
@@ -9,6 +9,24 @@ const path = require('node:path');
   try {
     const base = process.env.BRANDBOOK_PREVIEW || 'http://127.0.0.1:5198';
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    // The standalone preview has no real Keycloak/Employees. Mock only those
+    // upstreams; the real SPA and shared launcher still execute in Chromium.
+    const issuer = new URL(base).origin + '/keycloak/auth/realms/irlix';
+    const claims = { iss: issuer, sub: 'brandbook-test-user', name: 'Демо руководитель', exp: Math.floor(Date.now() / 1000) + 3600 };
+    const token = 'test.' + Buffer.from(JSON.stringify(claims)).toString('base64url') + '.test';
+    const access = { employee_id: 42, roles: ['top-management'],
+      services: { dashboard: true, clients: true, 'design-system': true,
+        brandbook: true, employees: false, vacations: false, system: false, finance: false } };
+    await page.addInitScript(tokens => {
+      sessionStorage.setItem('irlix.platform.auth.tokens', JSON.stringify(tokens));
+    }, { access_token: token, refresh_token: 'test-refresh' });
+    await page.route('**/keycloak/auth/realms/irlix/.well-known/openid-configuration', route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        issuer, authorization_endpoint: issuer + '/protocol/openid-connect/auth',
+        token_endpoint: issuer + '/protocol/openid-connect/token',
+      }) }));
+    await page.route('**/api/employees/access/me', route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: access }) }));
     const pageErrors = [];
     const protectedRequests = [];
     page.on('pageerror', e => pageErrors.push(e.message));
@@ -39,7 +57,12 @@ const path = require('node:path');
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => location.hash === '#brandbook-main');
     assert.equal(await page.locator('#brandbook-main').count(), 1, 'keyboard skip goes to main landmark');
-    assert.equal(await page.getByRole('button', { name: 'Открыть аккаунт', exact: true }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: 'Открыть аккаунт', exact: true }).count(), 1);
+    await page.getByRole('button', { name: 'Открыть список сервисов' }).click();
+    assert.deepEqual(await page.locator('.services-popover .service-label').allTextContents(),
+      ['Дашборд', 'Клиенты', 'Design System', 'Брендбук'],
+      'shared launcher must use real Employees entitlements, not Brandbook-only access');
+    await page.getByRole('button', { name: 'Открыть список сервисов' }).click();
     for (const [id, label] of pages) {
       await page.goto(base + '/brandbook/' + id + '/', { waitUntil: 'domcontentloaded' });
       await page.locator('main.brandbook-page h1').waitFor();
@@ -305,7 +328,10 @@ const path = require('node:path');
       }
     } finally { await previewPage.close(); }
     assert.deepEqual(pageErrors, [], 'no runtime script errors');
-    assert.deepEqual(protectedRequests, [], 'no anonymous requests to API/OIDC');
-    console.log('Brandbook smoke PASS: nine deep links, anonymous no-auth, noindex, keyboard skip, source copy labelling, search, empty state, 4 responsive sizes');
+    assert.ok(protectedRequests.some(url => url.includes('/api/employees/access/me')),
+      'real Employees access lookup is required to render the service launcher');
+    assert.ok(protectedRequests.some(url => url.includes('/.well-known/openid-configuration')),
+      'standalone fixture exercises the authenticated OIDC initialization');
+    console.log('Brandbook smoke PASS: nine deep links, mocked SSO entitlements, grouped launcher, noindex, keyboard skip, source copy, responsive sizes');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
