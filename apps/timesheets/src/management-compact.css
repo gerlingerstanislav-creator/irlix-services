@@ -39,6 +39,15 @@
 .management-page .matrix-cell.final.non-working b {
   color:var(--irlix-color-on-accent) !important;
 }
+/* Show zero as muted text on any active day, regardless of approval status.
+   On saturated final-approved cells, use a darker grey for legibility. */
+.management-page .matrix-cell b.zero-hours {
+  color:var(--irlix-color-text-muted) !important;
+}
+.management-page .matrix-cell.final b.zero-hours,
+.management-page .matrix-cell.final.non-working b.zero-hours {
+  color:color-mix(in srgb, var(--irlix-color-text-muted) 40%, black) !important;
+}
 /* Absence color fills the bottom of the cell up to just beneath centered
    hours (12px line height + 2px gap). The upper portion keeps approval color. */
 .management-page .matrix-cell.has-absence .absence-half {
