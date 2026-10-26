@@ -26,20 +26,46 @@ final class ClientServiceCalendarController extends Controller
 
         [$activeIds, $employees, $departments] = $this->authorizedDirectory($request, $directory);
 
+        // Employees owns the production structure: include production
+        // direction roots and all descendants, irrespective of depth.
+        $byDepartmentId = [];
+        foreach ($departments as $department) {
+            $byDepartmentId[(int) ($department['id'] ?? 0)] = $department;
+        }
+        $isProduction = static function (int $departmentId) use ($byDepartmentId): bool {
+            $visited = [];
+            while ($departmentId > 0 && isset($byDepartmentId[$departmentId])
+                && !isset($visited[$departmentId])) {
+                $visited[$departmentId] = true;
+                $department = $byDepartmentId[$departmentId];
+                if (filter_var($department['is_production'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                    return true;
+                }
+                $departmentId = (int) ($department['parent_id'] ?? 0);
+            }
+            return false;
+        };
+        $productionEmployees = array_values(array_filter($employees, static fn ($employee) =>
+            $isProduction((int) ($employee['department_id'] ?? 0))));
+        $productionIds = array_values(array_map(static fn ($employee) =>
+            (int) $employee['id'], $productionEmployees));
+        $productionDepartments = array_values(array_filter($departments, static fn ($department) =>
+            $isProduction((int) ($department['id'] ?? 0))));
+
         $start = sprintf('%04d-%02d-01', $year, $number);
         $end = date('Y-m-t', strtotime($start.' 12:00:00 UTC'));
-        $absences = $reads->registry($activeIds, ['from' => $start, 'to' => $end]);
+        $absences = $reads->registry($productionIds, ['from' => $start, 'to' => $end]);
         return response()->json(['data' => [
             'employees' => array_map(static fn ($employee) => [
                 'id' => (int) $employee['id'],
                 'full_name' => $employee['full_name'],
                 'department_id' => $employee['department_id'] ?? null,
                 'department_name' => $employee['department_name'] ?? null,
-            ], $employees),
+            ], $productionEmployees),
             'departments' => array_map(static fn ($department) => [
                 'id' => (int) $department['id'],
                 'name' => $department['name'],
-            ], $departments),
+            ], $productionDepartments),
             'absences' => array_map(static fn ($item) => [
                 'id' => $item['id'], 'employee_id' => (int) $item['employee_id'],
                 'starts_on' => $item['starts_on'], 'ends_on' => $item['ends_on'],
