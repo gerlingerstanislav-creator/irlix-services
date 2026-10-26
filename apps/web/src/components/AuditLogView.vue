@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { UiBadge, UiButton, UiPanel, UiSearchSelect, UiRegistryTable } from '@irlix/ui';
+import { UiBadge, UiButton, UiPanel, UiSearchSelect, UiRegistryTable , UiLoader } from '@irlix/ui';
 import { employeeTreeOptions, shortEmployeeName } from '../staffTree';
 import { auth } from '../auth';
 
@@ -47,7 +47,7 @@ onMounted(request);
         <input v-model="filters.to" type="date" aria-label="Дата по" />
         <UiButton variant="secondary" @click="request">Применить</UiButton>
       </div>
-      <div v-if="loading" class="empty-state">Загрузка журнала…</div>
+      <UiLoader v-if="loading" page label="Загрузка журнала действий" />
       <div v-else-if="!rows.length" class="empty-state"><strong>Записей не найдено</strong></div>
       <div v-else class="table-wrap irlix-registry-scroll">
         <UiRegistryTable class="shared-registry-content" table-class="irlix-data-table audit-table" :columns="['15%','13%','19%','13%','18%','12%','10%']" min-width="1080px" aria-label="История действий сотрудников" density="compact">

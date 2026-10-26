@@ -23,6 +23,6 @@ test('Timesheets view gates 403 and content behind permission resolution', () =>
   const source = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8');
   assert.match(source, /const permissionsPhase = ref\('loading'\)/);
   assert.match(source, /<UiErrorState v-else-if="pageAccess === 'forbidden'" :status="403"/);
-  assert.match(source, /<div v-if="pageLoading" class="loading"/);
+  assert.match(source, /<UiLoader v-if="pageLoading" page label="Загрузка таймшитов"/);
   assert.match(source, /<section v-else-if="pageAccess === 'allowed' && section === 'mine' && workspace"/);
 });

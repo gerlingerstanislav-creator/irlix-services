@@ -9,7 +9,7 @@ import { useRoute } from 'vue-router';
 import { catalogSections as nav } from './catalogSections.js';
 import { useCatalogNavigation } from './useCatalogNavigation.js';
 import tokenStyles from '../../../packages/ui/src/styles/tokens.css?raw';
-import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiCheckbox, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiRegistryTable, UiLoader, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiKanbanBoard, UiClientSummary, UiStatusCheck, UiErrorState, getTheme, setTheme } from '@irlix/ui';
+import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiCheckbox, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiRegistryTable, UiLoader, UiPreloader, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiKanbanBoard, UiClientSummary, UiStatusCheck, UiErrorState, getTheme, setTheme } from '@irlix/ui';
 
 const activeRoute = useRoute();
 const { section, navigate } = useCatalogNavigation(nav);
@@ -100,6 +100,11 @@ const childGroupOpen = ref(true);
 const drawerOpen = ref(false);
 const nestedDrawerOpen = ref(false);
 const registryState = ref('data');
+const preloaderVariants = [
+  { variant: 'assembly', label: 'Assembly', description: 'Диагональное раздвижение и соединение частей без вращения.' },
+  { variant: 'trace', label: 'Trace — стандарт', description: 'Прорисовка контуров и заполнение знака. Для страниц и списков.' },
+  { variant: 'glitch', label: 'Cyberpunk Glitch', description: 'Короткие цифровые смещения и неоновые отголоски.' },
+];
 const registryRows = Array.from({ length: 16 }, (_, i) => ({ id: i + 1, name: `Демо-специалист ${String(i + 1).padStart(2, '0')}`, project: i % 2 ? 'Демо-проект Б' : 'Демо-проект А', hours: 8, tone: i % 3 ? 'success' : 'warning' }));
 const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row.project}`.toLowerCase().includes(query.value.toLowerCase())));
 </script>
@@ -151,9 +156,16 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         </template>
         <template v-if="entry.id === 'loaders'">
           <UiPanel class="ds-content">
-          <p class="ds-hint">Общий индикатор для загрузки данных. Вариант overlay располагается поверх уже выделенной области и не сдвигает таблицы или карточки; текст доступен скринридеру, анимация учитывает reduced motion.</p>
+          <p class="ds-hint">Фирменный SVG точно повторяет знак X в левом верхнем углу сервисов. Все три варианта доступны как UiPreloader; Trace — стандартный UiLoader для страниц и таблиц. Центрирование — относительно родительской области, не относительно начала страницы.</p>
+          <div class="ds-preloader-gallery">
+            <section v-for="motion in preloaderVariants" :key="motion.variant" class="ds-preloader-card">
+              <h4>{{ motion.label }}</h4>
+              <div class="ds-motion-preview" aria-busy="true"><UiPreloader overlay :variant="motion.variant" :label="motion.label" /></div>
+              <p class="ds-hint">{{ motion.description }}</p>
+            </section>
+          </div>
           <div class="ds-row ds-row--plain"><UiLoader label="Загрузка данных" /><UiLoader size="small" show-label label="Обновляем…" /></div>
-          <div class="ds-loader-preview" aria-busy="true"><span>Место для содержимого фиксированной высоты</span><UiLoader overlay label="Загрузка записей" /></div>
+          <div class="ds-loader-preview" aria-busy="true"><span>Контейнер списка: прелоадер строго по центру</span><UiLoader overlay label="Загрузка записей" /></div>
           <p class="ds-hint">UiErrorState — общее состояние недоступной страницы. Ошибки 403, 404 и 503 не перенаправляют пользователя автоматически.</p>
           <UiErrorState :status="404" description="Синтетический пример отсутствующей страницы." back-href="/design-system/" back-label="К каталогу" />
         </UiPanel>

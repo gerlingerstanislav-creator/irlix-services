@@ -1,6 +1,6 @@
 <script setup>
 import { computed,onMounted,ref,watch } from 'vue';
-import { UiButton,UiFilterBar,UiPanel,UiSearchSelect,UiViewSelect } from '@irlix/ui';
+import { UiButton,UiFilterBar,UiPanel,UiSearchSelect,UiViewSelect, UiLoader } from '@irlix/ui';
 import { api } from '../api';
 import { formatDate,typeLabels } from '../constants';
 import AbsenceCreateModal from '../components/AbsenceCreateModal.vue';
@@ -83,7 +83,7 @@ watch(departmentId,load);
         <small><b>Всего:</b><em>{{ card.totalHours }}ч</em></small>
       </button>
     </div>
-    <div v-if="loading" class="empty">Загрузка отсутствий подразделения…</div>
+    <UiLoader v-if="loading" page label="Загрузка отсутствий подразделения" />
     <div v-else-if="!visibleItems.length" class="empty"><strong>Нет отсутствий за выбранный период</strong><span>Измените месяц или подразделение.</span></div>
     <AbsenceTable v-else-if="view==='list'" :items="visibleItems" show-employee show-progress @action="emit('action',$event)"/>
     <div v-else class="calendar-wrap"><table class="absence-calendar"><thead><tr><th class="calendar-person">Сотрудник</th><th v-for="day in days" :key="day" :class="{'calendar-non-working':isNonWorkingDay(day)}" :title="dayTitle(day)">{{ day }}</th></tr></thead><tbody><tr v-for="group in grouped" :key="group.employee_id"><td class="calendar-person"><strong>{{ shortName(group.employee_name)||`#${group.employee_id}` }}</strong><small>{{ group.department_name||'—' }}</small></td><td v-for="day in days" :key="day" :class="{'calendar-non-working':isNonWorkingDay(day)}" :title="dayTitle(day)"><div v-for="absence in dayItems(group,day)" :key="absence.id" class="calendar-absence" :class="[`calendar-absence--${absenceTone(absence)}`,{'calendar-absence--start':isVisualStart(absence,day),'calendar-absence--end':isVisualEnd(absence,day)}]" :title="`${typeLabels[absence.type]||absence.type}: ${formatDate(absence.starts_on)} — ${formatDate(absence.ends_on)}`" @click="emit('action',{action:'view',item:absence})"><span></span></div></td></tr></tbody></table></div>

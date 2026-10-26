@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { UiBadge, UiButton, UiPanel, UiSearchSelect, UiRegistryTable } from '@irlix/ui';
+import { UiBadge, UiButton, UiPanel, UiSearchSelect, UiRegistryTable , UiLoader } from '@irlix/ui';
 import { employeeTreeOptions, shortEmployeeName } from '../staffTree';
 import { auth } from '../auth';
 
@@ -99,7 +99,7 @@ onMounted(load);
           <strong>Специальные роли</strong>
           <span>{{ roles.length }}</span>
         </div>
-        <div v-if="loading" class="role-empty">Загрузка…</div>
+        <UiLoader v-if="loading" page label="Загрузка специальных ролей" />
         <button
           v-for="role in roles"
           v-else

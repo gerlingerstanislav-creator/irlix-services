@@ -1,6 +1,6 @@
 <script setup>
 import { computed,onMounted,ref,watch } from 'vue';
-import { UiButton,UiFilterBar,UiPanel,UiSearchSelect } from '@irlix/ui';
+import { UiButton,UiFilterBar,UiPanel,UiSearchSelect, UiLoader } from '@irlix/ui';
 import { api } from '../api';
 import { statusLabels,typeLabels } from '../constants';
 import AbsenceCreateModal from '../components/AbsenceCreateModal.vue';
@@ -70,7 +70,7 @@ watch(()=>props.year,()=>{activeMonth.value=currentMonth;load();loadProductionCa
     </UiFilterBar>
     <div class="month-cards"><button v-for="card in monthCards" :key="card.month" type="button" class="month-card" :class="{active:activeMonth===card.month}" @click="selectMonth(card.month)"><span>{{ card.label }}</span><strong>{{ card.percent }}%</strong><small><b>Отсутствия:</b><em>{{ card.absenceHours }}ч</em></small><small><b>Всего:</b><em>{{ card.totalHours }}ч</em></small></button></div>
     <div class="registry-meta"><span>Найдено: <strong>{{ filteredItems.length }}</strong></span><span v-if="activeMonth">Быстрый фильтр: <strong>{{ String(activeMonth).padStart(2,'0') }}.{{ yearValue }}</strong></span></div>
-    <div v-if="loading" class="empty">Загрузка реестра…</div>
+    <UiLoader v-if="loading" page label="Загрузка реестра отсутствий" />
     <div v-else-if="!filteredItems.length" class="empty"><strong>Ничего не найдено</strong><span>Измените фильтры или выберите другой месяц.</span></div>
     <AbsenceTable v-else :items="filteredItems" :show-documents="false" :hidden-actions="['view','history','view_attachments']" show-employee show-progress @action="emit('action',$event)"/>
   </UiPanel>

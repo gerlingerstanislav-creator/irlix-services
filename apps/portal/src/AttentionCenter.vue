@@ -1,6 +1,6 @@
 <script setup>
 import {computed,onMounted,onUnmounted,ref} from 'vue';
-import {UiIcon} from '@irlix/ui';
+import {UiIcon, UiLoader } from '@irlix/ui';
 import {attentionSources,normalizeTasks,sortTasks} from './attentionModel.js';
 import './attention.css';
 const props=defineProps({auth:{type:Object,required:true},serviceAccess:{type:Object,default:null},full:{type:Boolean,default:false},showAll:{type:Boolean,default:false}});
@@ -36,7 +36,7 @@ onUnmounted(()=>{active=false;clearTimeout(timer)});
  <button v-if="!full" class="attention-center__more" @click="emit('openAll')">Все задачи →</button>
  <select v-else v-model="filter" aria-label="Фильтр задач"><option value="all">Все</option><option value="attention">Требует внимания</option><option value="upcoming">Предстоит</option></select>
  </header>
- <p v-if="loading" class="attention-center__hint" role="status">Проверяем задачи в сервисах…</p>
+ <div v-if="loading" class="attention-center__loading"><UiLoader label="Загрузка списка задач" /></div>
  <p v-else-if="failed.length" class="attention-center__warning" role="status">Не удалось загрузить задачи из: {{failed.join(', ')}}. Список может быть неполным.</p>
  <p v-if="!loading&&!visible.length" class="attention-center__empty">{{failed.length?'Доступные задачи не найдены.':'Сейчас нет действий, требующих внимания.'}}</p>
  <div v-else class="attention-center__items">
