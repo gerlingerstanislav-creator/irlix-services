@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
 import { UiButton, UiDrawer, UiFilterBar, UiIcon, UiSearchSelect, UiTreeToggle, UiLoader } from '@irlix/ui';
+import PartnerProfileSections from './PartnerProfileSections.vue';
 
 const props = defineProps({ canManage: { type: Boolean, default: false } });
 const data = ref({ partners: [], unassigned: [] });
@@ -170,6 +171,7 @@ onMounted(load);
       </div>
      </article>
     </div>
+    <PartnerProfileSections v-if="isPartner && !isNew" :key="selected.id" :partner-id="Number(selected.id)" :can-manage="canManage" />
     <div v-if="isNew && canManage" class="partner-actions">
      <UiButton :disabled="saving" @click="save()">Сохранить</UiButton>
      <UiButton variant="secondary" :disabled="saving" @click="cancel()">Отмена</UiButton>
