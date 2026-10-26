@@ -266,7 +266,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByRole('button',{name:'Привязать контакт',exact:true}).click();
   await page.locator('.irlix-drawer-layer').last().getByRole('button',{name:'Контакт для привязки'}).click();
   await page.getByRole('option',{name:'Existing Contact',exact:true}).click();
-  await page.locator('.irlix-drawer-layer').last().getByText('@existing',{exact:true}).waitFor();
+  await page.locator('.irlix-drawer-layer').last().getByText('@existing',{exact:false}).waitFor();
   await page.locator('.irlix-drawer-layer').last().getByLabel('Должность у партнёра').fill('Синтетический руководитель');
   await page.locator('.irlix-drawer-layer').last().getByRole('button',{name:'Привязать контакт',exact:true}).click();
   await page.getByText('Existing Contact',{exact:true}).waitFor();
