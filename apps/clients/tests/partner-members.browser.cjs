@@ -20,10 +20,13 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    if(path.endsWith('/client-members')) return r.fulfill({json:{data:saved.some(x=>x.partner_specialist_id===9)?[{id:72,client_id:1,partner_specialist_id:9,employee_id:null,specialist_name:'Synthetic Partner',terms:[],projects:[],feedbacks:[{id:99,text:'Synthetic feedback with metadata',project_id:null,occurred_on:'2026-10-12',rating:'Strong',legacy_interview_id:31},{id:100,text:'Legacy feedback without metadata',project_id:null,occurred_on:null,rating:null,legacy_interview_id:null}]}]:[]}});
    if(path==='/api/clients/partners/3'&&r.request().method()==='PATCH'){const payload=r.request().postDataJSON();partnerWrites.push({path,payload});Object.assign(partnerState,payload);return r.fulfill({json:{data:partnerState}});}
    if(path==='/api/clients/partner-specialists/9'&&r.request().method()==='PATCH'){const payload=r.request().postDataJSON();partnerWrites.push({path,payload});Object.assign(partnerState.specialists[0],payload);return r.fulfill({json:{data:partnerState.specialists[0]}});}
+   if(path==='/api/clients/partners/3/card') return r.fulfill({json:{data:{partner:partnerState,history:[{id:1,type:'partner_created',title:'Создание партнёра',created_at:'2026-10-23'}],contacts:[],legal_entities:[],contacts_available:true}}});
+   if(path==='/api/vacations/client-service-calendar') return r.fulfill({json:{data:{employees:[{id:1,full_name:'Synthetic Employee',department_id:42,department_name:'Synthetic Department'}],departments:[{id:42,name:'Synthetic Department'}],absences:[{id:5,employee_id:1,starts_on:'2026-10-26',ends_on:'2026-10-29',status:'planned'}]}}});
+   if(path==='/api/clients/specialists/filter-clients') return r.fulfill({json:{data:[{id:1,name:'Synthetic Client'}]}});
    if(path==='/api/clients/partners') return r.fulfill({json:{data:{partners:[partnerState],unassigned:[]}}});
    if(path.endsWith('/members') && r.request().method()==='POST'){saved.push(r.request().postDataJSON());return r.fulfill({status:201,json:{data:{member_id:71}}});}
    const data=path.endsWith('/employees/access/me')?{services:{clients:true},roles:['platform-admin']}:
-    path.endsWith('/permissions/me')?{platform_admin:false,roles:[],permissions:Object.fromEntries(['clients.view','clients.manage','members.view','members.manage'].map(k=>[k,{allowed:membershipAccess==='full'||(k==='clients.view')||(membershipAccess==='members-manage'&&['members.view','members.manage'].includes(k))||(membershipAccess==='members-read'&&k==='members.view'),scope:'all'}]))}:
+    path.endsWith('/permissions/me')?{platform_admin:false,roles:[],employee:{id:1},client_service_employee_ids:[1],permissions:Object.fromEntries(['clients.view','clients.manage','members.view','members.manage'].map(k=>[k,{allowed:membershipAccess==='full'||(k==='clients.view')||(membershipAccess==='members-manage'&&['members.view','members.manage'].includes(k))||(membershipAccess==='members-read'&&k==='members.view'),scope:'all'}]))}:
     path.endsWith('/clients-directory')?{employees:[{id:1,full_name:'Synthetic Employee',department_name:'Synthetic Department'}],departments:[],actor:{id:1}}:
     // Canonical endpoint intentionally omits `active`; rows are already scoped
     // to active specialists and active organizations by the server.
@@ -33,6 +36,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    return r.fulfill({json:{data}});
   });
   await page.goto(base+'/clients/');
+  const nav=page.getByRole('navigation',{name:'Навигация сервиса клиентов'});
+  await nav.getByRole('button',{name:'Специалисты',exact:true}).click();
+  await page.getByRole('table').getByText('Synthetic Employee',{exact:true}).waitFor();
+  await nav.getByRole('button',{name:'Клиенты',exact:true}).click();
+
   await page.getByRole('button',{name:'Развернуть клиента',exact:true}).click();
   await page.getByRole('button',{name:'＋ участник',exact:true}).click();
   await page.getByRole('button',{name:'Партнерский специалист',exact:true}).click();
@@ -96,7 +104,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    const labels=document.querySelector('.irlix-app-sidebar .nav-label-viewport');
    return labels&&getComputedStyle(labels).pointerEvents==='none'&&getComputedStyle(labels).visibility==='hidden';
   });
-  await page.getByRole('button',{name:'Развернуть',exact:true}).click();
+  await page.getByRole('button',{name:'Развернуть партнёра',exact:true}).click();
   await page.getByRole('button',{name:'Synthetic Partner',exact:true}).waitFor();
 
   assert.equal(await page.locator('.partners-registry .partner-pencil').count(),0,'Tree-row pencils were intentionally removed');
@@ -104,6 +112,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   require('node:fs').mkdirSync(screenshotDir,{recursive:true});
   await page.screenshot({path:screenshotDir+'/clients-partner-tree.png',fullPage:true});
   await agencyRow.click();
+  await page.getByRole('tab',{name:'История',exact:true}).waitFor();
+  assert.equal(await page.getByRole('tab',{name:'Контактные лица',exact:true}).count(),1);
+  assert.equal(await page.getByRole('tab',{name:'Юр. лица',exact:true}).count(),1);
+
   assert.equal(await page.getByRole('button',{name:'Редактировать: Наименование партнёра',exact:true}).count(),1);
   await page.getByRole('button',{name:'Редактировать: Наименование партнёра',exact:true}).click();
   await page.getByLabel('Наименование партнёра',{exact:true}).fill('Synthetic Agency Updated');
@@ -146,7 +158,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    const labels=document.querySelector('.irlix-app-sidebar .nav-label-viewport');
    return labels&&getComputedStyle(labels).pointerEvents==='none'&&getComputedStyle(labels).visibility==='hidden';
   });
-  await page.getByRole('button',{name:'Развернуть',exact:true}).click();
+  await page.getByRole('button',{name:'Развернуть партнёра',exact:true}).click();
   assert.equal(await page.getByRole('button',{name:'Synthetic Partner Updated',exact:true}).count(),1);
   await page.screenshot({path:screenshotDir+'/clients-partner-tree.png',fullPage:true});
   await page.getByRole('button',{name:'Synthetic Partner Updated',exact:true}).click();
@@ -179,7 +191,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    const labels=document.querySelector('.irlix-app-sidebar .nav-label-viewport');
    return labels&&getComputedStyle(labels).pointerEvents==='none'&&getComputedStyle(labels).visibility==='hidden';
   });
-  await page.getByRole('button',{name:'Развернуть',exact:true}).click();
+  await page.getByRole('button',{name:'Развернуть партнёра',exact:true}).click();
   assert.equal(await page.locator('.partners-registry .partner-pencil').count(),0);
   assert.equal(await page.getByRole('button',{name:'Редактировать специалиста',exact:true}).count(),0);
   const writesBeforePartnerReadOnly=partnerWrites.length;
