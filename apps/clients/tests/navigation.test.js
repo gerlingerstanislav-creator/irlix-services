@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { allowedClientSections, sectionPermissions } from '../src/navigation.js';
 const permissions = Object.fromEntries(Object.values(sectionPermissions).map(key=>[key,{allowed:true,scope:'all'}]));
 test('Clients staff see pages granted by the permission matrix',()=>{
