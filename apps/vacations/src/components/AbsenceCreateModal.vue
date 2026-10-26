@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { UiButton, UiSearchSelect } from '@irlix/ui';
 import { api } from '../api';
-import { typeLabels } from '../constants';
+import { formatDate, statusLabels, typeLabels } from '../constants';
 import DateRangePicker from './DateRangePicker.vue';
 
 const props = defineProps({
@@ -41,6 +41,16 @@ const employeeOptions = computed(() => [...props.employees]
     value: employee.id,
     label: `${employee.full_name} · ${employee.department_name || 'Без подразделения'}`,
   })));
+const periodConflict = computed(() => {
+  const from = form.value.period.start;
+  if (!from) return null;
+  const until = form.value.period.end || '9999-12-31';
+  return occupied.value.find((absence) => {
+    const start = String(absence.starts_on || '').slice(0, 10);
+    const end = String(absence.ends_on || '9999-12-31').slice(0, 10);
+    return start && start <= until && end >= from;
+  }) || null;
+});
 const openEndedType = computed(() => ['sick_leave', 'maternity_leave'].includes(form.value.type));
 const documentRequired = computed(() => ['paid_vacation', 'unpaid_vacation', 'sick_leave', 'maternity_leave'].includes(form.value.type));
 const documentHint = computed(() => {
@@ -50,7 +60,7 @@ const documentHint = computed(() => {
   return 'Документ';
 });
 const canSave = computed(() => {
-  if (occupiedLoading.value) return false;
+  if (occupiedLoading.value || periodConflict.value) return false;
   if (props.forEmployee && !form.value.employee_id) return false;
   if (!form.value.period.start) return false;
   if (!openEndedType.value && !form.value.period.end) return false;
@@ -99,6 +109,7 @@ const loadOccupied = async () => {
     return;
   }
   occupiedLoading.value = true;
+  occupied.value = [];
   localError.value = '';
   try {
     const params = new URLSearchParams();
@@ -223,6 +234,12 @@ watch(() => form.value.type, () => { localError.value = ''; });
         :label="openEndedType ? 'Период (дата окончания может быть указана позже)' : 'Период отсутствия'"
       />
       <p v-if="occupiedLoading" class="hint">Проверяем уже занятые даты…</p>
+      <p v-if="periodConflict" class="field-error" role="alert">
+        Выбранный период пересекается с отсутствием №{{ periodConflict.id }}
+        ({{ formatDate(periodConflict.starts_on) }} — {{ periodConflict.ends_on ? formatDate(periodConflict.ends_on) : 'без даты окончания' }},
+        {{ statusLabels[periodConflict.status] || periodConflict.status }}).
+        Проверьте существующую запись.
+      </p>
       <p v-if="openEndedType" class="hint">Для больничного и декрета достаточно даты начала. До отправки на согласование период нужно закрыть и приложить документ.</p>
 
       <label class="irlix-field">Комментарий
