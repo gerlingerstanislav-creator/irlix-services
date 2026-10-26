@@ -96,7 +96,7 @@ test('partners and specialists use a dedicated menu section and inline editors',
 });
 
 test('specialists calendar is granted by organizational client-service membership, not manager/admin role',()=>{
- const employee={id:99}, client_service_employee_ids:[employee.id];
+ const employee={id:99}, client_service_employee_ids=[employee.id];
  const staff={employee,client_service_employee_ids,permissions:{}};
  assert.ok(allowedClientSections(staff).includes('specialists'));
  assert.ok(!allowedClientSections({...staff,client_service_employee_ids:[]}).includes('specialists'));
