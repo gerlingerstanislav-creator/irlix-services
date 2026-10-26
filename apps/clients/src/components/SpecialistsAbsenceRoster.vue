@@ -1,9 +1,9 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, onMounted } from 'vue';
 import { UiFilterBar, UiLoader, UiPeriodPicker, UiSearchSelect } from '@irlix/ui';
 import { auth } from '../auth';
 
-const props = defineProps({ clients: { type: Array, default: () => [] } });
+
 const month = ref(new Date().toISOString().slice(0, 7));
 const selectedDepartment = ref('');
 const selectedClient = ref('');
@@ -13,6 +13,7 @@ const departments = ref([]);
 const absences = ref([]);
 const calendar = ref({});
 const clientMembers = ref([]);
+const clients = ref([]);
 const loading = ref(false);
 const clientLoading = ref(false);
 const error = ref('');
@@ -36,7 +37,7 @@ const days = computed(() => Array.from({ length: Number(to.value.slice(-2)) }, (
 const departmentOptions = computed(() => departments.value
  .map(d => ({ value: String(d.id), label: d.name }))
  .sort((a, b) => a.label.localeCompare(b.label, 'ru')));
-const clientOptions = computed(() => props.clients
+const clientOptions = computed(() => clients.value
  .map(c => ({ value: String(c.id), label: c.name }))
  .sort((a, b) => a.label.localeCompare(b.label, 'ru')));
 const norm = value => String(value || '').slice(0, 10);
@@ -112,12 +113,17 @@ async function loadMembers() {
  if (!selectedClient.value) { clientLoading.value = false; return; }
  clientLoading.value = true;
  try {
-  const rows = await get('/api/clients/clients/' + encodeURIComponent(selectedClient.value) + '/client-members');
+  const rows = await get('/api/clients/specialists/client-members?client_id=' + encodeURIComponent(selectedClient.value));
   if (request === memberRequest) clientMembers.value = rows || [];
  } catch (e) {
   if (request === memberRequest) clientError.value = e.message;
  } finally { if (request === memberRequest) clientLoading.value = false; }
 }
+async function loadClients() {
+ try { clients.value = await get('/api/clients/specialists/filter-clients') || []; }
+ catch(e) { clientError.value = e.message; }
+}
+onMounted(loadClients);
 watch(month, load, { immediate: true });
 watch(selectedClient, loadMembers);
 </script>

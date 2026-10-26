@@ -31,6 +31,10 @@ class ClientsAccountingAccess
             return response()->json(['message' => 'Тестировщику платформы закрыт доступ к сервису клиентов.'], 403);
         }
         if ($request->is('api/permissions*')) return $next($request);
+        // The Clients specialists read model separately verifies current
+        // client-service organizational membership and never returns rates.
+        if ($request->method() === 'GET'
+            && $request->is('api/specialists/filter-clients', 'api/specialists/client-members')) return $next($request);
         // The global partner registry has an explicit all-scope policy in its controller.
         if ($request->is('api/partners*') || $request->is('api/partner-specialists*')) return $next($request);
         if ($access['platform_admin']) return $next($request);

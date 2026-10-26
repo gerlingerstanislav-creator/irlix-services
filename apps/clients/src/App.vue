@@ -214,7 +214,7 @@ const sectionForView = section => ({
   clients:'clients', leads:'leads', contacts:'contacts', requests:'requests',
   positions:'requests', attempts:'requests', reports:'reports',
 })[section] || null;
-const needsCatalog = section => ['clients','leads','contacts','requests','positions','attempts','members','specialists','reports'].includes(section);
+const needsCatalog = section => ['clients','leads','contacts','requests','positions','attempts','members','reports'].includes(section);
 const needsLeads = section => ['requests','positions','attempts'].includes(section);
 const sectionParams = (section, page) => {
   const params = {section, page:String(page), per_page:'80'};
