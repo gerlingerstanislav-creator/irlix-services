@@ -358,5 +358,36 @@ namespace {
     check(($overview['clients'][0]['client_members'][0]['id'] ?? null) === 1 && count($overview['clients'][0]['client_members'][0]['terms']) === 2, 'Overview omits the canonical membership without a project');
     $overviewAttempt = collect($overview['requests'])->flatMap(fn ($row) => $row['positions'])->flatMap(fn ($row) => $row['attempts'])->firstWhere('id', 1);
     check($overviewAttempt['has_connection'] && $overviewAttempt['connection_started_at'] === '2026-10-05' && $overviewAttempt['connection_date'] === '2026-10-04', 'Overview confused actual and planned connection dates');
+
+    // The Requests registry must paginate only matching rows, not all historical requests.
+    // Otherwise closed records repeatedly trigger "load more" under the default Open filter.
+    $requestRows = [
+        ['id' => 90101, 'client_id' => 1, 'title' => 'Synthetic open registry', 'status' => 'Открыт', 'created_at' => '2026-10-25 10:00:00'],
+        ['id' => 90102, 'client_id' => 1, 'title' => 'Synthetic working registry', 'status' => 'Открыт', 'created_at' => '2026-10-25 11:00:00'],
+        ['id' => 90103, 'client_id' => 1, 'title' => 'Synthetic closed registry', 'status' => 'Закрыт', 'created_at' => '2026-10-25 12:00:00'],
+    ];
+    \Illuminate\Support\Facades\DB::table('client_requests')->insert($requestRows);
+    \Illuminate\Support\Facades\DB::table('positions')->insert([
+        ['id' => 90101, 'client_request_id' => 90101, 'status' => 'Закрыт'],
+        ['id' => 90102, 'client_request_id' => 90102, 'status' => 'Открыт'],
+    ]);
+    \Illuminate\Support\Facades\DB::table('connection_attempts')->insert([
+        ['id' => 90101, 'position_id' => 90101, 'status' => 'CV отправлено'],
+        ['id' => 90102, 'position_id' => 90102, 'status' => 'CV отправлено'],
+    ]);
+    $pageService = new \App\Services\ClientsOverviewPageService();
+    $admin = ['platform_admin' => true, 'permissions' => []];
+    $openPage = $pageService->page($admin, 'requests', 1, 1, null, ['request_status' => 'Открыт', 'request_target' => 'client:1']);
+    $expectedOpen = \Illuminate\Support\Facades\DB::table('client_requests')->where('client_id', 1)->where('status', 'Открыт')->count();
+    check($openPage['meta']['total'] === $expectedOpen, 'Open request pagination counts hidden closed records');
+    check($openPage['meta']['has_more'] === ($expectedOpen > 1), 'Open request pagination returns an incorrect has_more');
+    $lastOpenPage = $pageService->page($admin, 'requests', $expectedOpen, 1, null, ['request_status' => 'Открыт', 'request_target' => 'client:1']);
+    check(!$lastOpenPage['meta']['has_more'] && count($lastOpenPage['data']['requests']) === 1, 'Open request pagination never terminates');
+    $workingPage = $pageService->page($admin, 'requests', 1, 100, null, ['request_status' => 'В работе', 'request_target' => 'client:1']);
+    $workingIds = array_column($workingPage['data']['requests'], 'id');
+    check(in_array(90102, $workingIds, true) && !in_array(90101, $workingIds, true) && !in_array(90103, $workingIds, true), 'Working status includes closed positions or requests');
+    $closedPage = $pageService->page($admin, 'requests', 1, 100, null, ['request_status' => 'Закрыт', 'request_target' => 'client:1']);
+    check(in_array(90103, array_column($closedPage['data']['requests'], 'id'), true) && !in_array(90102, array_column($closedPage['data']['requests'], 'id'), true), 'Closed filter leaks open requests');
+
     echo "Clients workflow and access smoke: {$checks} checks passed\n";
 }
