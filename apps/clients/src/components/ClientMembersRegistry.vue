@@ -1,6 +1,8 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { UiButton, UiDrawer, UiFilterBar, UiIcon, UiSearchSelect, UiRegistryTable , UiLoader } from '@irlix/ui';
+import { UiButton, UiDrawer, UiFilterBar, UiIcon, UiSearchSelect, UiRegistryTable, UiLoader, UiTabs } from '@irlix/ui';
+import { feedbackDate, formatMemberDate, memberPeriod, feedbackProjectLabel, sortedMemberTerms, sortedProjectAssignments, sortedMemberFeedbacks } from '../clientMemberCardView.js';
+import '../client-member-card.css';
 const props=defineProps({clients:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},canManage:{type:Boolean,default:false},initialClientId:{type:Number,default:null},focusedClientId:{type:Number,default:null},focusedMemberId:{type:Number,default:null},onlyDetails:{type:Boolean,default:false}});
 const emit=defineEmits(['close','changed']);
 const clientId=ref(''),rows=ref([]),partners=ref([]),search=ref(''),error=ref(''),loading=ref(false),saving=ref(false),selected=ref(null);
@@ -9,6 +11,12 @@ const termForm=reactive({technology:'',level:'',hourly_rate:'',hours_per_day:8,v
 const termOpen=ref(false),editTermId=ref(null),assignmentOpen=ref(false),editAssignmentId=ref(null),feedbackOpen=ref(false);
 const assignment=reactive({project_id:'',valid_from:'',valid_to:''});
 const feedback=reactive({project_id:'',text:''});
+const detailsTab=ref('terms');
+const detailTabs=[{value:'terms',label:'Ком. условия'},{value:'projects',label:'Проекты'},{value:'feedbacks',label:'Фидбеки'}];
+const termRows=computed(()=>sortedMemberTerms(selected.value));
+const projectRows=computed(()=>sortedProjectAssignments(selected.value));
+const feedbackRows=computed(()=>sortedMemberFeedbacks(selected.value));
+const projectFeedbackLabel=item=>feedbackProjectLabel(item,selected.value?.projects||[],projects.value);
 const client=computed(()=>props.clients.find(c=>String(c.id)===clientId.value));
 const clientOptions=computed(()=>props.clients.map(c=>({value:String(c.id),label:c.name})).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const projects=computed(()=>client.value?.projects||[]);
@@ -20,10 +28,6 @@ const personOptions=computed(()=>personType.value==='employee'?
  // richer responses while not filtering those valid canonical rows out.
  partners.value.filter(p=>(p.active===undefined||Boolean(Number(p.active)))&&p.partner_id).map(p=>({value:String(p.id),label:p.partner_name+' — '+p.full_name})).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const filtered=computed(()=>rows.value.filter(m=>m.specialist_name.toLocaleLowerCase('ru').includes(search.value.toLocaleLowerCase('ru'))));
-function feedbackDetails(item){
- const rating=item.rating===null||item.rating===undefined||String(item.rating).trim()===''?null:`Оценка: ${item.rating}`;
- return [item.project_id?`Проект #${item.project_id}`:'Клиент',item.occurred_on?`Дата: ${fmt(item.occurred_on)}`:null,rating].filter(Boolean).join(' · ');
-}
 async function api(url,options={}){
  const res=await fetch(url,{...options,headers:{Accept:'application/json','Content-Type':'application/json',...(options.headers||{})}});
  const payload=await res.json().catch(()=>({}));
@@ -42,8 +46,8 @@ async function loadPartners(){
  try{partners.value=await api('/api/clients/partner-specialists/catalog');}
  catch { partners.value=[]; }
 }
-function show(m){selected.value=m;termOpen.value=false;assignmentOpen.value=false;feedbackOpen.value=false;editTermId.value=null;error.value='';}
-function closeDetails(){selected.value=null;if(props.onlyDetails)emit('close');}
+function show(m){selected.value=m;detailsTab.value='terms';termOpen.value=false;assignmentOpen.value=false;feedbackOpen.value=false;editTermId.value=null;error.value='';}
+function closeDetails(){selected.value=null;detailsTab.value='terms';if(props.onlyDetails)emit('close');}
 function beginNew(){createOpen.value=true;personId.value='';personName.value='';personType.value='employee';loadPartners();}
 async function create(){
  if(!props.canManage||saving.value)return;
@@ -63,7 +67,7 @@ async function create(){
  }catch(e){error.value=e.message;}finally{saving.value=false;}
 }
 const fmt=d=>d?String(d).slice(0,10):'—';
-function startNewTerm(){Object.assign(termForm,{technology:'',level:'',hourly_rate:'',hours_per_day:8,valid_from:'',valid_to:''});editTermId.value=null;termOpen.value=true;}
+function startNewTerm(){detailsTab.value='terms';Object.assign(termForm,{technology:'',level:'',hourly_rate:'',hours_per_day:8,valid_from:'',valid_to:''});editTermId.value=null;termOpen.value=true;}
 function startEditTerm(t){Object.assign(termForm,{technology:t.technology||'',level:t.level||'',hourly_rate:t.hourly_rate??'',hours_per_day:t.hours_per_day,valid_from:fmt(t.valid_from),valid_to:t.valid_to?fmt(t.valid_to):''});editTermId.value=t.id;termOpen.value=true;}
 async function saveTerm(){
  if(!props.canManage||saving.value)return;
@@ -84,7 +88,7 @@ async function saveAssignment(){
   await load();emit('changed');assignmentOpen.value=false;editAssignmentId.value=null;Object.assign(assignment,{project_id:'',valid_from:'',valid_to:''});
  }catch(e){error.value=e.message;}finally{saving.value=false;}
 }
-function editAssignment(row){Object.assign(assignment,{project_id:String(row.project_id),valid_from:fmt(row.valid_from),valid_to:row.valid_to?fmt(row.valid_to):''});editAssignmentId.value=row.id;assignmentOpen.value=true;}
+function editAssignment(row){detailsTab.value='projects';Object.assign(assignment,{project_id:String(row.project_id),valid_from:fmt(row.valid_from),valid_to:row.valid_to?fmt(row.valid_to):''});editAssignmentId.value=row.id;assignmentOpen.value=true;}
 function closeAssignment(){assignmentOpen.value=false;editAssignmentId.value=null;Object.assign(assignment,{project_id:'',valid_from:'',valid_to:''});}
 async function saveFeedback(){
  if(!props.canManage||saving.value)return;
@@ -95,6 +99,7 @@ async function saveFeedback(){
  }catch(e){error.value=e.message;}finally{saving.value=false;}
 }
 watch(clientId,load);
+watch(()=>props.focusedMemberId,id=>{if(props.onlyDetails&&id&&rows.value.length){const next=rows.value.find(m=>Number(m.id)===Number(id));if(next)show(next);}});
 watch(()=>props.focusedClientId,id=>{if(props.onlyDetails && id)clientId.value=String(id);},{immediate:true});
 watch(()=>props.initialClientId,id=>{if(!props.onlyDetails && id)clientId.value=String(id);},{immediate:true});
 watch(()=>props.clients,c=>{if(!clientId.value && c.length && !props.onlyDetails)clientId.value=String(c[0].id);},{immediate:true});
@@ -130,34 +135,73 @@ onMounted(loadPartners);
    <UiButton :disabled="saving||!personId" @click="create">Создать</UiButton>
   </div>
  </UiDrawer>
+
  <UiDrawer :open="!!selected" :title="selected?.specialist_name||'Подключение'" width="640px" @close="closeDetails">
-  <div v-if="selected" class="cm-card">
-   <h3>Коммерческие условия <UiButton v-if="canManage" compact @click="startNewTerm">＋</UiButton></h3>
-   <div v-for="t in selected.terms" :key="t.id" class="cm-line"><span>{{fmt(t.valid_from)}} — {{fmt(t.valid_to)}} · {{t.technology||'—'}} / {{t.level||'—'}} · {{t.hourly_rate??'Неизвестно'}} ₽/ч · {{t.hours_per_day}} ч/д</span><button v-if="canManage" @click="startEditTerm(t)" aria-label="Редактировать условия"><UiIcon name="pencil"/></button></div>
-   <div v-if="termOpen" class="cm-panel">
-    <label>Технология<input v-model="termForm.technology" required maxlength="100"></label>
-    <label>Грейд<input v-model="termForm.level" required maxlength="100"></label>
-    <label>Ставка, ₽/ч<input v-model="termForm.hourly_rate" type="number" step=".01" min="0" required></label>
-    <label>Загрузка, ч/д<input v-model="termForm.hours_per_day" type="number" step=".25" min="0" max="24" required></label>
-    <label>Начало<input v-model="termForm.valid_from" type="date" required></label>
-    <label>Конец<input v-model="termForm.valid_to" type="date"></label>
-    <UiButton :disabled="saving" @click="saveTerm">✓ Сохранить</UiButton><UiButton variant="secondary" @click="termOpen=false">Отмена</UiButton>
-   </div>
-   <h3>Проекты <UiButton v-if="canManage&&projects.length" compact @click="assignmentOpen=true">＋</UiButton></h3>
-   <div v-for="a in selected.projects" :key="a.id" class="cm-line"><span>{{a.project_name}} · {{fmt(a.valid_from)}} — {{fmt(a.valid_to)}}</span><button v-if="canManage" type="button" aria-label="Изменить назначение на проект" @click="editAssignment(a)"><UiIcon name="pencil"/></button></div>
-   <p v-if="!projects.length">У клиента нет проектов — это не препятствует учёту часов.</p>
-   <div v-if="assignmentOpen" class="cm-panel">
-    <label>Проект<select v-model="assignment.project_id"><option value="">Выберите проект</option><option v-for="p in projects" :key="p.id" :value="String(p.id)">{{p.name||'Основной проект'}}</option></select></label>
-    <label>Начало<input v-model="assignment.valid_from" type="date" required></label><label>Конец<input v-model="assignment.valid_to" type="date"></label>
-    <UiButton :disabled="saving||!assignment.project_id||!assignment.valid_from" @click="saveAssignment">✓ Сохранить</UiButton><UiButton variant="secondary" :disabled="saving" @click="closeAssignment">Отмена</UiButton>
-   </div>
-   <h3>Фидбеки <UiButton v-if="canManage" compact @click="feedbackOpen=true">＋</UiButton></h3>
-   <div v-for="f in selected.feedbacks" :key="f.id" class="cm-line">{{f.text}} <small>· {{feedbackDetails(f)}}</small></div>
-   <div v-if="feedbackOpen" class="cm-panel">
-   <label>Проект<select v-model="feedback.project_id"><option value="">Общий фидбек по клиенту</option><option v-for="p in historicalProjectOptions" :key="p.value" :value="p.value">{{p.label}}</option></select></label>
-   <label>Текст<textarea v-model="feedback.text" rows="3" required maxlength="10000"></textarea></label>
-   <UiButton :disabled="saving||!feedback.text.trim()" @click="saveFeedback">✓ Сохранить</UiButton><UiButton variant="secondary" @click="feedbackOpen=false">Отмена</UiButton>
-   </div>
+  <div v-if="selected" class="cm-member-card">
+   <UiTabs v-model="detailsTab" class="cm-member-tabs" variant="card" style="--irlix-card-tabs-count:3" :items="detailTabs" />
+
+   <section v-if="detailsTab==='terms'" class="cm-tab-content" role="tabpanel" aria-label="Коммерческие условия">
+    <header class="cm-tab-head"><h3>Коммерческие условия</h3><UiButton v-if="canManage" compact @click="startNewTerm">＋</UiButton></header>
+    <div v-if="termOpen" class="cm-editor">
+     <div class="cm-editor-fields">
+      <label>Технология<input v-model="termForm.technology" required maxlength="100"></label>
+      <label>Грейд<input v-model="termForm.level" required maxlength="100"></label>
+      <label>Ставка, ₽/ч<input v-model="termForm.hourly_rate" type="number" step=".01" min="0" required></label>
+      <label>Загрузка, ч/д<input v-model="termForm.hours_per_day" type="number" step=".25" min="0" max="24" required></label>
+      <label>Начало<input v-model="termForm.valid_from" type="date" required></label>
+      <label>Конец<input v-model="termForm.valid_to" type="date"></label>
+     </div>
+     <div class="cm-editor-actions"><UiButton :disabled="saving" @click="saveTerm">Сохранить</UiButton><UiButton variant="secondary" :disabled="saving" @click="termOpen=false;editTermId=null">Отмена</UiButton></div>
+    </div>
+    <p v-if="!termRows.length" class="cm-empty">Коммерческих условий пока нет.</p>
+    <article v-for="t in termRows" :key="t.id" class="cm-detail-row">
+     <div class="cm-detail-date">{{memberPeriod(t.valid_from,t.valid_to)}}</div>
+     <div class="cm-detail-main cm-term-fields">
+      <div class="cm-value-field"><span class="cm-field-label">Технология</span><span class="cm-field-value">{{t.technology||'—'}}</span></div>
+      <div class="cm-value-field"><span class="cm-field-label">Грейд</span><span class="cm-field-value">{{t.level||'—'}}</span></div>
+      <div class="cm-value-field"><span class="cm-field-label">Ставка, ₽/ч</span><span class="cm-field-value">{{t.hourly_rate===null||t.hourly_rate===undefined?'Неизвестно':t.hourly_rate}}</span></div>
+      <div class="cm-value-field"><span class="cm-field-label">Загрузка, ч/д</span><span class="cm-field-value">{{t.hours_per_day??'—'}}</span></div>
+     </div>
+     <button v-if="canManage" class="cm-edit-action" type="button" :aria-label="'Редактировать условия от '+formatMemberDate(t.valid_from)" @click="startEditTerm(t)"><UiIcon name="pencil" /></button>
+    </article>
+   </section>
+
+   <section v-else-if="detailsTab==='projects'" class="cm-tab-content" role="tabpanel" aria-label="Проекты">
+    <header class="cm-tab-head"><h3>Проекты</h3><UiButton v-if="canManage&&projects.length" compact @click="closeAssignment();assignmentOpen=true">＋</UiButton></header>
+    <div v-if="assignmentOpen" class="cm-editor">
+     <div class="cm-editor-fields">
+      <label>Проект<select v-model="assignment.project_id"><option value="">Выберите проект</option><option v-for="p in projects" :key="p.id" :value="String(p.id)">{{p.name||'Основной проект'}}</option></select></label>
+      <label>Начало<input v-model="assignment.valid_from" type="date" required></label>
+      <label>Конец<input v-model="assignment.valid_to" type="date"></label>
+     </div>
+     <div class="cm-editor-actions"><UiButton :disabled="saving||!assignment.project_id||!assignment.valid_from" @click="saveAssignment">Сохранить</UiButton><UiButton variant="secondary" :disabled="saving" @click="closeAssignment">Отмена</UiButton></div>
+    </div>
+    <p v-if="!projectRows.length" class="cm-empty">{{!projects.length?'У клиента нет проектов.':'Назначений на проекты пока нет.'}}</p>
+    <article v-for="a in projectRows" :key="a.id" class="cm-detail-row">
+     <div class="cm-detail-date">{{memberPeriod(a.valid_from,a.valid_to)}}</div>
+     <div class="cm-detail-main cm-value-field"><span class="cm-field-label">Проект</span><span class="cm-field-value">{{a.project_name||'Проект #'+a.project_id}}</span></div>
+     <button v-if="canManage" type="button" class="cm-edit-action" :aria-label="'Изменить назначение на проект '+(a.project_name||a.project_id)" @click="editAssignment(a)"><UiIcon name="pencil" /></button>
+    </article>
+   </section>
+
+   <section v-else-if="detailsTab==='feedbacks'" class="cm-tab-content" role="tabpanel" aria-label="Фидбеки">
+    <header class="cm-tab-head"><h3>Фидбеки</h3><UiButton v-if="canManage" compact @click="feedbackOpen=true">＋</UiButton></header>
+    <div v-if="feedbackOpen" class="cm-editor">
+     <div class="cm-editor-fields cm-editor-fields--single">
+      <label>Проект<select v-model="feedback.project_id"><option value="">Общий фидбек по клиенту</option><option v-for="p in historicalProjectOptions" :key="p.value" :value="p.value">{{p.label}}</option></select></label>
+      <label>Текст<textarea v-model="feedback.text" rows="3" required maxlength="10000"></textarea></label>
+     </div>
+     <div class="cm-editor-actions"><UiButton :disabled="saving||!feedback.text.trim()" @click="saveFeedback">Сохранить</UiButton><UiButton variant="secondary" :disabled="saving" @click="feedbackOpen=false">Отмена</UiButton></div>
+    </div>
+    <p v-if="!feedbackRows.length" class="cm-empty">Фидбеков пока нет.</p>
+    <article v-for="f in feedbackRows" :key="f.id" class="cm-detail-row cm-detail-row--feedback">
+     <time class="cm-detail-date" :datetime="feedbackDate(f)">{{formatMemberDate(feedbackDate(f))}}</time>
+     <div class="cm-detail-main cm-value-field">
+      <span class="cm-field-label">{{projectFeedbackLabel(f)}}<template v-if="f.rating!==null&&f.rating!==undefined&&String(f.rating).trim()"> · Оценка: {{f.rating}}</template></span>
+      <p class="cm-field-value cm-feedback-text">{{f.text}}</p>
+     </div>
+    </article>
+   </section>
   </div>
  </UiDrawer>
 </section>
