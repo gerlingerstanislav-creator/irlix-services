@@ -140,6 +140,11 @@ class ClientsAccountingAccess
         ]));
         $ownsClientView = fn (?int $clientId): bool => $clientId !== null && in_array($clientId, array_values(array_unique([...$ownClients, ...$clientViewClients])), true);
         $ownsClientManage = fn (?int $clientId): bool => $clientId !== null && in_array($clientId, array_values(array_unique([...$clientManageClients, ...$accountClients])), true);
+        // Provide scope-safe candidates before pagination. The existing response
+        // projection below remains defense-in-depth for every legacy consumer.
+        $request->attributes->set('clients_overview_client_ids', array_values(array_unique([...$ownClients, ...$clientViewClients])));
+        $request->attributes->set('clients_overview_lead_employee_ids', $employeeIdsForPermission('leads.view'));
+
         $isProductionManager = in_array('department-manager', $access['roles'] ?? [], true);
         $hasClientServiceRole = count(array_intersect(
             ['account-manager', 'accounting-head', 'client-service-head', 'sales-manager', 'sales-head'],
@@ -260,6 +265,17 @@ class ClientsAccountingAccess
         elseif ($path === 'api/reporting-period-lock' || $path === 'api/absence-approvers') $allowed = !$request->has('client_id') || $owns((int) $request->query('client_id'));
         elseif (!in_array($path, ['api/overview', 'api/cash-flow', 'api/attempt-funnel'], true)) $allowed = false;
         if (!$allowed) return response()->json(['message' => 'Клиент или запрос вне вашей области доступа.'], 403);
+
+        if ($path === 'api/overview' && $request->query('section') === 'lead-context') {
+            $leadEmployeeIds = $employeeIdsForPermission('leads.view');
+            $leadId = $request->integer('lead_id');
+            if (!$this->accessResolver->allows($access, 'leads.view') || !$leadId
+                || !DB::table('leads')->where('id', $leadId)
+                    ->when($leadEmployeeIds !== null, fn ($query) => $query->whereIn('responsible_employee_id', $leadEmployeeIds ?: [0]))
+                    ->exists()) {
+                return response()->json(['message' => 'Лид вне вашей области доступа.'], 403);
+            }
+        }
 
         $request->attributes->set('clients_scope_authorized', true);
         $response = $next($request);
