@@ -49,6 +49,7 @@ const contactCardOpen = ref(false);
 const selectedContactId = ref(null);
 const connectionScope = ref('active');
 const clientFilters = reactive({ responsible: '', technology: '', department: '', activity: 'active' });
+const requestFilters = reactive({ query: '', status: 'Открыт', target: '' });
 const filterDraft = reactive({
   leadResponsible: '', leadStatus: '', requestStatus: '', requestResponsible: '', requestDepartment: '', requestTechnology: '',
   positionTechnology: '', positionDirection: '', positionClient: '', positionStatus: '',
@@ -222,6 +223,11 @@ const sectionParams = (section, page) => {
     if (query.value.trim()) params.query = query.value.trim();
     if (contactClientFilter.value) params.client_id = contactClientFilter.value;
   }
+  if (section === 'requests' && view.value === 'requests') {
+    if (requestFilters.query) params.query = requestFilters.query;
+    if (requestFilters.status) params.request_status = requestFilters.status;
+    if (requestFilters.target) params.request_target = requestFilters.target;
+  }
   if (section === 'clients') {
     if (query.value.trim()) {
       params.query = query.value.trim();
@@ -250,7 +256,8 @@ async function fetchOverviewPage(section, page, generation) {
   const key = section === 'reports' ? 'reportingPeriods' : section;
   const rows = key === 'clients' ? normalizeClients(result.data?.[key] || []) : (result.data?.[key] || []);
   overview[key] = page === 1 ? rows : [...overview[key], ...rows];
-  hasMore.value = !!result.meta?.has_more;
+  // An empty page is terminal even if a stale API count still advertises more.
+  hasMore.value = !!result.meta?.has_more && rows.length > 0;
   nextPage.value = page + 1;
   totalRows.value = result.meta?.total || 0;
   await nextTick();
@@ -279,9 +286,28 @@ function setupScrollObserver() {
   }, {rootMargin:'320px'});
   scrollObserver.observe(loadMoreSentinel.value);
 }
+let requestFilterDebounce = null;
+function handleRequestFiltersChange(filters) {
+  if (view.value !== 'requests') return;
+  const next = {query:String(filters.query || '').trim(), status:String(filters.status || ''), target:String(filters.target || '')};
+  if (Object.keys(next).every(key => requestFilters[key] === next[key])) return;
+  Object.assign(requestFilters, next);
+  // Invalidate pages from the previous filter before the debounced fetch starts.
+  ++viewGeneration;
+  loadingMore.value = false;
+  hasMore.value = false;
+  moreError.value = '';
+  scrollObserver?.disconnect();
+  clearTimeout(requestFilterDebounce);
+  requestFilterDebounce = setTimeout(() => {
+    requestFilterDebounce = null;
+    if (initialized.value && view.value === 'requests') loadSection(true);
+  }, 240);
+}
 async function loadSection(preserveRows = false) {
   const generation = ++viewGeneration;
   if (!preserveRows) loading.value = true;
+  loadingMore.value = false;
   moreError.value = ''; hasMore.value = false; nextPage.value = 1;
   if (!preserveRows) totalRows.value = 0;
   scrollObserver?.disconnect();
@@ -539,6 +565,8 @@ watch(() => route.name, name => {
   if (name === 'attempt-funnel') attemptMode.value = 'funnel';
   else if (name === 'attempts') attemptMode.value = can('attempts.view') ? 'kanban' : 'funnel';
   query.value = '';
+  Object.assign(requestFilters, {query:'',status:'Открыт',target:''});
+  clearTimeout(requestFilterDebounce);
   if (initialized.value) { error.value=''; loadSection(); }
 }, { immediate: true });
 onMounted(() => {
@@ -549,6 +577,7 @@ onBeforeUnmount(() => {
   ++viewGeneration;
   scrollObserver?.disconnect();
   window.removeEventListener('scroll', onContentScroll, true);
+  clearTimeout(requestFilterDebounce);
 });
 watch(loadMoreSentinel, () => nextTick(setupScrollObserver), {flush:'post'});
 let filterDebounce = null;
@@ -616,7 +645,7 @@ onBeforeUnmount(() => clearTimeout(filterDebounce));
       <SpecialistsAbsenceRoster v-else-if="view==='specialists'" :clients="clients" />
       <LeadsBoard v-else-if="view==='leads'" :leads="overview.leads" :employees="employees" :statuses="leadStatuses" :can-manage="can('leads.manage')" @open="selectedLead=$event" @move="moveLead"/>
       <template v-else-if="view==='contacts'"><section class="clients-simple-registry"><UiFilterBar><input v-model="query" class="registry-search" type="search" placeholder="Поиск по ФИО"><UiSearchSelect v-model="contactClientFilter" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/></UiFilterBar><div class="irlix-registry-scroll"><UiRegistryTable class="shared-registry-content" table-class="irlix-data-table" :columns="['35%','65%']" min-width="900px" aria-label="Контактные лица" density="compact"><template #head><tr><th>ФИО</th><th>Клиенты / должности</th></tr></template><tr v-for="c in filteredContacts" :key="c.id" class="contact-clickable-row" tabindex="0" role="button" @click="openContactCard(c)" @keydown.enter.prevent="openContactCard(c)" @keydown.space.prevent="openContactCard(c)"><td><strong>{{c.full_name}}</strong></td><td>{{contactBindingsText(c)}}</td></tr></UiRegistryTable><div v-if="hasMore || loadingMore || moreError" ref="loadMoreSentinel" class="clients-load-more" role="status" aria-live="polite"><template v-if="loadingMore"><span class="clients-load-spinner" aria-hidden="true"></span> Загружаем контакты…</template><button v-else-if="moreError" type="button" @click="moreError='';loadMore()">Ошибка подгрузки. Повторить</button><span v-else>Прокрутите для загрузки следующих контактов</span></div></div></section></template>
-      <RequestsWorkflowView v-else-if="['requests','positions'].includes(view) || (view==='attempts' && attemptMode==='kanban' && can('attempts.view'))" :view="view" :mode="requestMode" :requests="overview.requests" :clients="clients" :leads="overview.leads" :employees="employees" :departments="departments" :access="contourAccess" :background-blocked="!!selectedClient||!!formKind" @card-open="workflowCardOpen=$event" @open-client="id=>selectedClient=clients.find(client=>Number(client.id)===Number(id))||{id}" :technology-options="requestTechnologyOptions" :direction-options="productionDirectionOptions" :level-options="requestPositionLevels" @changed="refreshCurrent" @connect-attempt="createFromAttempt" />
+      <RequestsWorkflowView v-else-if="['requests','positions'].includes(view) || (view==='attempts' && attemptMode==='kanban' && can('attempts.view'))" :view="view" :mode="requestMode" :requests="overview.requests" :clients="clients" :leads="overview.leads" :employees="employees" :departments="departments" :access="contourAccess" :background-blocked="!!selectedClient||!!formKind" @card-open="workflowCardOpen=$event" @open-client="id=>selectedClient=clients.find(client=>Number(client.id)===Number(id))||{id}" :technology-options="requestTechnologyOptions" :direction-options="productionDirectionOptions" :level-options="requestPositionLevels" @request-filters-change="handleRequestFiltersChange" @changed="refreshCurrent" @connect-attempt="createFromAttempt" />
       <AttemptFunnelView v-else-if="view==='attempts' && attemptMode==='funnel' && can('attempts.analytics.view')" />
       <ClientMembersRegistry v-else-if="view==='members'" :clients="clients" :employees="employees" :can-manage="can('members.manage')" :initial-client-id="memberRegistryClientId" @changed="refreshCurrent" />
       <template v-else-if="view==='cashflow'"><CashFlowView v-model:month="cashflowMonth" /></template>

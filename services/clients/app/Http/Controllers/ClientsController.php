@@ -38,7 +38,7 @@ class ClientsController extends Controller
                 $page,
                 $perPage,
                 $httpRequest->integer('lead_id') ?: null,
-                $httpRequest->only(['query', 'responsible', 'department_employee_ids', 'manager_employee_ids', 'technologies', 'activity', 'date', 'client_id']),
+                $httpRequest->only(['query', 'responsible', 'department_employee_ids', 'manager_employee_ids', 'technologies', 'activity', 'date', 'client_id', 'request_status', 'request_target']),
                 $httpRequest->attributes->get('clients_overview_client_ids'),
                 $httpRequest->attributes->get('clients_overview_lead_employee_ids'),
                 $httpRequest->attributes->get('clients_overview_contact_ids'),
