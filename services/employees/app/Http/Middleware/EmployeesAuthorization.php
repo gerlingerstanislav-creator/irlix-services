@@ -36,7 +36,7 @@ class EmployeesAuthorization
         }
         // Brandbook issuance requires a real corporate identity and a current
         // persisted special-role assignment. Never trust preview / role headers.
-        if ($request->is('api/brandbook/session')) {
+        if ($request->is('api/brandbook/session', 'api/design-system/session')) {
             if ($request->header('X-Irlix-Role-Preview')) return response()->json(['message' => 'Role preview cannot authorize Brandbook'], 403);
             $request->attributes->set('employees_access', $realAccess);
             return $next($request);

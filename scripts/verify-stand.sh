@@ -73,7 +73,10 @@ check_body "Employees direct staffing route" http://127.0.0.1/employees/staff-po
 check_body "Employees direct roles route" http://127.0.0.1/employees/roles web "IRLIX Services"
 check_body "Employees direct audit route" http://127.0.0.1/employees/audit web "IRLIX Services"
 check_body "Vacations frontend" http://127.0.0.1/vacations/ vacations-web 'id=.app.'
-check_body "Design System" http://127.0.0.1/design-system/ design-system "IRLIX Design System"
+check_status "Anonymous Design System root gated" http://127.0.0.1/design-system/ 302
+check_status "Anonymous Design System deep link gated" http://127.0.0.1/design-system/components/ 302
+check_status "Anonymous Design System JS gated" http://127.0.0.1/design-system/assets/missing.js 302
+check_status "Design System gate endpoint internal-only" http://127.0.0.1/_design_system_gate 404
 check_status "Anonymous Brandbook root gated" http://127.0.0.1/brandbook/ 302
 check_status "Anonymous Brandbook deep link gated" http://127.0.0.1/brandbook/colors/ 302
 check_status "Anonymous Brandbook SVG gated" http://127.0.0.1/brandbook/downloads/irlix-logo-dark-background.svg 302
