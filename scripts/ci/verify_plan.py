@@ -125,16 +125,17 @@ def main():
         assert container, f"Missing container: {service}"
         running = subprocess.check_output([*sudo, "docker", "inspect", "-f", "{{.State.Running}}", container], text=True).strip()
         assert running == "true", f"Container is not running: {service}"
+    # The protected frontends are shared security and navigation dependencies.
+    # Check the real app identities on *every* release, including smoke-only
+    # or script-only plans where no application container is selected.
+    verify_brandbook(host)
+    verify_design_system(host)
     for c in data["components"]:
         if not selected.intersection([c["service"], *c.get("aliases", [])]):
             continue
+        if c["id"] in {"brandbook", "design-system"}:
+            continue  # Their actual origins and SSO gates were already checked.
         path = c.get("health_path") or c["page_path"]
-        if c["id"] == "brandbook":
-            verify_brandbook(host)
-            continue
-        if c["id"] == "design-system":
-            verify_design_system(host)
-            continue
         try:
             body = subprocess.check_output(["curl", "-H", f"Host: {host}", "-fsS", "--connect-timeout", "2", "--max-time", "10",
                                             "--retry", "5", "--retry-all-errors", "--retry-delay", "1", "http://127.0.0.1" + path], text=True)

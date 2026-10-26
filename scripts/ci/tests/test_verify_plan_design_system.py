@@ -27,6 +27,14 @@ class DesignSystemSmokeTests(unittest.TestCase):
         self.assertEqual(fetch.call_args_list[-1].args[0][-1],
                          "http://127.0.0.1:8083/navigation/")
 
+    def test_protected_frontends_are_verified_even_for_empty_deploy_plan(self):
+        source = (Path(__file__).resolve().parents[1] / "verify_plan.py").read_text()
+        main_body = source.split("def main():", 1)[1]
+        # Must be outside the per-component selected-services loop.
+        selected_loop = main_body.index('for c in data["components"]:')
+        self.assertLess(main_body.index("    verify_brandbook(host)"), selected_loop)
+        self.assertLess(main_body.index("    verify_design_system(host)"), selected_loop)
+
     @patch("verify_plan.subprocess.check_output")
     def test_public_design_system_is_rejected(self, fetch):
         fetch.side_effect = lambda cmd, **_: response(cmd, gate="200")

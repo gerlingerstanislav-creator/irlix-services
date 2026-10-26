@@ -49,6 +49,8 @@ class FinanceVerificationTests(unittest.TestCase):
                 with patch.object(v, "ROOT", root), patch.object(v, "registry", return_value={"components": components}), \
                         patch.object(v, "compose_command", return_value=["docker", "compose"]), \
                         patch.object(v.subprocess, "check_output", side_effect=output) as request, \
+                        patch.object(v, "verify_brandbook") as brandbook, \
+                        patch.object(v, "verify_design_system") as design_system, \
                         patch.object(v.subprocess, "run") as run:
                     if finance_status == "ok":
                         v.main()
@@ -58,6 +60,8 @@ class FinanceVerificationTests(unittest.TestCase):
                         with self.assertRaises(AssertionError):
                             v.main()
                         run.assert_not_called()
+                    brandbook.assert_called_once_with("example.invalid")
+                    design_system.assert_called_once_with("example.invalid")
                     self.assertTrue(any("^IRLIX_PUBLIC_URL=" in call.args[0] and "grep" in call.args[0]
                                         for call in request.call_args_list))
                     self.assertTrue(any(call.args[0][-1].endswith("/finance/health") for call in request.call_args_list))
