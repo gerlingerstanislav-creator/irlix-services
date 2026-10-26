@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "test": "node --test tests/workflow.test.js tests/absence-alerts.test.mjs tests/partner-roster-polish.test.mjs tests/clientMemberView.test.js tests/clientCardLayout.test.js tests/reporting-overtime.test.mjs tests/reporting-timesheets.test.mjs && node --test tests/cashFlowRows.test.mjs",
+    "test": "node --test tests/workflow.test.js tests/absence-alerts.test.mjs tests/partner-roster-polish.test.mjs tests/clientMemberView.test.js tests/clientMemberCardView.test.mjs tests/clientMemberCardLayout.test.mjs tests/clientCardLayout.test.js tests/reporting-overtime.test.mjs tests/reporting-timesheets.test.mjs && node --test tests/cashFlowRows.test.mjs",
     "dev": "vite --host 0.0.0.0"
   },
   "dependencies": {
