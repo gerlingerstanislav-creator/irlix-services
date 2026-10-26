@@ -275,6 +275,25 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.locator('.partner-card-overlay').waitFor({state:'detached'});
   await page.locator('.partners-registry .partner-parent .partner-name').filter({hasText:'Synthetic Agency Updated'}).waitFor();
   await page.getByRole('button',{name:'Synthetic Partner',exact:true}).click();
+  // Teleported drawers should use the 14px design-system type rather than the browser default.
+  const specialistLayout=await page.locator('.irlix-drawer').last().evaluate(drawer=>{
+    const body=drawer.querySelector('.irlix-drawer-body');
+    const fields=[...drawer.querySelectorAll('.partner-field')];
+    const field=label=>fields.find(row=>row.querySelector('.partner-field__label')?.textContent.trim()===label);
+    return {
+      fontSize:getComputedStyle(drawer).fontSize,
+      topGap:Math.round(field('ФИО').getBoundingClientRect().top-body.getBoundingClientRect().top),
+      nameTop:Math.round(field('ФИО').getBoundingClientRect().top),
+      partnerTop:Math.round(field('Партнёр').getBoundingClientRect().top),
+      activityTop:Math.round(field('Активность').getBoundingClientRect().top),
+      commentTop:Math.round(field('Комментарий').getBoundingClientRect().top),
+    };
+  });
+  assert.equal(specialistLayout.fontSize,'14px','Shared drawer body font is 14px');
+  assert.ok(specialistLayout.topGap<=24,'Specialist card has no extra top spacer');
+  assert.ok(specialistLayout.nameTop<specialistLayout.partnerTop&&specialistLayout.partnerTop<specialistLayout.commentTop,'Specialist fields are compact and ordered');
+  assert.ok(Math.abs(specialistLayout.partnerTop-specialistLayout.activityTop)<=2,'Partner and activity share one row');
+  await page.screenshot({path:screenshotDir+'/clients-partner-specialist-compact.png',fullPage:true});
   await page.getByRole('button',{name:'Редактировать: ФИО',exact:true}).click();
   await page.getByLabel('ФИО',{exact:true}).fill('Synthetic Partner Updated');
   patched=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/clients/partner-specialists/9'&&r.request().method()==='PATCH');

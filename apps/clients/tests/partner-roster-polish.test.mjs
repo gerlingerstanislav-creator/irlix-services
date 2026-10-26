@@ -41,3 +41,21 @@ test('partner card follows ClientCard shell, About tab and explicit history comp
  assert.match(tabs,/@submit="addNote"/);
  assert.match(tabs,/await mutate\('\/api\/clients\/partners\/'.*\/history'/);
 });
+
+
+test('teleported shared drawers use the design system body font size', () => {
+ const css = source('../../../packages/ui/src/styles/base.css');
+ const tokens = source('../../../packages/ui/src/styles/tokens.css');
+ assert.match(tokens, /--irlix-font-size-body:\s*14px/);
+ assert.match(css, /\.irlix-drawer\s*\{[^}]*font-size:var\(--irlix-font-size-body,14px\)/s);
+});
+
+test('specialist drawer removes double padding and lays out compact fields', () => {
+ const view = source('../src/components/PartnersRegistry.vue');
+ assert.match(view, /\.partner-card--compact\{padding:0 0 16px\}/);
+ assert.match(view, /partner-fields--specialist/);
+ assert.match(view, /\.partner-fields--specialist\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+ assert.match(view, /field\.key==='full_name'/);
+ assert.match(view, /@media\(max-width:520px\)\{\.partner-fields--specialist\{grid-template-columns:1fr\}\}/);
+ assert.match(view, /\.partner-card-drawer\{[^}]*font-size:var\(--irlix-font-size-body,14px\)/);
+});

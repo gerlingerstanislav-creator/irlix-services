@@ -29,10 +29,10 @@ const partnerFields = [
  { key: 'description', label: 'Описание / комментарий', kind: 'textarea' },
 ];
 const specialistFields = [
- { key: 'partner_id', label: 'Партнёр', kind: 'partner' },
  { key: 'full_name', label: 'ФИО' },
- { key: 'comment', label: 'Комментарий', kind: 'textarea' },
+ { key: 'partner_id', label: 'Партнёр', kind: 'partner' },
  { key: 'active', label: 'Активность', kind: 'boolean' },
+ { key: 'comment', label: 'Комментарий', kind: 'textarea' },
 ];
 const fields = computed(() => isPartner.value ? partnerFields : specialistFields);
 const groups = computed(() => {
@@ -195,8 +195,8 @@ defineExpose({ openCreatePartner: () => open('partner') });
    <div v-if="selected && (!isPartner || isNew)" class="partner-card partner-card--compact">
     <p v-if="error" class="error-banner" role="alert">{{error}}</p>
     <p v-if="!canManage && !isNew" class="partner-readonly">Только просмотр: для редактирования карточки требуется право управления справочником.</p>
-    <div class="partner-fields" :class="{'partner-about-fields':isPartner}">
-      <article v-for="field in fields" :key="field.key" class="partner-field" :class="{'partner-field--wide':field.kind==='textarea'}">
+    <div class="partner-fields" :class="{'partner-about-fields':isPartner,'partner-fields--specialist':!isPartner}">
+      <article v-for="field in fields" :key="field.key" class="partner-field" :class="{'partner-field--wide':field.kind==='textarea' || (!isPartner && field.key==='full_name')}">
        <span class="partner-field__label">{{field.label}}</span>
        <div class="partner-field__value">
         <template v-if="isNew || editingField === field.key">
@@ -254,7 +254,7 @@ defineExpose({ openCreatePartner: () => open('partner') });
 .partner-comment{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:25%}
 .partner-empty{padding:14px}
 .partner-card-overlay{position:fixed;inset:0;z-index:1150;background:color-mix(in srgb,var(--irlix-color-surface-muted) 28%,transparent);display:flex;justify-content:flex-end}
-.partner-card-drawer{position:relative;width:50vw;max-width:90vw;height:100%;overflow:hidden;background:var(--irlix-color-surface);border-left:1px solid var(--irlix-color-border);box-shadow:-18px 0 50px color-mix(in srgb,var(--irlix-color-shadow-base) 18%,transparent);display:flex;flex-direction:column;container-type:inline-size}
+.partner-card-drawer{position:relative;width:50vw;max-width:90vw;height:100%;overflow:hidden;font-size:var(--irlix-font-size-body,14px);background:var(--irlix-color-surface);border-left:1px solid var(--irlix-color-border);box-shadow:-18px 0 50px color-mix(in srgb,var(--irlix-color-shadow-base) 18%,transparent);display:flex;flex-direction:column;container-type:inline-size}
 .partner-card-breadcrumbs{flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;min-height:var(--irlix-topbar-height);border-bottom:1px solid var(--irlix-color-border);font-size:var(--irlix-font-size-caption)}
 .partner-card-breadcrumbs strong{padding:4px 8px;border-radius:5px;background:var(--irlix-color-surface-muted);color:var(--irlix-color-primary-text)}
 .partner-card-separator{color:var(--irlix-color-text-muted)}
@@ -266,9 +266,12 @@ defineExpose({ openCreatePartner: () => open('partner') });
 .partner-card-hero__identity small{color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption)}
 .partner-card-avatar{width:38px;height:38px;border-radius:9px;background:var(--irlix-color-surface-muted);display:grid;place-items:center;font-weight:700}
 .partner-readonly{color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption);padding:7px 18px;margin:0}
-.partner-card--compact{padding:16px 18px 28px}
+.partner-card--compact{padding:0 0 16px}
 .partner-fields{display:grid;gap:0;align-content:start}
 .partner-about-fields{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 24px}
+.partner-fields--specialist{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px}
+.partner-fields--specialist .partner-field{min-height:0;padding:0;gap:4px}
+.partner-fields--specialist .partner-field__value{min-height:30px;line-height:1.35}
 .partner-field--wide{grid-column:1/-1}
 .partner-field{display:grid;grid-template-columns:minmax(0,1fr);gap:5px;min-width:0;min-height:58px;padding:10px 0}
 .partner-field__label{color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-table,12px)}
@@ -283,4 +286,5 @@ defineExpose({ openCreatePartner: () => open('partner') });
 .partner-actions{display:flex;gap:8px;padding:16px 0}
 @container(max-width:680px){.partner-about-fields{grid-template-columns:1fr}}
 @media(max-width:700px){.partner-card-drawer{width:100vw;max-width:100vw}}
+@media(max-width:520px){.partner-fields--specialist{grid-template-columns:1fr}}
 </style>
