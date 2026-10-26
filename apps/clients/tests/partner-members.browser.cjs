@@ -40,6 +40,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await nav.getByRole('button',{name:'Специалисты',exact:true}).click();
   await page.getByRole('table').getByText('Synthetic Employee',{exact:true}).waitFor();
   await nav.getByRole('button',{name:'Клиенты',exact:true}).click();
+  await page.mouse.move(850, 500);
+  await page.waitForFunction(() => {
+   const labels=document.querySelector('.irlix-app-sidebar .nav-label-viewport');
+   return labels && getComputedStyle(labels).pointerEvents==='none';
+  });
 
   await page.getByRole('button',{name:'Развернуть клиента',exact:true}).click();
   await page.getByRole('button',{name:'＋ участник',exact:true}).click();
