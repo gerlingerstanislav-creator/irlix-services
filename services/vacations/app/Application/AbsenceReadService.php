@@ -73,7 +73,8 @@ final class AbsenceReadService
     {
         $query = Absence::query()->select([
             'employee_id', 'type', 'status', 'starts_on', 'ends_on',
-        ])->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from);
+        ])->whereDate('starts_on', '<=', $to)
+            ->where(fn ($q) => $q->whereNull('ends_on')->orWhereDate('ends_on', '>=', $from));
         if ($employeeIds) $query->whereIn('employee_id', array_values(array_unique($employeeIds)));
         return $this->rows($query->orderBy('employee_id')->orderBy('starts_on'));
     }
