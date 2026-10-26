@@ -179,3 +179,8 @@ Clients exception (2026-10-08): `platform-tester` without `platform-admin` canno
 ### Packaging invariant for FOT routes
 
 The Employees Docker image must include `routes/fot.php` alongside `routes/api.php`, because the latter requires the former during Laravel bootstrap. Image builds now lint the additional route file and fail if the compiled Laravel route list does not contain FOT routes. This addresses the production deployment failure of 19 October 2026; a successful PHP lint of `api.php` alone is not sufficient. The Chromium Employees navigation smoke test uses a synthetic platform-admin and explicitly marks synthetic positions as `salary_visible` to match the role-scoped salary visibility contract.
+
+
+### Historical Vacations directory (2026-10-26)
+
+GET `/api/vacations-directory?historical_year=YYYY` (2000–2100) returns a sanitized historical roster and authorized department list. A returned employee has `id`, `full_name`, `employment_status`, `department_id/name`, and `employment_segments: [{from,to,department_id,department_name}]`, all date bounds inclusive. Employment periods from `employment_periods` are intersected with `employment_assignment_history`, so transfer dates and rehires are represented correctly. A missing assignment for a legacy period falls back to the department snapshot from that employment period. The caller's **current** Employees organizational scope constrains all returned segments; historical membership never expands write permissions or exposes salary/private fields. The original `/api/vacations-directory` without the query remains unchanged for other consumers.
