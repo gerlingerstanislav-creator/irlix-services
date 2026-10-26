@@ -11,7 +11,7 @@ class ClientContourPermissionsController extends Controller
 {
     public function me(Request $request, ClientContourAccess $resolver)
     {
-        return response()->json(['data' => $resolver->resolve($request)]);
+        return response()->json(['data' => $request->attributes->get('client_contour_access') ?? $resolver->resolve($request)]);
     }
 
     public function index(Request $request, ClientContourAccess $resolver)

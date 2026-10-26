@@ -27,3 +27,48 @@
 }
 .content>.clients-simple-registry>.irlix-registry-scroll{flex:1 1 auto;min-height:0}
 
+
+
+/* Progressive registries: bottom status stays inside the scrolling viewport. */
+.clients-load-more {
+  min-height:64px;
+  display:flex;
+  flex:none;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  padding:16px;
+  background:var(--irlix-color-surface);
+  border-top:1px solid var(--irlix-color-border);
+  color:var(--irlix-color-text-muted);
+  font-size:var(--irlix-font-size-table);
+  font-weight:600;
+  text-align:center;
+}
+.clients-load-more--floating {
+  position:sticky;
+  bottom:0;
+  z-index:9;
+  width:100%;
+  box-shadow:0 -2px 8px color-mix(in srgb, var(--irlix-color-shadow-base) 8%, transparent);
+}
+.clients-load-more button {
+  padding:8px 12px;
+  border:1px solid var(--irlix-color-border);
+  border-radius:8px;
+  background:var(--irlix-color-surface);
+  color:var(--irlix-color-primary-text);
+  cursor:pointer;
+}
+.clients-load-spinner {
+  display:inline-block;
+  width:22px;
+  height:22px;
+  flex:none;
+  border:3px solid var(--irlix-color-border);
+  border-top-color:var(--irlix-color-primary);
+  border-radius:50%;
+  animation:clients-load-spin .75s linear infinite;
+}
+@keyframes clients-load-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .clients-load-spinner { animation:none; border-style:dashed; } }

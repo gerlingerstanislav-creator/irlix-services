@@ -78,9 +78,13 @@ class ClientsAccountingAccess
             if (!is_array($actor)) return response()->json(['message' => 'Employee profile is unavailable'], 403);
         }
         $id = (int) $actor['id'];
-        $directory = Http::withToken((string) $token)->acceptJson()->timeout(8)->get($base.'/clients-directory');
-        if (!$directory->successful()) return response()->json(['message' => 'Employees directory is unavailable'], 503);
-        $teamEmployeeIds = collect($directory->json('data.employees', []))
+        $directoryData = $request->attributes->get('clients_employees_directory');
+        if (!is_array($directoryData)) {
+            $directory = Http::withToken((string) $token)->acceptJson()->timeout(8)->get($base.'/clients-directory');
+            if (!$directory->successful()) return response()->json(['message' => 'Employees directory is unavailable'], 503);
+            $directoryData = (array) $directory->json('data', []);
+        }
+        $teamEmployeeIds = collect($directoryData['employees'] ?? [])
             ->filter(fn ($row) => in_array((int) ($row['department_id'] ?? 0), $access['department_ids'], true))
             ->pluck('id')->map(fn ($value) => (int) $value)->all();
         $employeeIdsForScope = function (string $scope) use ($id, $teamEmployeeIds): ?array {
@@ -136,6 +140,26 @@ class ClientsAccountingAccess
         ]));
         $ownsClientView = fn (?int $clientId): bool => $clientId !== null && in_array($clientId, array_values(array_unique([...$ownClients, ...$clientViewClients])), true);
         $ownsClientManage = fn (?int $clientId): bool => $clientId !== null && in_array($clientId, array_values(array_unique([...$clientManageClients, ...$accountClients])), true);
+        // Provide scope-safe candidates before pagination. The existing response
+        // projection below remains defense-in-depth for every legacy consumer.
+        $request->attributes->set('clients_overview_client_ids', array_values(array_unique([...$ownClients, ...$clientViewClients])));
+        $request->attributes->set('clients_overview_lead_employee_ids', $employeeIdsForPermission('leads.view'));
+        if ($request->path() === 'api/overview' && $request->query('section') === 'contacts') {
+            $visibleLeadEmployees = $employeeIdsForPermission('leads.view');
+            $visibleLeadIds = DB::table('leads')
+                ->when($visibleLeadEmployees !== null,
+                    fn ($query) => $query->whereIn('responsible_employee_id', $visibleLeadEmployees ?: [0]))
+                ->pluck('id')->all();
+            $visibleClientIds = array_values(array_unique([...$ownClients, ...$clientViewClients]));
+            $visibleContactIds = DB::table('contact_relations')
+                ->where('active', true)
+                ->where(function ($query) use ($visibleLeadIds, $visibleClientIds) {
+                    $query->where(fn ($relation) => $relation->where('entity_type', 'lead')->whereIn('entity_id', $visibleLeadIds))
+                        ->orWhere(fn ($relation) => $relation->where('entity_type', 'client')->whereIn('entity_id', $visibleClientIds));
+                })->distinct()->pluck('contact_person_id')->all();
+            $request->attributes->set('clients_overview_contact_ids', $visibleContactIds);
+        }
+
         $isProductionManager = in_array('department-manager', $access['roles'] ?? [], true);
         $hasClientServiceRole = count(array_intersect(
             ['account-manager', 'accounting-head', 'client-service-head', 'sales-manager', 'sales-head'],
@@ -256,6 +280,17 @@ class ClientsAccountingAccess
         elseif ($path === 'api/reporting-period-lock' || $path === 'api/absence-approvers') $allowed = !$request->has('client_id') || $owns((int) $request->query('client_id'));
         elseif (!in_array($path, ['api/overview', 'api/cash-flow', 'api/attempt-funnel'], true)) $allowed = false;
         if (!$allowed) return response()->json(['message' => 'Клиент или запрос вне вашей области доступа.'], 403);
+
+        if ($path === 'api/overview' && $request->query('section') === 'lead-context') {
+            $leadEmployeeIds = $employeeIdsForPermission('leads.view');
+            $leadId = $request->integer('lead_id');
+            if (!$this->accessResolver->allows($access, 'leads.view') || !$leadId
+                || !DB::table('leads')->where('id', $leadId)
+                    ->when($leadEmployeeIds !== null, fn ($query) => $query->whereIn('responsible_employee_id', $leadEmployeeIds ?: [0]))
+                    ->exists()) {
+                return response()->json(['message' => 'Лид вне вашей области доступа.'], 403);
+            }
+        }
 
         $request->attributes->set('clients_scope_authorized', true);
         $response = $next($request);

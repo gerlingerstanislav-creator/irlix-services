@@ -1,6 +1,6 @@
 <script setup>
 import { displayEmployeeName } from './displayEmployeeName';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiTooltip, UiViewSwitch, UiRegistryTable, UiErrorState } from '@irlix/ui';
 import ClientsSidebar from './components/ClientsSidebar.vue';
@@ -24,10 +24,23 @@ import AttemptFunnelView from './components/AttemptFunnelView.vue';
 import LeadsBoard from './components/LeadsBoard.vue';
 import LeadCard from './components/LeadCard.vue';
 
+const initialAccess = inject('clientsInitialAccess', null);
 const route = useRoute();
 const router = useRouter();
 const view = computed(() => route.meta.section || 'not-found');
 const loading = ref(false);
+const loadingMore = ref(false);
+const hasMore = ref(false);
+const nextPage = ref(1);
+const totalRows = ref(0);
+const moreError = ref('');
+const loadMoreSentinel = ref(null);
+const initialized = ref(false);
+const catalogClients = ref([]);
+const specialistCatalogLoaded = ref(false);
+let leadContextId = null;
+let viewGeneration = 0;
+let scrollObserver = null;
 const error = ref('');
 const query = ref('');
 const contactClientFilter = ref('');
@@ -57,6 +70,8 @@ const partnerCatalog = ref([]);
 // active partner organizations; active is not part of that DTO.
 const partnerOptions = computed(() => partnerCatalog.value.filter(s=>(s.active===undefined||Boolean(Number(s.active)))&&s.partner_id).map(s=>({value:String(s.id),label:s.partner_name+' — '+s.full_name})));
 const selectedLead = ref(null);
+const leadCardContacts = ref([]);
+const leadCardRequests = ref([]);
 const selectedClient = ref(null);
 const workflowCardOpen=ref(false);
 const requestMode = ref(rememberedView('requests.mode', 'tree', ['tree','list','kanban']));
@@ -188,26 +203,165 @@ const changeAttemptMode = (mode) => {
   if (route.name !== target) router.push({ name: target, query: route.query, hash: route.hash });
 };
 async function api(url, options = {}) { const response = await fetch(url, { ...options, headers: { Accept:'application/json', 'Content-Type':'application/json', ...(options.headers || {}) } }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.message || Object.values(body.errors || {}).flat().join(', ') || `HTTP ${response.status}`); return body; }
+const normalizeClients = rows => rows.map(c => ({
+  ...c, id:Number(c.id),
+  projects:(c.projects || []).map(p => ({ ...p, id:Number(p.id), displayName:p.name || 'Основной проект',
+    members:(p.members || []).map(m => ({...m, id:Number(m.id), terms:(m.terms || []).map(t => ({...t,id:Number(t.id)}))})) })),
+  client_members:(c.client_members || []).map(m => ({...m,id:Number(m.id),terms:(m.terms || []).map(t=>({...t,id:Number(t.id)})),projects:(m.projects||[]).map(p=>({...p,id:Number(p.id)}))})),
+}));
+const sectionForView = section => ({
+  clients:'clients', leads:'leads', contacts:'contacts', requests:'requests',
+  positions:'requests', attempts:'requests', reports:'reports',
+})[section] || null;
+const needsCatalog = section => ['clients','leads','contacts','requests','positions','attempts','members','reports'].includes(section);
+const needsLeads = section => ['requests','positions','attempts'].includes(section);
+const sectionParams = (section, page) => {
+  const params = {section, page:String(page), per_page:'80'};
+  if (section === 'contacts') {
+    if (query.value.trim()) params.query = query.value.trim();
+    if (contactClientFilter.value) params.client_id = contactClientFilter.value;
+  }
+  if (section === 'clients') {
+    if (query.value.trim()) {
+      params.query = query.value.trim();
+      const needle = query.value.trim().toLowerCase();
+      params.manager_employee_ids = JSON.stringify(employees.value
+        .filter(employee => displayEmployeeName(employee.full_name).toLowerCase().includes(needle))
+        .map(employee => Number(employee.id)));
+    }
+    if (clientFilters.responsible) params.responsible = clientFilters.responsible;
+    if (clientFilters.department) {
+      params.department_employee_ids = JSON.stringify(employees.value
+        .filter(employee => String(employee.department_id || '') === String(clientFilters.department))
+        .map(employee => Number(employee.id)));
+    }
+    if (clientFilters.technology) {
+      params.technologies = JSON.stringify([...(clientTechnologyDescendants.value.get(clientFilters.technology) || new Set([clientFilters.technology]))]);
+    }
+    if (clientFilters.activity) params.activity = clientFilters.activity;
+    params.date = localDateValue();
+  }
+  return new URLSearchParams(params);
+};
+async function fetchOverviewPage(section, page, generation) {
+  const result = await api('/api/clients/overview?'+sectionParams(section, page));
+  if (generation !== viewGeneration) return;
+  const key = section === 'reports' ? 'reportingPeriods' : section;
+  const rows = key === 'clients' ? normalizeClients(result.data?.[key] || []) : (result.data?.[key] || []);
+  overview[key] = page === 1 ? rows : [...overview[key], ...rows];
+  hasMore.value = !!result.meta?.has_more;
+  nextPage.value = page + 1;
+  totalRows.value = result.meta?.total || 0;
+  await nextTick();
+  setupScrollObserver();
+}
+async function loadMore() {
+  const section = sectionForView(view.value);
+  if (!section || !hasMore.value || loading.value || loadingMore.value || moreError.value) return;
+  const generation = viewGeneration;
+  loadingMore.value = true;
+  try { await fetchOverviewPage(section, nextPage.value, generation); }
+  catch (e) { if (generation === viewGeneration) moreError.value = e.message || String(e); }
+  finally { if (generation === viewGeneration) { loadingMore.value = false; await nextTick(); setupScrollObserver(); } }
+}
+function onContentScroll(event) {
+  const node = event?.target;
+  if (!node?.closest?.('.content') || node.closest('.ui-drawer, .ui-search-select__menu')) return;
+  if (node.scrollHeight > node.clientHeight + 20 && node.scrollHeight - node.scrollTop - node.clientHeight < 420) loadMore();
+}
+function setupScrollObserver() {
+  scrollObserver?.disconnect();
+  scrollObserver = null;
+  if (!hasMore.value || !loadMoreSentinel.value || typeof IntersectionObserver === 'undefined') return;
+  scrollObserver = new IntersectionObserver(entries => {
+    if (entries.some(entry => entry.isIntersecting)) loadMore();
+  }, {rootMargin:'320px'});
+  scrollObserver.observe(loadMoreSentinel.value);
+}
+async function loadSection(preserveRows = false) {
+  const generation = ++viewGeneration;
+  if (!preserveRows) loading.value = true;
+  moreError.value = ''; hasMore.value = false; nextPage.value = 1;
+  if (!preserveRows) totalRows.value = 0;
+  scrollObserver?.disconnect();
+  if (!preserveRows) {
+    Object.assign(overview, {clients:[], leads:[], contacts:[], requests:[], reportingPeriods:[]});
+    catalogClients.value = [];
+    leadContextId = null;
+  }
+  if (!preserveRows) {
+    leadCardContacts.value = [];
+    leadCardRequests.value = [];
+  }
+  try {
+    const section = sectionForView(view.value);
+    if (!allowedSections.value.includes(view.value) && view.value !== 'attempt-funnel') return;
+    const tasks = [];
+    if (section) tasks.push(fetchOverviewPage(section, 1, generation));
+    if (needsCatalog(view.value) && (!preserveRows || !catalogClients.value.length)) tasks.push(api('/api/clients/overview?section=catalog').then(result => {
+      if (generation === viewGeneration) catalogClients.value = normalizeClients(result.data?.clients || []);
+    }));
+    if (needsLeads(view.value)) tasks.push(api('/api/clients/overview?section=lead-catalog').then(result => {
+      if (generation === viewGeneration) overview.leads = result.data?.leads || [];
+    }));
+    if (['clients','requests','positions','attempts','members'].includes(view.value) && !specialistCatalogLoaded.value) {
+      tasks.push(api('/api/specialists/catalog').then(catalog => {
+        specialistTechnologies.value = catalog.data?.technologies || [];
+        specialistCatalogLoaded.value = true;
+      }).catch(() => { specialistTechnologies.value = []; }));
+    }
+    await Promise.all(tasks);
+    if (generation === viewGeneration && selectedLead.value) {
+      selectedLead.value = overview.leads.find(item=>Number(item.id)===Number(selectedLead.value.id)) || selectedLead.value;
+      ensureLeadContext(Number(selectedLead.value.id));
+    }
+  } catch (e) { if (generation === viewGeneration) error.value = e.message || String(e); }
+  finally { if (generation === viewGeneration) { if (!preserveRows) loading.value = false; await nextTick(); setupScrollObserver(); } }
+}
+async function refreshCurrent() { error.value=''; await loadSection(); }
+function openLeadFromClient(lead) {
+  const id = Number(typeof lead === 'object' ? lead?.id : lead);
+  if (id > 0) selectedLead.value = typeof lead === 'object' ? lead : {id};
+}
+async function ensureLeadContext(id) {
+  if (!Number.isInteger(id) || id <= 0 || leadContextId === id) return;
+  const generation = viewGeneration;
+  try {
+    const response = await api('/api/clients/overview?'+new URLSearchParams({section:'lead-context',lead_id:String(id)}));
+    if (generation !== viewGeneration || Number(selectedLead.value?.id) !== id) return;
+    leadContextId = id;
+    leadCardContacts.value = response.data?.contacts || [];
+    leadCardRequests.value = response.data?.requests || [];
+    selectedLead.value = response.data?.lead || selectedLead.value;
+  } catch (e) { if (generation === viewGeneration) error.value = e.message || String(e); }
+}
+watch(selectedLead, lead => {
+  if (lead?.id && initialized.value && leadContextId !== Number(lead.id)) {
+    leadCardContacts.value = [];
+    leadCardRequests.value = [];
+    ensureLeadContext(Number(lead.id));
+  }
+});
 async function load() {
   loading.value = true; error.value = '';
   try {
-    const [directory, data, access] = await Promise.all([api('/api/employees/clients-directory'), api('/api/clients/overview'), api('/api/clients/permissions/me')]);
-    contourAccess.value = access.data || { permissions: {} };
-    // Do not replace unknown/forbidden deep links with the first permitted section.
+    const directory = await api('/api/employees/clients-directory');
+    contourAccess.value = initialAccess || (await api('/api/clients/permissions/me')).data || { permissions: {} };
     if (attemptModes.value.length && !attemptModes.value.includes(attemptMode.value)) attemptMode.value = attemptModes.value[0];
     employees.value = directory.data?.employees || [];
     departments.value = directory.data?.departments || [];
     actorEmployeeId.value = Number(directory.data?.actor?.id) || null;
     accountingEmployeeId.value = directory.data?.accounting ? (Number(directory.data?.actor?.id) || null) : null;
-    Object.assign(overview, data.data || {});
-    overview.clients = (overview.clients || []).map(c => ({ ...c, id:Number(c.id), projects:(c.projects || []).map(p => ({ ...p, id:Number(p.id), displayName:p.name || 'Основной проект', members:(p.members || []).map(m => ({ ...m, id:Number(m.id), terms:(m.terms || []).map(t => ({ ...t, id:Number(t.id) })) })) })), client_members:(c.client_members || []).map(m => ({ ...m, id:Number(m.id), terms:(m.terms || []).map(t => ({ ...t, id:Number(t.id) })), projects:(m.projects || []).map(p => ({...p, id:Number(p.id)})) })) }));
-    overview.leads = overview.leads || []; overview.contacts = overview.contacts || []; overview.requests = overview.requests || []; overview.reportingPeriods = overview.reportingPeriods || [];
-    if(selectedLead.value) selectedLead.value=overview.leads.find(item=>Number(item.id)===Number(selectedLead.value.id))||null;
-    try { const catalog = await api('/api/specialists/catalog'); specialistTechnologies.value = catalog.data?.technologies || []; } catch { specialistTechnologies.value = []; }
-  } catch (e) { error.value = e.message || String(e); } finally { loading.value = false; }
+    initialized.value = true;
+    await loadSection();
+  } catch (e) { error.value = e.message || String(e); loading.value = false; }
 }
 
-const clients = computed(() => overview.clients || []);
+const clients = computed(() => {
+  if (!catalogClients.value.length) return overview.clients;
+  const expanded = new Map(overview.clients.map(client => [Number(client.id), client]));
+  return catalogClients.value.map(client => expanded.get(Number(client.id)) || client);
+});
 const clientOptions = computed(() => clients.value.map(c => ({ value:String(c.id), label:c.name })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const requestTargetOptions=computed(()=>[
   ...clients.value.map(item=>({value:`client:${item.id}`,label:item.name,meta:'клиент'})),
@@ -252,7 +406,7 @@ const clientDepartmentOptions = computed(() => { const values = new Map(); emplo
 const clientIsActive = client => clientHasActiveMembers(client,localDateValue());
 const filteredClients = computed(() => {
   const needle = query.value.trim().toLowerCase();
-  return clients.value.filter((client) => {
+  return overview.clients.filter((client) => {
     if (needle && ![client.name,client.type,client.sector,employeeName(client.account_employee_id),employeeName(client.sales_employee_id)].join(' ').toLowerCase().includes(needle)) return false;
     if (clientFilters.responsible) {
       const [role, id] = clientFilters.responsible.split(':');
@@ -311,7 +465,7 @@ function handleContactChanged(contact) {
 }
 function handleClientChanged(payload) {
   if (payload?.id && Array.isArray(payload.client_relations)) handleContactChanged(payload);
-  else load();
+  else refreshCurrent();
 }
 function openContactCard(contact = null) { selectedContactId.value = contact ? Number(contact.id) : null; contactCardOpen.value = true; }
 function closeContactCard() { contactCardOpen.value = false; selectedContactId.value = null; }
@@ -371,21 +525,46 @@ async function submit() {
     if (formKind.value === 'position') await api(`/api/clients/requests/${form.request_id}/positions`, { method:'POST', body:JSON.stringify({ direction:form.direction||null, technology:form.technology, level:form.level, quantity:Number(form.quantity||1), expected_connection_time:form.expected_connection_time||'Неизвестно', acceptable_tu_format:form.acceptable_tu_format||'Не важно', description:form.description||null }) });
 
     if (formKind.value === 'report') await api('/api/clients/reporting-periods', { method:'POST', body:JSON.stringify({ client_id:Number(form.client_id), period_start:form.period_start, period_end:form.period_end }) });
-    closeForm(); await load(); if(createdLead) selectedLead.value=overview.leads.find(item=>Number(item.id)===Number(createdLead.id))||createdLead;
+    closeForm(); await refreshCurrent(); if(createdLead) selectedLead.value=overview.leads.find(item=>Number(item.id)===Number(createdLead.id))||createdLead;
   } catch (e) { formError.value = e.message || String(e); } finally { saving.value = false; }
 }
 function handleRequestTarget(value){if(value!=='create-lead')return;form.target_id='';Object.assign(quickLeadForm,{name:'',source:'',responsible_employee_id:String(actorEmployeeId.value||'')});quickLeadError.value='';quickLeadOpen.value=true;}
-async function createQuickLead(){quickLeadSaving.value=true;quickLeadError.value='';try{const result=await api('/api/clients/leads',{method:'POST',body:JSON.stringify({name:quickLeadForm.name,source:quickLeadForm.source||null,responsible_employee_id:Number(quickLeadForm.responsible_employee_id)})});await load();form.target_id=`lead:${result.data.id}`;quickLeadOpen.value=false;}catch(e){quickLeadError.value=e.message||String(e);}finally{quickLeadSaving.value=false;}}
-async function patch(url, payload) { try { await api(url, { method:'PATCH', body:JSON.stringify(payload) }); await load(); } catch (e) { error.value = e.message; } }
-async function moveLead({lead,status}) { try { lead.status=status; await api(`/api/clients/leads/${lead.id}`,{method:'PATCH',body:JSON.stringify({status})}); await load(); } catch(e) { error.value=e.message||String(e); await load(); } }
+async function createQuickLead(){quickLeadSaving.value=true;quickLeadError.value='';try{const result=await api('/api/clients/leads',{method:'POST',body:JSON.stringify({name:quickLeadForm.name,source:quickLeadForm.source||null,responsible_employee_id:Number(quickLeadForm.responsible_employee_id)})});await refreshCurrent();form.target_id=`lead:${result.data.id}`;quickLeadOpen.value=false;}catch(e){quickLeadError.value=e.message||String(e);}finally{quickLeadSaving.value=false;}}
+async function patch(url, payload) { try { await api(url, { method:'PATCH', body:JSON.stringify(payload) }); await refreshCurrent(); } catch (e) { error.value = e.message; } }
+async function moveLead({lead,status}) { try { lead.status=status; await api(`/api/clients/leads/${lead.id}`,{method:'PATCH',body:JSON.stringify({status})}); await refreshCurrent(); } catch(e) { error.value=e.message||String(e); await refreshCurrent(); } }
 function createFromAttempt(a) { const client = clients.value.find(c => c.id === Number(a.clientId)); const project = client?.projects?.[0]; openForm('member', { client_id:client?.id, project_id:project?.id, specialist_type:a.is_external?'partner':'employee', specialist_name:a.specialist_name, specialist_id:a.specialist_id, source_attempt_id:a.id, hourly_rate:'', hours_per_day:8 }); }
 watch(() => route.name, name => {
   // Direct entry and Back/Forward must drive the selected attempt tab.
   if (name === 'attempt-funnel') attemptMode.value = 'funnel';
   else if (name === 'attempts') attemptMode.value = can('attempts.view') ? 'kanban' : 'funnel';
   query.value = '';
+  if (initialized.value) { error.value=''; loadSection(); }
 }, { immediate: true });
-onMounted(load);
+onMounted(() => {
+  window.addEventListener('scroll', onContentScroll, true);
+  load();
+});
+onBeforeUnmount(() => {
+  ++viewGeneration;
+  scrollObserver?.disconnect();
+  window.removeEventListener('scroll', onContentScroll, true);
+});
+watch(loadMoreSentinel, () => nextTick(setupScrollObserver), {flush:'post'});
+let filterDebounce = null;
+watch([
+  query,
+  contactClientFilter,
+  () => clientFilters.responsible,
+  () => clientFilters.department,
+  () => clientFilters.technology,
+  () => clientFilters.activity,
+], () => {
+  if (!initialized.value || !['clients','contacts'].includes(view.value)) return;
+  clearTimeout(filterDebounce);
+  filterDebounce = setTimeout(() => { filterDebounce = null; error.value=''; loadSection(true); }, 240);
+});
+onBeforeUnmount(() => clearTimeout(filterDebounce));
+
 </script>
 
 <template>
@@ -409,7 +588,7 @@ onMounted(load);
         <div class="clients-registry">
           <div class="clients-registry-controls">
             <UiFilterBar class="clients-filter-bar"><input v-model="query" class="registry-search" type="search" placeholder="Поиск по клиентам"><UiSearchSelect v-model="clientFilters.responsible" :options="clientResponsibleOptions" placeholder="Ответственный" search-placeholder="Поиск ответственного"/><UiSearchSelect v-model="clientFilters.technology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/><UiSearchSelect v-model="clientFilters.department" :options="clientDepartmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения"/><UiSearchSelect v-model="clientFilters.activity" :options="[{value:'active',label:'Активные'},{value:'inactive',label:'Неактивные'}]" placeholder="Активность" search-placeholder="Поиск"/><UiSearchSelect v-model="connectionScope" :options="[{value:'active',label:'Активные подключения'},{value:'all',label:'Все подключения'}]" placeholder="Подключения" search-placeholder="Поиск" :clearable="false" aria-label="Подключения"/></UiFilterBar>
-            <div class="count">{{filteredClients.length}} клиентов</div>
+            <div class="count">Показано {{filteredClients.length}} · загружено {{overview.clients.length}} из {{totalRows}} клиентов</div>
           </div>
           <div class="client-table">
             <div class="client-head client-grid"><div class="client-name-cell client-name-cell--head"><span class="client-logo-spacer" aria-hidden="true"/><UiTreeToggle :expanded="allVisibleClientsExpanded" :disabled="!filteredClients.length" :label="allVisibleClientsExpanded ? 'Свернуть всех видимых клиентов' : 'Развернуть всех видимых клиентов'" @click="toggleVisibleClients"/><span>Клиент</span></div><div class="client-managers">Аккаунт / Сейлз</div></div>
@@ -423,22 +602,32 @@ onMounted(load);
                 <div v-else class="client-members-empty">Нет сотрудников, подходящих под выбранные фильтры</div>
               </template>
             </div>
+            <div v-if="hasMore || loadingMore || moreError" ref="loadMoreSentinel" class="clients-load-more" role="status" aria-live="polite">
+              <template v-if="loadingMore"><span class="clients-load-spinner" aria-hidden="true"></span> Загружаем ещё клиентов…</template>
+              <button v-else-if="moreError" type="button" @click="moreError='';loadMore()">Ошибка подгрузки. Повторить</button>
+              <span v-else>Прокрутите для загрузки следующих клиентов</span>
+            </div>
           </div>
         </div>
       </template>
       <PartnersRegistry v-else-if="view==='partners'" :can-manage="can('clients.manage')" />
       <LeadsBoard v-else-if="view==='leads'" :leads="overview.leads" :employees="employees" :statuses="leadStatuses" :can-manage="can('leads.manage')" @open="selectedLead=$event" @move="moveLead"/>
-      <template v-else-if="view==='contacts'"><section class="clients-simple-registry"><UiFilterBar><input v-model="query" class="registry-search" type="search" placeholder="Поиск по ФИО"><UiSearchSelect v-model="contactClientFilter" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/></UiFilterBar><div class="irlix-registry-scroll"><UiRegistryTable class="shared-registry-content" table-class="irlix-data-table" :columns="['35%','65%']" min-width="900px" aria-label="Контактные лица" density="compact"><template #head><tr><th>ФИО</th><th>Клиенты / должности</th></tr></template><tr v-for="c in filteredContacts" :key="c.id" class="contact-clickable-row" tabindex="0" role="button" @click="openContactCard(c)" @keydown.enter.prevent="openContactCard(c)" @keydown.space.prevent="openContactCard(c)"><td><strong>{{c.full_name}}</strong></td><td>{{contactBindingsText(c)}}</td></tr></UiRegistryTable></div></section></template>
-      <RequestsWorkflowView v-else-if="['requests','positions'].includes(view) || (view==='attempts' && attemptMode==='kanban' && can('attempts.view'))" :view="view" :mode="requestMode" :requests="overview.requests" :clients="clients" :leads="overview.leads" :employees="employees" :departments="departments" :access="contourAccess" :background-blocked="!!selectedClient||!!formKind" @card-open="workflowCardOpen=$event" @open-client="id=>selectedClient=clients.find(client=>Number(client.id)===Number(id))||{id}" :technology-options="requestTechnologyOptions" :direction-options="productionDirectionOptions" :level-options="requestPositionLevels" @changed="load" @connect-attempt="createFromAttempt" />
+      <template v-else-if="view==='contacts'"><section class="clients-simple-registry"><UiFilterBar><input v-model="query" class="registry-search" type="search" placeholder="Поиск по ФИО"><UiSearchSelect v-model="contactClientFilter" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/></UiFilterBar><div class="irlix-registry-scroll"><UiRegistryTable class="shared-registry-content" table-class="irlix-data-table" :columns="['35%','65%']" min-width="900px" aria-label="Контактные лица" density="compact"><template #head><tr><th>ФИО</th><th>Клиенты / должности</th></tr></template><tr v-for="c in filteredContacts" :key="c.id" class="contact-clickable-row" tabindex="0" role="button" @click="openContactCard(c)" @keydown.enter.prevent="openContactCard(c)" @keydown.space.prevent="openContactCard(c)"><td><strong>{{c.full_name}}</strong></td><td>{{contactBindingsText(c)}}</td></tr></UiRegistryTable><div v-if="hasMore || loadingMore || moreError" ref="loadMoreSentinel" class="clients-load-more" role="status" aria-live="polite"><template v-if="loadingMore"><span class="clients-load-spinner" aria-hidden="true"></span> Загружаем контакты…</template><button v-else-if="moreError" type="button" @click="moreError='';loadMore()">Ошибка подгрузки. Повторить</button><span v-else>Прокрутите для загрузки следующих контактов</span></div></div></section></template>
+      <RequestsWorkflowView v-else-if="['requests','positions'].includes(view) || (view==='attempts' && attemptMode==='kanban' && can('attempts.view'))" :view="view" :mode="requestMode" :requests="overview.requests" :clients="clients" :leads="overview.leads" :employees="employees" :departments="departments" :access="contourAccess" :background-blocked="!!selectedClient||!!formKind" @card-open="workflowCardOpen=$event" @open-client="id=>selectedClient=clients.find(client=>Number(client.id)===Number(id))||{id}" :technology-options="requestTechnologyOptions" :direction-options="productionDirectionOptions" :level-options="requestPositionLevels" @changed="refreshCurrent" @connect-attempt="createFromAttempt" />
       <AttemptFunnelView v-else-if="view==='attempts' && attemptMode==='funnel' && can('attempts.analytics.view')" />
-      <ClientMembersRegistry v-else-if="view==='members'" :clients="clients" :employees="employees" :can-manage="can('members.manage')" :initial-client-id="memberRegistryClientId" @changed="load" />
+      <ClientMembersRegistry v-else-if="view==='members'" :clients="clients" :employees="employees" :can-manage="can('members.manage')" :initial-client-id="memberRegistryClientId" @changed="refreshCurrent" />
       <template v-else-if="view==='cashflow'"><CashFlowView v-model:month="cashflowMonth" /></template>
-      <ReportingPeriodsView v-else-if="view==='reports'" :periods="overview.reportingPeriods" :clients="clients" :employees="employees" :mode="reportMode" v-model:year="reportGanttYear" :create-open="reportCreateOpen" @update:create-open="reportCreateOpen=$event" @changed="load" />
+      <ReportingPeriodsView v-else-if="view==='reports'" :periods="overview.reportingPeriods" :clients="clients" :employees="employees" :mode="reportMode" v-model:year="reportGanttYear" :create-open="reportCreateOpen" @update:create-open="reportCreateOpen=$event" @changed="refreshCurrent" />
       <PermissionsView v-else-if="view==='permissions'" />
+      <div v-if="!['clients','contacts'].includes(view) && (hasMore || loadingMore || moreError)" class="clients-load-more clients-load-more--floating" role="status" aria-live="polite">
+        <template v-if="loadingMore"><span class="clients-load-spinner" aria-hidden="true"></span> Загружаем ещё записи…</template>
+        <button v-else-if="moreError" type="button" @click="moreError='';loadMore()">Ошибка подгрузки. Повторить</button>
+        <span v-else>Прокрутите для загрузки следующих записей</span>
+      </div>
     </main>
-  <ClientMembersRegistry v-if="selectedClientMember" :clients="clients" :employees="employees" :can-manage="can('members.manage')" :focused-client-id="Number(selectedClientMember.clientId)" :focused-member-id="Number(selectedClientMember.id)" only-details @close="selectedClientMember=null" @changed="load" />
-  <LeadCard :lead="selectedLead" :employees="employees" :contacts="overview.contacts" :requests="overview.requests" :statuses="leadStatuses" :can-manage="can('leads.manage')" @close="selectedLead=null" @changed="load" @create-request="lead=>openForm('request',{target_id:`lead:${lead.id}`})" @convert="lead=>openForm('convertLead',{lead_id:lead.id,name:lead.name,sales_employee_id:String(lead.responsible_employee_id),account_employee_id:''})"/>
-  <ClientCard @open-lead="lead=>{selectedLead=(typeof lead==='object'&&lead?.id ? lead : overview.leads.find(item=>Number(item.id)===Number(lead)))||null;}" :z-index="workflowCardOpen?1150:500" :client-id="selectedClient ? Number(selectedClient.id) : null" :employees="employees" :account-options="accountManagerOptions" :clients="clients" :technology-options="requestTechnologyOptions" :can-manage="selectedClient?.can_manage!==false&&can('clients.manage')" @close="selectedClient=null" @changed="handleClientChanged" />
+  <ClientMembersRegistry v-if="selectedClientMember" :clients="clients" :employees="employees" :can-manage="can('members.manage')" :focused-client-id="Number(selectedClientMember.clientId)" :focused-member-id="Number(selectedClientMember.id)" only-details @close="selectedClientMember=null" @changed="refreshCurrent" />
+  <LeadCard :lead="selectedLead" :employees="employees" :contacts="leadCardContacts" :requests="leadCardRequests" :statuses="leadStatuses" :can-manage="can('leads.manage')" @close="selectedLead=null" @changed="refreshCurrent" @create-request="lead=>openForm('request',{target_id:`lead:${lead.id}`})" @convert="lead=>openForm('convertLead',{lead_id:lead.id,name:lead.name,sales_employee_id:String(lead.responsible_employee_id),account_employee_id:''})"/>
+  <ClientCard @open-lead="openLeadFromClient" :z-index="workflowCardOpen?1150:500" :client-id="selectedClient ? Number(selectedClient.id) : null" :employees="employees" :account-options="accountManagerOptions" :clients="clients" :technology-options="requestTechnologyOptions" :can-manage="selectedClient?.can_manage!==false&&can('clients.manage')" @close="selectedClient=null" @changed="handleClientChanged" />
   <ClientTransferControl v-if="selectedClient && selectedClient?.can_manage!==false&&can('clients.manage')&&!selectedClient?.account_employee_id" :client-id="Number(selectedClient.id)" :options="clientServiceTreeOptions" @changed="handleClientChanged" />
   <ContactPersonCard :open="contactCardOpen" :contact-id="selectedContactId" :clients="clients" @close="closeContactCard" @changed="handleContactChanged" />
   <UiDrawer :open="!!formKind" :title="formTitle" :width="formKind==='request'?'680px':'520px'" :z-index="1200" @close="closeForm"><form class="entity-form" :class="{'request-create-form':formKind==='request'}" @submit.prevent="submit"><div v-if="formError" class="error-banner">{{formError}}</div>

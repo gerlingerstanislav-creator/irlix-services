@@ -18,7 +18,8 @@ const start = async () => {
     if (!authenticated) return;
     const response = await auth.fetch('/api/clients/permissions/me', { headers: { Accept: 'application/json' }, cache: 'no-store' });
     if (!response.ok) throw new Error(`Clients access lookup failed (${response.status})`);
-    if ((await response.json())?.data?.clients_service_blocked) {
+    const initialAccess = (await response.json())?.data;
+    if (initialAccess?.clients_service_blocked) {
       showForbidden();
       return;
     }
@@ -29,6 +30,7 @@ const start = async () => {
       return;
     }
     const app = createApp(App);
+    app.provide('clientsInitialAccess', initialAccess);
     app.use(router);
     await router.isReady();
     app.mount('#app');
