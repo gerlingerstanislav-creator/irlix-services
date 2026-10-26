@@ -25,3 +25,27 @@ test('page policy never grants missing permissions, preserves funnel-only access
  assert.deepEqual(allowedClientSections({platform_admin:true,roles:['department-manager'],permissions}),Object.keys(sectionPermissions));
  assert.deepEqual(allowedClientSections({roles:['platform-tester'],permissions:{'clients.view':{allowed:true,scope:'all'}}}),['clients']);
 });
+
+test('Clients routes use documented URLs and preserve legacy query and hash', async () => {
+ const { routes } = await import('../src/routes.js');
+ const named = Object.fromEntries(routes.filter(r=>r.name).map(r=>[r.name,r]));
+ assert.equal(named.clients.path, '/clients/');
+ assert.equal(named.reports.path, '/reporting-periods/');
+ assert.equal(named['attempt-funnel'].path, '/attempt-funnel/');
+ assert.equal(named['attempt-funnel'].meta.section, 'attempts');
+ const legacy = Object.fromEntries(routes.filter(r=>r.redirect).map(r=>[r.path,r]));
+ for (const [path,name] of [['/','clients'],['/reports/','reports']]) {
+   const redirect=legacy[path].redirect;
+   assert.deepEqual(redirect({query:{month:'2026-10',client_id:'4'},hash:'#detail'}),{
+     name,query:{month:'2026-10',client_id:'4'},hash:'#detail'
+   });
+ }
+ assert.equal(named['not-found'].meta.section,'not-found');
+});
+test('Clients funnel direct links respect the analytics grant and browser route state',()=>{
+ const app=readFileSync(new URL('../src/App.vue', import.meta.url),'utf8');
+ assert.match(app,/watch\(\(\) => route\.name,[\s\S]*?immediate:\s*true/);
+ assert.match(app,/route\.name === 'attempt-funnel' && !can\('attempts\.analytics\.view'\)/);
+ assert.match(app,/@update:attempt-mode="changeAttemptMode"/);
+ assert.match(app,/mode === 'funnel' \? 'attempt-funnel' : 'attempts'/);
+});
