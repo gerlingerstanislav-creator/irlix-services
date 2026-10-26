@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { UiAppSidebar, UiAppTopbar, UiButton, UiErrorState } from '@irlix/ui';
+import { UiAppSidebar, UiAppTopbar, UiButton, UiErrorState, UiLoader } from '@irlix/ui';
 import { auth } from './auth';
 import SettingsView from './SettingsView.vue';
 import DOMPurify from 'dompurify';
@@ -320,7 +320,7 @@ onBeforeUnmount(stopTimer);
             </div>
 
             <div v-if="!hasResult" class="result-empty">
-              <div v-if="processing || rendering" class="loader" />
+              <UiLoader v-if="processing || rendering" size="large" :label="processing ? 'Обработка CV' : 'Подготовка документа'" />
               <div v-else class="preview-placeholder" />
               <h2>{{ processing ? 'Разбираем структуру CV' : rendering ? 'Собираем документ' : 'Здесь появится Irlix CV' }}</h2>
               <p>{{ processing ? 'Сервер читает документ, структурирует данные и выполняет запрос к выбранной LLM.' : sourceFile ? 'Нажмите стрелку между окнами, чтобы запустить конвертацию.' : 'Загрузите исходный PDF или DOCX слева.' }}</p>

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { UiAppShell, UiButton, UiBadge, UiSearchSelect, UiPeriodPicker, UiDrawer, UiErrorState } from '@irlix/ui';
+import { UiAppShell, UiButton, UiBadge, UiSearchSelect, UiPeriodPicker, UiDrawer, UiErrorState, UiLoader } from '@irlix/ui';
 import { auth } from './auth';
 
 const sections = [
@@ -423,7 +423,7 @@ onBeforeUnmount(()=>{loadSequence++;});
         <span class="finance-subtle">Источник данных: ручной ввод. Интеграция с 1С не подключена.</span>
         <UiButton variant="secondary" :disabled="busy" @click="load">Обновить</UiButton>
       </div>
-      <div v-if="busy" class="finance-state" role="status">Загрузка финансовых данных…</div>
+      <UiLoader v-if="busy" overlay label="Загрузка финансовых данных" />
       <div v-if="error" class="finance-error" role="alert">{{error}}</div>
       <div v-if="notice" class="finance-success" role="status">{{notice}}</div>
       <UiErrorState v-if="section==='not-found'" :status="404" back-href="/finance/overview/" back-label="К обзору" />

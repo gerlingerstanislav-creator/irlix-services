@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
-import { UiButton, UiDrawer, UiFilterBar, UiIcon, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
+import { UiButton, UiDrawer, UiFilterBar, UiIcon, UiSearchSelect, UiTreeToggle , UiLoader } from '@irlix/ui';
 
 const props = defineProps({ canManage: { type: Boolean, default: false } });
 const data = ref({partners:[], unassigned:[]});
@@ -67,7 +67,7 @@ onMounted(load);
    <UiButton v-if="canManage" @click="open('partner')">＋ Партнёр</UiButton>
   </UiFilterBar>
   <div v-if="error&&!selected" class="error-banner">{{error}} <button @click="load">Повторить</button></div>
-  <div v-if="loading">Загрузка партнёров…</div>
+  <UiLoader v-if="loading" page label="Загрузка партнёров" />
   <div v-else class="partner-tree">
    <div v-for="partner in groups" :key="partner.id" class="partner-group">
     <div class="partner-parent">

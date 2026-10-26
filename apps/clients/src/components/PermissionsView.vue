@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { UiLoader } from '@irlix/ui';
 
 const data = ref({ roles: [], permissions: [], matrix: {}, scopes: [], can_manage: false });
 const loading = ref(false);
@@ -51,7 +52,7 @@ onMounted(load);
   <section class="permissions-page">
     <div class="permissions-intro"><h2>Разрешения контура клиентов</h2><p>Настройки применяются к Clients, Timesheets и следующим сервисам этого контура. Администратор платформы всегда имеет полный доступ. Тестировщику платформы доступ к сервису клиентов закрыт.</p></div>
     <div v-if="error" class="error-banner">{{error}}<button type="button" @click="load">Повторить</button></div>
-    <div v-if="loading" class="empty">Загрузка разрешений…</div>
+    <UiLoader v-if="loading" page label="Загрузка разрешений" />
     <div v-else class="permissions-wrap"><table class="permissions-table"><thead><tr><th>Действие</th><th v-for="role in data.roles" :key="role.key">{{role.label}}</th></tr></thead><tbody><template v-for="group in permissionGroups" :key="group.key"><tr class="irlix-table-group"><th :colspan="data.roles.length+1">{{group.label}}</th></tr><tr v-for="permission in group.permissions" :key="permission.key"><td>{{permission.label}}</td><td v-for="role in data.roles" :key="role.key"><select :value="data.matrix?.[role.key]?.[permission.key]?.scope || 'none'" :disabled="!data.can_manage || role.locked || data.matrix?.[role.key]?.[permission.key]?.locked || saving===`${role.key}:${permission.key}`" @change="setPermission(role, permission, $event.target.value)"><option v-for="scope in data.scopes" :key="scope.key" :value="scope.key">{{scope.label}}</option></select></td></tr></template></tbody></table></div>
   </section>
 </template>

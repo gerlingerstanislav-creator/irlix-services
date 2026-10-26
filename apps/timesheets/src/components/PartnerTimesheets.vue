@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
-import { UiButton, UiFilterBar, UiSearchSelect } from '@irlix/ui';
+import { UiButton, UiFilterBar, UiSearchSelect , UiLoader } from '@irlix/ui';
 import { api } from '../api';
 
 const props=defineProps({month:{type:String,required:true},canManage:{type:Boolean,default:false}});
@@ -100,7 +100,7 @@ watch(()=>props.month,load);onMounted(load);
    <UiButton @click="load" :disabled="loading">Обновить</UiButton>
   </UiFilterBar>
   <div v-if="error" class="partner-hour-error">{{error}}</div>
-  <div v-if="loading">Загрузка таймшитов партнёров…</div>
+  <UiLoader v-if="loading" page label="Загрузка таймшитов партнёров" />
   <template v-else-if="selected">
    <div class="partner-hour-summary">
     <strong>{{selected.client_name}} / {{selected.specialist_name}}</strong>

@@ -19,7 +19,7 @@ const app = createApp({
         id: state.value === 'forbidden' ? 'forbidden-page' : 'auth-loading',
         class: 'mc-empty', role: ['error','forbidden'].includes(state.value) ? 'alert' : 'status',
         style: state.value === 'loading' ? { minHeight: '65vh', display: 'grid', placeItems: 'center' } : {},
-      }, state.value === 'loading' ? h(UiLoader, { label: message.value, showLabel: true }) : message.value);
+      }, state.value === 'loading' ? h(UiLoader, { label: message.value, page: true, showLabel: true }) : message.value);
       if (state.value === 'forbidden') return h(UiAppShell, {
         service: 'migration', currentUser: auth.user, breadcrumbs: [{ label: 'Нет доступа' }],
         onLogout: () => auth.logout(),

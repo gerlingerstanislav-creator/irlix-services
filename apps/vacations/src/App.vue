@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { UiAppTopbar, UiButton, UiPeriodPicker, UiErrorState } from '@irlix/ui';
+import { UiAppTopbar, UiButton, UiPeriodPicker, UiErrorState, UiLoader } from '@irlix/ui';
 import { api } from './api';
 import { typeLabels } from './constants';
 import AppSidebar from './components/AppSidebar.vue';
@@ -120,7 +120,7 @@ onMounted(loadWorkspace);
       <UiErrorState v-else-if="workspace && !availableSections.has(section)" :status="403" back-href="/vacations/" back-label="К моим отсутствиям" />
       <div v-if="error" class="alert floating-alert">{{ error }}</div>
       <div v-if="success" class="success floating-alert">{{ success }}</div>
-      <div v-if="loadingWorkspace" class="empty page-loading">Загрузка Vacations…</div>
+      <UiLoader v-if="loadingWorkspace" page label="Загрузка отпусков" />
 
       <template v-else-if="workspace && availableSections.has(section)">
         <MyAbsencesPage v-if="section==='mine'" :year="year" :profile="workspace.employee" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged()"/>

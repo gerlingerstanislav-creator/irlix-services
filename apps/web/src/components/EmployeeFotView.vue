@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { UiBadge, UiButton, UiDrawer, UiPanel, UiPeriodPicker, UiSearchSelect } from '@irlix/ui';
+import { UiBadge, UiButton, UiDrawer, UiPanel, UiPeriodPicker, UiSearchSelect , UiLoader } from '@irlix/ui';
 import { employeeTreeOptions } from '../staffTree';
 
 const props = defineProps({
@@ -111,7 +111,7 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
     </div>
     <p v-if="error" class="fot-error" role="alert">{{ error }}</p>
     <UiPanel class="fot-table-shell">
-      <div v-if="loading" class="fot-empty">Обновляем расчёты…</div>
+      <UiLoader v-if="loading" page label="Загрузка расчётов ФОТ" />
       <div v-else class="fot-table-scroll">
         <table class="fot-matrix">
           <thead><tr><th>Сотрудник / ФОТ</th><th v-for="month in months" :key="month">{{ month }}</th></tr></thead>

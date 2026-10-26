@@ -2,7 +2,7 @@
 import { displayEmployeeName } from './displayEmployeeName';
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiTooltip, UiViewSwitch, UiRegistryTable, UiErrorState } from '@irlix/ui';
+import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiTooltip, UiViewSwitch, UiRegistryTable, UiErrorState, UiLoader } from '@irlix/ui';
 import ClientsSidebar from './components/ClientsSidebar.vue';
 import { rememberedView, rememberView } from './persistView';
 import { allowedClientSections } from './navigation.js';
@@ -582,7 +582,8 @@ onBeforeUnmount(() => clearTimeout(filterDebounce));
       </template>
     <main class="content" :class="{'content--clients':view==='clients','content--cashflow':view==='cashflow'}">
       <div v-if="error" class="error-banner">{{error}}<button @click="load">Повторить</button></div>
-      <UiErrorState v-if="!titles[view]" :status="404" back-href="/clients/clients/" back-label="К клиентам" />
+      <UiLoader v-if="loading" page label="Загрузка клиентского сервиса" />
+      <UiErrorState v-else-if="!titles[view]" :status="404" back-href="/clients/clients/" back-label="К клиентам" />
       <UiErrorState v-else-if="!loading && (!allowedSections.includes(view) || (route.name === 'attempt-funnel' && !can('attempts.analytics.view')))" :status="403" />
       <template v-else-if="view==='clients'">
         <div class="clients-registry">
@@ -603,7 +604,7 @@ onBeforeUnmount(() => clearTimeout(filterDebounce));
               </template>
             </div>
             <div v-if="hasMore || loadingMore || moreError" ref="loadMoreSentinel" class="clients-load-more" role="status" aria-live="polite">
-              <template v-if="loadingMore"><span class="clients-load-spinner" aria-hidden="true"></span> Загружаем ещё клиентов…</template>
+              <template v-if="loadingMore"><UiLoader size="small" show-label label="Загружаем ещё клиентов…" /></template>
               <button v-else-if="moreError" type="button" @click="moreError='';loadMore()">Ошибка подгрузки. Повторить</button>
               <span v-else>Прокрутите для загрузки следующих клиентов</span>
             </div>
@@ -620,7 +621,7 @@ onBeforeUnmount(() => clearTimeout(filterDebounce));
       <ReportingPeriodsView v-else-if="view==='reports'" :periods="overview.reportingPeriods" :clients="clients" :employees="employees" :mode="reportMode" v-model:year="reportGanttYear" :create-open="reportCreateOpen" @update:create-open="reportCreateOpen=$event" @changed="refreshCurrent" />
       <PermissionsView v-else-if="view==='permissions'" />
       <div v-if="!['clients','contacts'].includes(view) && (hasMore || loadingMore || moreError)" class="clients-load-more clients-load-more--floating" role="status" aria-live="polite">
-        <template v-if="loadingMore"><span class="clients-load-spinner" aria-hidden="true"></span> Загружаем ещё записи…</template>
+        <template v-if="loadingMore"><UiLoader size="small" show-label label="Загружаем ещё записи…" /></template>
         <button v-else-if="moreError" type="button" @click="moreError='';loadMore()">Ошибка подгрузки. Повторить</button>
         <span v-else>Прокрутите для загрузки следующих записей</span>
       </div>
