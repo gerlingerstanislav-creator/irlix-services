@@ -4,7 +4,7 @@ import HistoryTimeline from './HistoryTimeline.vue';
 import { rememberedView, rememberView } from '../persistView';
 import { groupReportingTimesheets } from '../reportingTimesheets';
 import { computed, reactive, ref, watch } from 'vue';
-import { UiBadge, UiButton, UiDrawer, UiSearchSelect, UiKanbanBoard, UiFilterBar, UiTabs, UiStatusCheck } from '@irlix/ui';
+import { UiBadge, UiButton, UiDrawer, UiSearchSelect, UiKanbanBoard, UiFilterBar, UiTabs, UiStatusCheck , UiLoader } from '@irlix/ui';
 
 const props = defineProps({
   periods: { type: Array, default: () => [] },
@@ -458,7 +458,7 @@ function stageDateLabel(period) {
         </div>
       </div></template>
       <div v-if="error" class="drawer-error">{{error}}</div>
-      <div v-if="loadingCard" class="empty">Загрузка…</div>
+      <div v-if="loadingCard" class="period-drawer-loading"><UiLoader label="Загрузка отчётного периода" /></div>
       <div v-else-if="card.period" class="period-drawer" :class="{ 'period-drawer--history': activeTab==='history' }">
         <div class="period-summary">
           <div class="summary-row"><span>Период</span><b>{{dateRu(card.period.period_start)}} — {{dateRu(card.period.period_end)}}</b></div>
@@ -595,5 +595,7 @@ function stageDateLabel(period) {
     column-gap:3px;
   }
 }
+
+.period-drawer-loading { display:flex; flex:1; min-height:240px; align-items:center; justify-content:center; }
 </style>
 

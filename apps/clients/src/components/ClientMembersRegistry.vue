@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { UiButton, UiDrawer, UiFilterBar, UiIcon, UiSearchSelect, UiRegistryTable } from '@irlix/ui';
+import { UiButton, UiDrawer, UiFilterBar, UiIcon, UiSearchSelect, UiRegistryTable , UiLoader } from '@irlix/ui';
 const props=defineProps({clients:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},canManage:{type:Boolean,default:false},initialClientId:{type:Number,default:null},focusedClientId:{type:Number,default:null},focusedMemberId:{type:Number,default:null},onlyDetails:{type:Boolean,default:false}});
 const emit=defineEmits(['close','changed']);
 const clientId=ref(''),rows=ref([]),partners=ref([]),search=ref(''),error=ref(''),loading=ref(false),saving=ref(false),selected=ref(null);
@@ -106,8 +106,8 @@ onMounted(loadPartners);
  <input v-model="search" type="search" placeholder="Поиск по специалистам" aria-label="Поиск специалиста">
  <UiButton v-if="canManage" @click="beginNew">＋ Подключить специалиста</UiButton></UiFilterBar>
  <p v-if="error" class="cm-error">{{error}} <UiButton v-if="onlyDetails" compact @click="emit('close')">Закрыть</UiButton></p>
- <p v-if="loading">Загрузка подключений…</p>
- <div v-if="!onlyDetails" class="cm-list irlix-registry-scroll">
+ <UiLoader v-if="loading" :page="!onlyDetails" label="Загрузка подключений" />
+ <div v-if="!onlyDetails && !loading" class="cm-list irlix-registry-scroll">
   <UiRegistryTable class="shared-registry-content" table-class="irlix-data-table"
     :columns="['40%','20%','20%','20%']" min-width="680px"
     aria-label="Подключения специалистов" density="compact">

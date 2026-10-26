@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue';
-import { UiCheckbox, UiPanel } from '@irlix/ui';
+import { UiCheckbox, UiPanel , UiLoader } from '@irlix/ui';
 
 const matrix = ref(null);
 const error = ref('');
@@ -64,7 +64,7 @@ onMounted(load);
         </tbody>
       </table>
     </div>
-    <p v-else>Загрузка…</p>
+    <UiLoader v-else page label="Загрузка матрицы разрешений" />
   </UiPanel>
 </template>
 
