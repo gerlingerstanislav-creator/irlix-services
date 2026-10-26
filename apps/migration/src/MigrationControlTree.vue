@@ -146,7 +146,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
          <div class="mctrl-tree-node mctrl-tree-node--service">
           <UiTreeToggle :expanded="!!servicesOpen[svc.service]" :label="'Развернуть '+svc.label" @click="toggle(svc.service)"/>
           <strong class="mctrl-tree-title">{{svc.label}}</strong>
-          <UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label"
+          <UiButton variant="ghost" compact class="mctrl-service-settings-trigger" :aria-label="'Настройки подключения: '+svc.label"
             :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
          </div>
         <div class="mctrl-tree-status-stages" :aria-label="'Этапы переноса: '+svc.label">
@@ -211,7 +211,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
      <tr v-for="svc in missingServices" :key="'connection:'+svc.service" class="mctrl-tree-settings-only">
       <th scope="row" class="mctrl-tree-label"><div class="mctrl-tree-node mctrl-tree-node--service">
        <strong class="mctrl-tree-title">{{svc.label}}</strong>
-       <UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label"
+       <UiButton variant="ghost" compact class="mctrl-service-settings-trigger" :aria-label="'Настройки подключения: '+svc.label"
          :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
       </div></th>
       <td class="mctrl-tree-no-data" title="Не участвует в выбранной операции">Вне операции</td>
