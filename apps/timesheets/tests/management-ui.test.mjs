@@ -41,6 +41,15 @@ test('confirmed absence band and legend use orangered, pending absence stays pal
   assert.match(compact, /\.swatch\.management-absence-pending\s*\{[^}]*var\(--irlix-color-absence-border\) 65% 100%/);
 });
 
+test('management rows display connection periods and partner marker after name', () => {
+  assert.match(app, /import \{ buildConnectionPeriodLabels \} from '\.\/management-connection-periods\.js'/);
+  assert.match(management, /row\.isPartner \? ' \(Партнер\)' : ''/);
+  assert.match(management, /<small :title="row\.connectionPeriods">\{\{ row\.connectionPeriods \}\}<\/small>/);
+  assert.doesNotMatch(management, /row\.clientName \}\} · \{\{ row\.memberName/);
+  assert.match(app, /connectionPeriods: staffPeriodLabels\.get/);
+  assert.match(app, /connectionPeriods: partnerPeriodLabels\.get/);
+});
+
 test('management is edge-to-edge with one separator per section', () => {
   assert.match(extra, /\.management-page\s*\{[^}]*margin:0;[^}]*border:0;[^}]*border-radius:0/);
   assert.match(extra, /\.management-page > \.management-filters\s*\{[^}]*padding:10px 12px;[^}]*border:0;[^}]*border-bottom:1px/);
