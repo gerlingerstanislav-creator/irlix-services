@@ -78,6 +78,28 @@ final class AbsenceReadService
         return $this->rows($query->orderBy('employee_id')->orderBy('starts_on'));
     }
 
+    /**
+     * One read over all currently employed employees (not one per attempt).
+     * Only future/current, non-cancelled absences count. Red has priority.
+     * Result is strictly employee_id => red|yellow; no diagnosis/type or dates.
+     */
+    public function absenceAlerts(array $activeIds, string $today, string $oneMonth, string $threeMonths): array
+    {
+        if (!$activeIds) return [];
+        $rows = Absence::query()->whereIn('employee_id', $activeIds)
+            ->whereNotIn('status', ['cancelled', 'rejected'])
+            ->whereDate('starts_on', '<=', $threeMonths)
+            ->where(fn ($query) => $query->whereNull('ends_on')->orWhereDate('ends_on', '>=', $today))
+            ->select(['employee_id', 'starts_on'])->get();
+        $signals = [];
+        foreach ($rows as $absence) {
+            $employeeId = (int) $absence->employee_id;
+            $level = substr((string) $absence->starts_on, 0, 10) <= $oneMonth ? 'red' : 'yellow';
+            if ($level === 'red' || !isset($signals[$employeeId])) $signals[$employeeId] = $level;
+        }
+        return $signals;
+    }
+
     public function upcoming(int $employeeId, string $start, string $end): Collection
     {
         return Absence::query()->where('employee_id', $employeeId)

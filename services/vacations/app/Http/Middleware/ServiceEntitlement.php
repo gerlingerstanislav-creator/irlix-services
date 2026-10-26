@@ -23,7 +23,7 @@ final class ServiceEntitlement
         if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
             $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
             if (!in_array('service:vacations', $roles, true)
-                && !($request->is('api/client-service-calendar') && in_array('service:clients', $roles, true))) {
+                && !($request->is('api/client-service-calendar', 'api/client-service-absence-alerts') && in_array('service:clients', $roles, true))) {
                 return response()->json(['message' => 'Service access denied'], 403);
             }
             return $next($request);

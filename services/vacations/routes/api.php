@@ -14,6 +14,7 @@ Route::get('/production-calendar', [SystemController::class, 'calendar']);
 Route::get('/me', [SystemController::class, 'me']);
 Route::get('/calendar-absences', [SystemController::class, 'calendarAbsences']);
 Route::get('/client-service-calendar', ClientServiceCalendarController::class);
+Route::get('/client-service-absence-alerts', [ClientServiceCalendarController::class, 'alerts']);
 
 Route::get('/attention', [AttentionController::class, 'index']);
 Route::get('/workspace', [WorkspaceController::class, 'overview']);
