@@ -211,7 +211,7 @@ const sectionForView = section => ({
   clients:'clients', leads:'leads', contacts:'contacts', requests:'requests',
   positions:'requests', attempts:'requests', reports:'reports',
 })[section] || null;
-const needsCatalog = section => ['leads','contacts','requests','positions','attempts','members','reports'].includes(section);
+const needsCatalog = section => ['clients','leads','contacts','requests','positions','attempts','members','reports'].includes(section);
 const needsLeads = section => ['requests','positions','attempts'].includes(section);
 const sectionParams = (section, page) => {
   const params = {section, page:String(page), per_page:'80'};
@@ -344,7 +344,11 @@ async function load() {
   } catch (e) { error.value = e.message || String(e); loading.value = false; }
 }
 
-const clients = computed(() => overview.clients.length ? overview.clients : catalogClients.value);
+const clients = computed(() => {
+  if (!catalogClients.value.length) return overview.clients;
+  const expanded = new Map(overview.clients.map(client => [Number(client.id), client]));
+  return catalogClients.value.map(client => expanded.get(Number(client.id)) || client);
+});
 const clientOptions = computed(() => clients.value.map(c => ({ value:String(c.id), label:c.name })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const requestTargetOptions=computed(()=>[
   ...clients.value.map(item=>({value:`client:${item.id}`,label:item.name,meta:'клиент'})),
@@ -389,7 +393,7 @@ const clientDepartmentOptions = computed(() => { const values = new Map(); emplo
 const clientIsActive = client => clientHasActiveMembers(client,localDateValue());
 const filteredClients = computed(() => {
   const needle = query.value.trim().toLowerCase();
-  return clients.value.filter((client) => {
+  return overview.clients.filter((client) => {
     if (needle && ![client.name,client.type,client.sector,employeeName(client.account_employee_id),employeeName(client.sales_employee_id)].join(' ').toLowerCase().includes(needle)) return false;
     if (clientFilters.responsible) {
       const [role, id] = clientFilters.responsible.split(':');
@@ -448,7 +452,7 @@ function handleContactChanged(contact) {
 }
 function handleClientChanged(payload) {
   if (payload?.id && Array.isArray(payload.client_relations)) handleContactChanged(payload);
-  else load();
+  else refreshCurrent();
 }
 function openContactCard(contact = null) { selectedContactId.value = contact ? Number(contact.id) : null; contactCardOpen.value = true; }
 function closeContactCard() { contactCardOpen.value = false; selectedContactId.value = null; }
