@@ -130,7 +130,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(analyticsRequests.at(-1), 'all');
     assert.match(await filter.locator('.ui-search-select__trigger').innerText(), /Все/);
     assert.equal(await filter.locator('.ui-search-select__clear').count(), 0);
+    // A historical partner link must canonicalize to Management without losing context.
+    await page.goto(base + '/timesheets/partners/?month=2026-10&client_id=7&employee_id=9#partner');
+    await page.waitForURL(url => url.pathname === '/timesheets/management/'
+      && url.searchParams.get('month') === '2026-10'
+      && url.searchParams.get('client_id') === '7'
+      && url.searchParams.get('employee_id') === '9'
+      && url.hash === '#partner');
     assert.deepEqual(errors, []);
-    console.log('Unified partner management and design-system staff filter reset passed.');
+    console.log('Unified partner management and legacy deep-link routing passed.');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
