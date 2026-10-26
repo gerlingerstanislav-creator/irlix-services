@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { UiButton } from '@irlix/ui';
+import { UiButton, UiSearchSelect } from '@irlix/ui';
 import { api } from '../api';
 import { typeLabels } from '../constants';
 import DateRangePicker from './DateRangePicker.vue';
@@ -19,6 +19,7 @@ const savingMode = ref('');
 const localError = ref('');
 const occupied = ref([]);
 const occupiedLoading = ref(false);
+let occupiedRequest = 0;
 const fileInput = ref(null);
 const file = ref(null);
 const createdAbsenceId = ref(null);
@@ -34,7 +35,12 @@ function emptyForm() {
   };
 }
 
-const employeesForCreate = computed(() => [...props.employees].sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || ''), 'ru')));
+const employeeOptions = computed(() => [...props.employees]
+  .sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || ''), 'ru'))
+  .map((employee) => ({
+    value: employee.id,
+    label: `${employee.full_name} · ${employee.department_name || 'Без подразделения'}`,
+  })));
 const openEndedType = computed(() => ['sick_leave', 'maternity_leave'].includes(form.value.type));
 const documentRequired = computed(() => ['paid_vacation', 'unpaid_vacation', 'sick_leave', 'maternity_leave'].includes(form.value.type));
 const documentHint = computed(() => {
@@ -44,6 +50,7 @@ const documentHint = computed(() => {
   return 'Документ';
 });
 const canSave = computed(() => {
+  if (occupiedLoading.value) return false;
   if (props.forEmployee && !form.value.employee_id) return false;
   if (!form.value.period.start) return false;
   if (!openEndedType.value && !form.value.period.end) return false;
@@ -57,6 +64,8 @@ const canSubmit = computed(() => {
 });
 
 const reset = () => {
+  occupiedRequest += 1;
+  occupiedLoading.value = false;
   form.value = emptyForm();
   file.value = null;
   localError.value = '';
@@ -73,9 +82,11 @@ const close = () => {
 };
 
 const loadOccupied = async () => {
+  const requestId = ++occupiedRequest;
   if (!props.open) return;
   if (props.forEmployee && !form.value.employee_id) {
     occupied.value = [];
+    occupiedLoading.value = false;
     return;
   }
   occupiedLoading.value = true;
@@ -84,11 +95,11 @@ const loadOccupied = async () => {
     const params = new URLSearchParams();
     if (props.forEmployee) params.set('employee_id', String(form.value.employee_id));
     const payload = await api(`/api/vacations/absences/occupied${params.size ? `?${params}` : ''}`);
-    occupied.value = payload.data || [];
+    if (requestId === occupiedRequest && props.open) occupied.value = payload.data || [];
   } catch (error) {
-    localError.value = error.message;
+    if (requestId === occupiedRequest && props.open) localError.value = error.message;
   } finally {
-    occupiedLoading.value = false;
+    if (requestId === occupiedRequest) occupiedLoading.value = false;
   }
 };
 
@@ -175,12 +186,19 @@ watch(() => form.value.type, () => { localError.value = ''; });
 
       <div v-if="localError" class="modal-error">{{ localError }}</div>
 
-      <label v-if="forEmployee" class="irlix-field">Сотрудник
-        <select v-model="form.employee_id" :disabled="Boolean(createdAbsenceId)" required>
-          <option value="" disabled>Выберите сотрудника</option>
-          <option v-for="employee in employeesForCreate" :key="employee.id" :value="employee.id">{{ employee.full_name }} · {{ employee.department_name || 'Без подразделения' }}</option>
-        </select>
-      </label>
+      <div v-if="forEmployee" class="irlix-field">
+        <label>Сотрудник</label>
+        <UiSearchSelect
+          v-model="form.employee_id"
+          :options="employeeOptions"
+          :disabled="Boolean(createdAbsenceId)"
+          :clearable="false"
+          :teleport="true"
+          placeholder="Выберите сотрудника"
+          search-placeholder="Поиск по ФИО или подразделению"
+          aria-label="Сотрудник"
+        />
+      </div>
 
       <label class="irlix-field">Тип отсутствия
         <select v-model="form.type" :disabled="Boolean(createdAbsenceId)">
