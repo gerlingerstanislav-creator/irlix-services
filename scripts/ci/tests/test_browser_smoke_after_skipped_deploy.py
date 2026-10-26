@@ -12,8 +12,8 @@ class BrowserSmokeContractTest(unittest.TestCase):
     def test_browser_smoke_runs_after_successful_or_skipped_deployment(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         step = re.search(
-            r"(?m)^      - name: Verify deployed Employees navigation in Chromium\\n"
-            r"(?P<body>(?:^        .*\\n)*)", workflow
+            r"(?m)^      - name: Verify deployed Employees navigation in Chromium\n"
+            r"(?P<body>(?:^        .*\n)*)", workflow
         )
         self.assertIsNotNone(step, "Employees production smoke step must exist")
         condition = next(
