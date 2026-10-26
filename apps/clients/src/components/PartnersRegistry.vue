@@ -155,8 +155,8 @@ onMounted(load);
          <input v-model="draft[field.key]" type="checkbox" :disabled="saving">
          {{ draft[field.key] ? 'Да' : 'Нет' }}
         </label>
-        <UiSearchSelect v-else-if="field.kind === 'partner'" v-model="draft.partner_id" :options="partnerOptions" :clearable="false" placeholder="Партнёр" />
-        <textarea v-else-if="field.kind === 'textarea'" v-model="draft[field.key]" rows="3" :disabled="saving" />
+        <UiSearchSelect v-else-if="field.kind === 'partner'" v-model="draft.partner_id" aria-label="Партнёр" :options="partnerOptions" :clearable="false" placeholder="Партнёр" />
+        <textarea v-else-if="field.kind === 'textarea'" v-model="draft[field.key]" rows="3" :aria-label="field.label" :disabled="saving" />
         <input v-else v-model="draft[field.key]" type="text" maxlength="255" :disabled="saving" :aria-label="field.label" />
         <span v-if="!isNew" class="partner-field__actions">
          <button type="button" aria-label="Сохранить поле" :disabled="saving" @click="save(field.key)">✓</button>
