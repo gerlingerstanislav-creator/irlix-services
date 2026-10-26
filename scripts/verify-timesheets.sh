@@ -14,13 +14,22 @@ for route in \
   employees/employees employees/departments employees/roles employees/audit \
   vacations/mine vacations/department vacations/management vacations/audit \
   clients/clients clients/leads clients/contacts clients/requests clients/positions clients/attempts clients/members clients/cashflow clients/reporting-periods \
-  timesheets/mine timesheets/management timesheets/commercial-load timesheets/audit \
-  design-system/components design-system/navigation
+  timesheets/mine timesheets/management timesheets/commercial-load timesheets/audit
 do
   code="$(curl_stand -sS -o /dev/null -w '%{http_code}' --retry 8 --retry-all-errors --retry-delay 1 "http://127.0.0.1/$route/")"
   [ "$code" = 200 ] || fail "frontend route /$route/ returned HTTP $code"
 done
 echo "[routing] direct SPA routes OK"
+
+# The catalog requires Employees/Keycloak authentication. Anonymous deep links
+# must redirect to the SSO entry flow instead of returning public SPA HTML.
+echo "[routing] protected Design System routes"
+for route in design-system/components design-system/navigation
+do
+  code="$(curl_stand -sS -o /dev/null -w '%{http_code}' --retry 8 --retry-all-errors --retry-delay 1 "http://127.0.0.1/$route/")"
+  [ "$code" = 302 ] || fail "anonymous protected route /$route/ returned HTTP $code instead of 302"
+done
+echo "[routing] protected Design System routes OK"
 
 echo "[timesheets] frontend"
 html="$(curl_stand -fsS --retry 20 --retry-all-errors --retry-delay 2 http://127.0.0.1/timesheets/)" || {
