@@ -126,7 +126,7 @@ const canReadAbsenceAlerts = computed(() => {
   return id > 0 && (props.access.client_service_employee_ids || []).some(row => Number(row) === id);
 });
 const levelForId = id => id ? absenceLevels.value[String(id)] || '' : '';
-const alertFor = attempt => attempt && !attempt.is_external ? levelForId(attempt.specialist_id) : '';
+const alertFor = attempt => attempt && !Boolean(Number(attempt.is_external)) ? levelForId(attempt.specialist_id) : '';
 async function loadAbsenceAlerts() {
   if (!canReadAbsenceAlerts.value) { absenceLevels.value = {}; return; }
   absenceLevels.value = await loadClientAbsenceAlerts();
