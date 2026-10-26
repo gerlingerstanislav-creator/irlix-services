@@ -231,6 +231,8 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
 .brandbook-downloads__templates>p{font-size:13px;line-height:1.65;color:#52685D;margin:0}
 .brandbook-downloads__template-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px}
 .brandbook-downloads__template{display:flex;flex-direction:column;align-items:flex-start;gap:12px;padding:18px;border:1px solid #E0E9E2;border-radius:8px;background:#FFFFFF;min-width:0}
+.brandbook-downloads__template-preview{width:100%;height:155px;overflow:hidden;display:grid;place-items:center;border:1px solid #E0E9E2;border-radius:8px;background:#F7FAF8}
+.brandbook-downloads__template-preview img{display:block;max-width:100%;width:100%;height:100%;object-fit:contain}
 .brandbook-downloads__template h4{font-size:14px;margin:0;color:#142820}
 .brandbook-downloads__template p{font-size:12px;line-height:1.65;color:#52685D;margin:0;flex:1}
 .brandbook-downloads__template a{display:inline-block;font-size:12px;font-weight:700;color:#087C5A;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}
@@ -275,6 +277,43 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
 .brandbook-card__footer,.brandbook-footer,.brandbook-swatch__meta span,
 .brandbook-downloads__info small,.brandbook-downloads__templates .brandbook-downloads__template-note{font-size:12px}
 
+/* Project-level digital visual grammar: concrete layout specimens, not print masters. */
+.brandbook-layout-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:18px 0 10px}
+.brandbook-layout-card{min-width:0;border:1px solid #E0E9E2;border-radius:12px;background:#FFFFFF;overflow:hidden}
+.brandbook-layout-card__visual{display:flex;flex-direction:column;align-items:flex-start;gap:9px;min-height:205px;padding:22px;background:#F7FAF8;border-bottom:1px solid #E0E9E2}
+.brandbook-layout-card__micro{font-size:11px;font-weight:700;letter-spacing:.1em;color:#087C5A}
+.brandbook-layout-card__hero{height:13px;width:32%;border-radius:3px;background:#087C5A;margin-top:12px}
+.brandbook-layout-card__heading{height:28px;width:90%;border-radius:4px;background:#142820}
+.brandbook-layout-card__line{height:10px;width:83%;border-radius:3px;background:#C3D5CC}
+.brandbook-layout-card__line--short{width:63%}
+.brandbook-layout-card__accent{height:5px;width:22%;border-radius:4px;background:#008E8C;margin-top:auto}
+.brandbook-layout-card__visual--evidence{background:#FFFFFF}
+.brandbook-layout-card__visual--evidence .brandbook-layout-card__hero{height:48px;width:52%;background:#E0E9E2;border-left:5px solid #087C5A}
+.brandbook-layout-card__visual--evidence .brandbook-layout-card__heading{width:63%}
+.brandbook-layout-card__visual--people{background:#F7FAF8}
+.brandbook-layout-card__visual--people .brandbook-layout-card__hero{height:52px;width:84%;background:#FFFFFF;border:1px solid #E0E9E2}
+.brandbook-layout-card__visual--people .brandbook-layout-card__heading{width:70%}
+.brandbook-layout-card__body{padding:18px}
+.brandbook-layout-card__format{font-size:12px;color:#087C5A;font-weight:700}
+.brandbook-layout-card h4{font-size:17px;color:#142820;line-height:1.4;margin:8px 0}
+.brandbook-layout-card p{font-size:13px;color:#52685D;line-height:1.6;margin:0 0 12px}
+.brandbook-layout-card dl{margin:0}
+.brandbook-layout-card dl>div{padding:9px 0;border-top:1px solid #E0E9E2}
+.brandbook-layout-card dt{font-size:12px;font-weight:700;color:#087C5A;margin-bottom:3px}
+.brandbook-layout-card dd{font-size:13px;line-height:1.6;color:#142820;margin:0}
+.brandbook-media-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}
+.brandbook-media-card{padding:20px;border:1px solid #E0E9E2;background:#FFFFFF;border-radius:10px;min-width:0}
+.brandbook-media-card h4{font-size:17px;color:#142820;margin:0 0 14px}
+.brandbook-media-card p{font-size:13px;line-height:1.65;color:#142820;margin:0 0 10px}
+.brandbook-media-card strong{font-weight:700;color:#087C5A}
+.brandbook-production-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;list-style:none;padding:0;counter-reset:review-step;margin:15px 0 24px}
+.brandbook-production-list li{counter-increment:review-step;display:grid;grid-template-columns:28px minmax(0,1fr);column-gap:8px;row-gap:4px;padding:15px;border:1px solid #E0E9E2;border-radius:8px;min-width:0;background:#F7FAF8}
+.brandbook-production-list li:before{content:counter(review-step,decimal-leading-zero);font-size:12px;font-weight:700;color:#087C5A;grid-column:1;grid-row:1 / 3}
+.brandbook-production-list strong{font-size:14px;color:#142820;grid-column:2}
+.brandbook-production-list span{font-size:13px;line-height:1.6;color:#52685D;grid-column:2}
+@media(max-width:1050px){.brandbook-layout-grid,.brandbook-media-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:680px){.brandbook-layout-grid,.brandbook-media-grid,.brandbook-production-list{grid-template-columns:minmax(0,1fr)}.brandbook-layout-card__visual{min-height:170px}.brandbook-layout-card__body,.brandbook-media-card{padding:16px}}
+
 /* Accessible printing of the current digital section; NOT an approved CMYK/print master. */
 .brandbook-heading__actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .brandbook-heading__actions .ui-button{white-space:nowrap}
@@ -299,7 +338,7 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
   .brandbook-graphic-examples,.brandbook-voice-examples,
   .brandbook-platform__audiences,.brandbook-platform__attributes,
   .brandbook-platform__statements,.brandbook-downloads__grid,
-  .brandbook-downloads__template-grid{grid-template-columns:minmax(0,1fr)!important}
+  .brandbook-downloads__template-grid,.brandbook-layout-grid,.brandbook-media-grid,.brandbook-production-list{grid-template-columns:minmax(0,1fr)!important}
   .brandbook-overview{grid-template-columns:minmax(0,1fr)!important}
   .brandbook-overview__visual{min-height:160px}
   .brandbook-card,.brandbook-guide__tile,.brandbook-guide__panel,.brandbook-logo-source,
