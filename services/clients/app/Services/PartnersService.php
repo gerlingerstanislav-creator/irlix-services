@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Partner;
 use App\Models\PartnerSpecialist;
+use Illuminate\Support\Facades\DB;
 
 final class PartnersService
 {
@@ -44,16 +45,29 @@ final class PartnersService
         return PartnerSpecialist::query()->whereKey($id)->exists();
     }
 
-    public function createPartner(array $data): object
+    public function createPartner(array $data, ?string $actor = null): object
     {
-        $id = Partner::query()->insertGetId([...$data, 'created_at' => now(), 'updated_at' => now()]);
-        return (object) (Partner::query()->findOrFail($id)->getRawOriginal());
+        return DB::transaction(function () use ($data, $actor) {
+            $id = Partner::query()->insertGetId([...$data, 'created_at' => now(), 'updated_at' => now()]);
+            app(PartnerProfileService::class)->record((int) $id, 'partner_created',
+                'Создание партнёра', 'Создан новый партнёр', $actor);
+            return (object) Partner::query()->findOrFail($id)->getRawOriginal();
+        });
     }
 
-    public function updatePartner(int $id, array $data): object
+    public function updatePartner(int $id, array $data, ?string $actor = null): object
     {
-        Partner::query()->whereKey($id)->update([...$data, 'updated_at' => now()]);
-        return (object) (Partner::query()->findOrFail($id)->getRawOriginal());
+        return DB::transaction(function () use ($id, $data, $actor) {
+            $existing = Partner::query()->whereKey($id)->lockForUpdate()->firstOrFail();
+            $changes = array_filter(array_keys($data), static fn ($key) =>
+                (string) ($existing->$key ?? '') !== (string) ($data[$key] ?? ''));
+            if ($changes) {
+                $existing->update($data);
+                app(PartnerProfileService::class)->record($id, 'partner_updated',
+                    'Изменение партнёра', 'Обновлены поля: '.implode(', ', $changes), $actor);
+            }
+            return (object) Partner::query()->findOrFail($id)->getRawOriginal();
+        });
     }
 
     public function createSpecialist(array $data): object

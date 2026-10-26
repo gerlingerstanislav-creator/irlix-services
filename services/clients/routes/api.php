@@ -35,6 +35,13 @@ Route::post('/client-members/{member}/project-assignments', [ClientMembersContro
 Route::post('/client-members/{member}/feedbacks', [ClientMembersController::class, 'addFeedback'])->whereNumber('member');
 Route::get('/partner-specialists/catalog', [PartnersController::class, 'catalog']);
 Route::get('/partners', [PartnersController::class, 'index']);
+Route::get('/partners/contact-options', [PartnersController::class, 'contactOptions']);
+Route::get('/partners/{partner}/card', [PartnersController::class, 'showProfile'])->whereNumber('partner');
+Route::post('/partners/{partner}/history', [PartnersController::class, 'addNote'])->whereNumber('partner');
+Route::post('/partners/{partner}/contacts', [PartnersController::class, 'linkContact'])->whereNumber('partner');
+Route::patch('/partners/{partner}/contacts/{relation}', [PartnersController::class, 'updateContactRelation'])->whereNumber('partner')->whereNumber('relation');
+Route::post('/partners/{partner}/legal-entities', [PartnersController::class, 'storeLegalEntity'])->whereNumber('partner');
+Route::patch('/partners/{partner}/legal-entities/{entity}', [PartnersController::class, 'updateLegalEntity'])->whereNumber('partner')->whereNumber('entity');
 Route::post('/partners', [PartnersController::class, 'storePartner']);
 Route::patch('/partners/{partner}', [PartnersController::class, 'updatePartner'])->whereNumber('partner');
 Route::post('/partner-specialists', [PartnersController::class, 'storeSpecialist']);
