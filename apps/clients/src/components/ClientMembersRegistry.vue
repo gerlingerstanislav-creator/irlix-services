@@ -1,6 +1,8 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { UiButton, UiDrawer, UiFilterBar, UiIcon, UiSearchSelect, UiRegistryTable , UiLoader } from '@irlix/ui';
+import { UiButton, UiDrawer, UiFilterBar, UiIcon, UiSearchSelect, UiRegistryTable, UiLoader, UiTabs } from '@irlix/ui';
+import { feedbackDate, formatMemberDate, memberPeriod, feedbackProjectLabel, sortedMemberTerms, sortedProjectAssignments, sortedMemberFeedbacks } from '../clientMemberCardView.js';
+import '../client-member-card.css';
 const props=defineProps({clients:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},canManage:{type:Boolean,default:false},initialClientId:{type:Number,default:null},focusedClientId:{type:Number,default:null},focusedMemberId:{type:Number,default:null},onlyDetails:{type:Boolean,default:false}});
 const emit=defineEmits(['close','changed']);
 const clientId=ref(''),rows=ref([]),partners=ref([]),search=ref(''),error=ref(''),loading=ref(false),saving=ref(false),selected=ref(null);
@@ -9,6 +11,12 @@ const termForm=reactive({technology:'',level:'',hourly_rate:'',hours_per_day:8,v
 const termOpen=ref(false),editTermId=ref(null),assignmentOpen=ref(false),editAssignmentId=ref(null),feedbackOpen=ref(false);
 const assignment=reactive({project_id:'',valid_from:'',valid_to:''});
 const feedback=reactive({project_id:'',text:''});
+const detailsTab=ref('terms');
+const detailTabs=[{value:'terms',label:'Ком. условия'},{value:'projects',label:'Проекты'},{value:'feedbacks',label:'Фидбеки'}];
+const termRows=computed(()=>sortedMemberTerms(selected.value));
+const projectRows=computed(()=>sortedProjectAssignments(selected.value));
+const feedbackRows=computed(()=>sortedMemberFeedbacks(selected.value));
+const projectFeedbackLabel=item=>feedbackProjectLabel(item,selected.value?.projects||[],projects.value);
 const client=computed(()=>props.clients.find(c=>String(c.id)===clientId.value));
 const clientOptions=computed(()=>props.clients.map(c=>({value:String(c.id),label:c.name})).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const projects=computed(()=>client.value?.projects||[]);
@@ -20,10 +28,6 @@ const personOptions=computed(()=>personType.value==='employee'?
  // richer responses while not filtering those valid canonical rows out.
  partners.value.filter(p=>(p.active===undefined||Boolean(Number(p.active)))&&p.partner_id).map(p=>({value:String(p.id),label:p.partner_name+' — '+p.full_name})).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const filtered=computed(()=>rows.value.filter(m=>m.specialist_name.toLocaleLowerCase('ru').includes(search.value.toLocaleLowerCase('ru'))));
-function feedbackDetails(item){
- const rating=item.rating===null||item.rating===undefined||String(item.rating).trim()===''?null:`Оценка: ${item.rating}`;
- return [item.project_id?`Проект #${item.project_id}`:'Клиент',item.occurred_on?`Дата: ${fmt(item.occurred_on)}`:null,rating].filter(Boolean).join(' · ');
-}
 async function api(url,options={}){
  const res=await fetch(url,{...options,headers:{Accept:'application/json','Content-Type':'application/json',...(options.headers||{})}});
  const payload=await res.json().catch(()=>({}));
@@ -42,8 +46,8 @@ async function loadPartners(){
  try{partners.value=await api('/api/clients/partner-specialists/catalog');}
  catch { partners.value=[]; }
 }
-function show(m){selected.value=m;termOpen.value=false;assignmentOpen.value=false;feedbackOpen.value=false;editTermId.value=null;error.value='';}
-function closeDetails(){selected.value=null;if(props.onlyDetails)emit('close');}
+function show(m){selected.value=m;detailsTab.value='terms';termOpen.value=false;assignmentOpen.value=false;feedbackOpen.value=false;editTermId.value=null;error.value='';}
+function closeDetails(){selected.value=null;detailsTab.value='terms';if(props.onlyDetails)emit('close');}
 function beginNew(){createOpen.value=true;personId.value='';personName.value='';personType.value='employee';loadPartners();}
 async function create(){
  if(!props.canManage||saving.value)return;
@@ -63,7 +67,7 @@ async function create(){
  }catch(e){error.value=e.message;}finally{saving.value=false;}
 }
 const fmt=d=>d?String(d).slice(0,10):'—';
-function startNewTerm(){Object.assign(termForm,{technology:'',level:'',hourly_rate:'',hours_per_day:8,valid_from:'',valid_to:''});editTermId.value=null;termOpen.value=true;}
+function startNewTerm(){detailsTab.value='terms';Object.assign(termForm,{technology:'',level:'',hourly_rate:'',hours_per_day:8,valid_from:'',valid_to:''});editTermId.value=null;termOpen.value=true;}
 function startEditTerm(t){Object.assign(termForm,{technology:t.technology||'',level:t.level||'',hourly_rate:t.hourly_rate??'',hours_per_day:t.hours_per_day,valid_from:fmt(t.valid_from),valid_to:t.valid_to?fmt(t.valid_to):''});editTermId.value=t.id;termOpen.value=true;}
 async function saveTerm(){
  if(!props.canManage||saving.value)return;
@@ -84,7 +88,7 @@ async function saveAssignment(){
   await load();emit('changed');assignmentOpen.value=false;editAssignmentId.value=null;Object.assign(assignment,{project_id:'',valid_from:'',valid_to:''});
  }catch(e){error.value=e.message;}finally{saving.value=false;}
 }
-function editAssignment(row){Object.assign(assignment,{project_id:String(row.project_id),valid_from:fmt(row.valid_from),valid_to:row.valid_to?fmt(row.valid_to):''});editAssignmentId.value=row.id;assignmentOpen.value=true;}
+function editAssignment(row){detailsTab.value='projects';Object.assign(assignment,{project_id:String(row.project_id),valid_from:fmt(row.valid_from),valid_to:row.valid_to?fmt(row.valid_to):''});editAssignmentId.value=row.id;assignmentOpen.value=true;}
 function closeAssignment(){assignmentOpen.value=false;editAssignmentId.value=null;Object.assign(assignment,{project_id:'',valid_from:'',valid_to:''});}
 async function saveFeedback(){
  if(!props.canManage||saving.value)return;
@@ -95,6 +99,7 @@ async function saveFeedback(){
  }catch(e){error.value=e.message;}finally{saving.value=false;}
 }
 watch(clientId,load);
+watch(()=>props.focusedMemberId,id=>{if(props.onlyDetails&&id&&rows.value.length){const next=rows.value.find(m=>Number(m.id)===Number(id));if(next)show(next);}});
 watch(()=>props.focusedClientId,id=>{if(props.onlyDetails && id)clientId.value=String(id);},{immediate:true});
 watch(()=>props.initialClientId,id=>{if(!props.onlyDetails && id)clientId.value=String(id);},{immediate:true});
 watch(()=>props.clients,c=>{if(!clientId.value && c.length && !props.onlyDetails)clientId.value=String(c[0].id);},{immediate:true});
