@@ -78,9 +78,13 @@ class ClientsAccountingAccess
             if (!is_array($actor)) return response()->json(['message' => 'Employee profile is unavailable'], 403);
         }
         $id = (int) $actor['id'];
-        $directory = Http::withToken((string) $token)->acceptJson()->timeout(8)->get($base.'/clients-directory');
-        if (!$directory->successful()) return response()->json(['message' => 'Employees directory is unavailable'], 503);
-        $teamEmployeeIds = collect($directory->json('data.employees', []))
+        $directoryData = $request->attributes->get('clients_employees_directory');
+        if (!is_array($directoryData)) {
+            $directory = Http::withToken((string) $token)->acceptJson()->timeout(8)->get($base.'/clients-directory');
+            if (!$directory->successful()) return response()->json(['message' => 'Employees directory is unavailable'], 503);
+            $directoryData = (array) $directory->json('data', []);
+        }
+        $teamEmployeeIds = collect($directoryData['employees'] ?? [])
             ->filter(fn ($row) => in_array((int) ($row['department_id'] ?? 0), $access['department_ids'], true))
             ->pluck('id')->map(fn ($value) => (int) $value)->all();
         $employeeIdsForScope = function (string $scope) use ($id, $teamEmployeeIds): ?array {
