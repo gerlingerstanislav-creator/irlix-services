@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { UiAppTopbar, UiBadge, UiButton, UiFilterRail, UiPanel, UiSearchSelect, UiRegistryTable } from '@irlix/ui';
 import { departmentOptions, employeeTreeOptions, staffPositionTreeOptions } from './staffTree';
 import { auth } from './auth';
@@ -14,15 +15,6 @@ import SpecialRolesView from './components/SpecialRolesView.vue';
 import StaffPositionsView from './components/StaffPositionsView.vue';
 import PositionsCatalogView from './components/PositionsCatalogView.vue';
 
-const SECTION_PATHS = Object.freeze({
-  employees: '/employees/',
-  positions: '/employees/organization',
-  staffPositions: '/employees/positions',
-  fot: '/employees/fot',
-  roles: '/employees/roles',
-  permissions: '/employees/permissions',
-  audit: '/employees/audit',
-});
 const TOPBAR_ITEMS = Object.freeze([
   { id: 'employees', label: 'Сотрудники' },
   { id: 'positions', label: 'Орг. структура' },
@@ -33,7 +25,9 @@ const TOPBAR_ITEMS = Object.freeze([
   { id: 'audit', label: 'История действий' },
 ]);
 
-const currentSection = ref('employees');
+const route = useRoute();
+const router = useRouter();
+const currentSection = computed(() => route.meta.section || 'not-found');
 const employees = ref([]);
 const employeeChoices = computed(() => employeeTreeOptions(departments.value, employees.value));
 const departments = ref([]);
@@ -98,50 +92,24 @@ const filteredEmployees = computed(() => {
   });
 });
 
-const normalizedPath = () => {
-  const pathname = window.location.pathname.replace(/\/+$/, '').toLowerCase();
-  return pathname || '/';
+// Route state and browser history are owned by Vue Router, not by UI side effects.
+const syncEmployeeQuery = () => {
+  if (currentSection.value !== 'employees') return;
+  const params = new URLSearchParams(window.location.search);
+  const departmentId = params.get('department_id');
+  departmentFilter.value = departmentId || '';
+  positionFilter.value = params.get('position_id') ? [params.get('position_id')] : [];
+  statusFilter.value = params.get('employment_status') || '';
+  if (departmentId) search.value = '';
 };
-
-const sectionFromPath = (path) => {
-  if (path.endsWith('/positions')) return 'staffPositions';
-  if (path.endsWith('/organization')) return 'positions';
-  if (path.endsWith('/staff-positions') || path.endsWith('/departments')) return 'positions';
-  if (path.endsWith('/roles')) return 'roles';
-  if (path.endsWith('/permissions')) return 'permissions';
-  if (path.endsWith('/fot')) return 'fot';
-  if (path.endsWith('/audit')) return 'audit';
-  return path === '/employees' ? 'employees' : 'not-found';
-};
-
-const syncSectionFromLocation = () => {
-  const path = normalizedPath();
-  const section = sectionFromPath(path);
-  if (path.endsWith('/departments')) window.history.replaceState({}, '', SECTION_PATHS.positions);
-  currentSection.value = section;
-
-  if (section === 'employees') {
-    const params = new URLSearchParams(window.location.search);
-    const departmentId = params.get('department_id');
-    departmentFilter.value = departmentId || '';
-    positionFilter.value = params.get('position_id') ? [params.get('position_id')] : [];
-    statusFilter.value = params.get('employment_status') || '';
-    if (departmentId) {
-      search.value = '';
-    }
-  }
-};
+watch(() => route.fullPath, syncEmployeeQuery, { immediate: true });
 
 const navigateToSection = (section) => {
-  const target = SECTION_PATHS[section] || SECTION_PATHS.employees;
-  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-  if (currentUrl !== target) window.history.pushState({}, '', target);
-  syncSectionFromLocation();
+  if (router.hasRoute(section)) router.push({ name: section });
 };
 
 const openEmployees = (filters) => {
-  window.history.pushState({}, '', `${SECTION_PATHS.employees}?${new URLSearchParams(filters)}`);
-  syncSectionFromLocation();
+  router.push({ name: 'employees', query: Object.fromEntries(new URLSearchParams(filters)) });
 };
 
 const resetEmployeeFilters = () => {
@@ -149,10 +117,10 @@ const resetEmployeeFilters = () => {
   departmentFilter.value = '';
   positionFilter.value = [];
   statusFilter.value = '';
-  if (currentSection.value === 'employees' && window.location.search) window.history.replaceState({}, '', SECTION_PATHS.employees);
+  if (currentSection.value === 'employees' && Object.keys(route.query).length)
+    router.replace({ name: 'employees' });
 };
 
-const handlePopState = () => syncSectionFromLocation();
 const openCreateStaffPosition = () => staffPositionsRef.value?.openCreate?.();
 const openCreateCatalogPosition = () => positionsCatalogRef.value?.openCreate?.();
 const openImportCatalogPositions = () => positionsCatalogRef.value?.openImport?.();
@@ -201,12 +169,7 @@ const saveDepartment = async () => {
   } catch (e) { error.value = e.message; }
 };
 
-onMounted(() => {
-  syncSectionFromLocation();
-  window.addEventListener('popstate', handlePopState);
-  loadEmployees();
-});
-onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
+onMounted(loadEmployees);
 </script>
 
 <template>

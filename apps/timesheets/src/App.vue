@@ -1,19 +1,15 @@
 <script setup>
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPeriodPicker, UiViewSelect, UiRegistryTable, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 import { api } from './api';
 import { clientPeriodApproved } from './approval-state.js';
 
 const initialParams = new URLSearchParams(window.location.search);
-const requestedSection = initialParams.get('section') === 'partners' ? 'management' : initialParams.get('section');
-const routeSection = () => {
-  const tail = window.location.pathname.replace(/^\/timesheets\/?/, '').replace(/\/$/, '');
-  if (tail && !['mine','management','partners','commercial-load','audit'].includes(tail)) return 'not-found';
-  if (tail) return ({partners:'management','commercial-load':'analytics'})[tail] || tail;
-  return requestedSection && !['mine','management','analytics','audit'].includes(requestedSection) ? 'not-found' : (requestedSection || 'mine');
-};
-const section = ref(routeSection());
+const route = useRoute();
+const router = useRouter();
+const section = computed(() => route.meta.section || 'not-found');
 const month = ref(/^\d{4}-(0[1-9]|1[0-2])$/.test(initialParams.get('month') || '') ? initialParams.get('month') : new Date().toISOString().slice(0, 7));
 const workspace = ref(null);
 const management = ref(null);
@@ -216,20 +212,23 @@ const refresh = async () => {
 watch([analyticsDepartmentFilter, analyticsClientFilter, analyticsStaffFilter], () => {
   if (section.value === 'analytics') refresh();
 });
-watch([section, month], () => {
+watch([() => route.name, month], () => {
   cancelSelection();
   bulkModal.value = null;
   editModal.value = null;
   cellTooltip.value = null;
-  const params = new URLSearchParams(window.location.search);
   if (section.value === 'not-found' || ![...menuItems.value,...bottomItems.value].some(item => item.id === section.value)) return;
-  params.set('section', section.value); params.set('month', month.value);
-  window.history.replaceState({}, '', `${window.location.pathname}?${params}`);
+  // The page's month stays in the URL without mutating browser history behind Router's back.
+  if (route.query.month !== month.value || route.query.section !== undefined) {
+    const query = { ...route.query, month: month.value };
+    delete query.section;
+    router.replace({ name: route.name, query, hash: route.hash });
+  }
   refresh();
 });
-const syncRouteFromHistory = () => { section.value = routeSection(); };
-onMounted(() => window.addEventListener('popstate', syncRouteFromHistory));
-onBeforeUnmount(() => window.removeEventListener('popstate', syncRouteFromHistory));
+watch(() => route.query.month, value => {
+  if (typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value) && month.value !== value) month.value = value;
+});
 onMounted(async () => {
   try {
     const response = await api('/api/clients/permissions/me');
@@ -794,7 +793,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
       :platform-access="() => auth.fetch('/api/employees/access/me')"
       :bottom-items="bottomItems"
       aria-label="Навигация сервиса таймшитов"
-      @update:section="section = $event"
+      @update:section="id => router.hasRoute(id) && router.push({ name: id })"
       @logout="auth.logout"
     />
 

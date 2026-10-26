@@ -130,7 +130,8 @@ test('Monthly reports never publish an obsolete asynchronous response', () => {
   assert.ok(ui.includes('if(requestId===loadSequence)busy.value=false'));
   assert.ok(ui.includes('overview.value=null;pnl.value=null;cashflow.value=null;'));
   assert.ok(ui.includes("revenue.value=null;profitability.value=null;expenses.value=[];"));
-  assert.ok(ui.includes('loadSequence++;window.removeEventListener'));
+  assert.ok(ui.includes('onBeforeUnmount(()=>{loadSequence++;})'));
+  assert.ok(!ui.includes("window.addEventListener('popstate'"));
 });
 
 test('P&L marks incomplete manual cost pool as an unverified difference, never profit', () => {

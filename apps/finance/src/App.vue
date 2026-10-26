@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { UiAppShell, UiButton, UiBadge, UiSearchSelect, UiPeriodPicker, UiDrawer, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 
@@ -14,8 +15,9 @@ const sections = [
   { id:'planning', label:'Планирование', icon:'calendar', groupStart:true },
   { id:'settings', label:'Настройки', icon:'settings' },
 ];
-const fromPath = () => location.pathname.replace(/^\/finance\/?/,'').split('/')[0] || 'overview';
-const section = ref(sections.some(s=>s.id===fromPath()) ? fromPath() : 'overview');
+const route = useRoute();
+const router = useRouter();
+const section = computed(() => route.meta.section || 'not-found');
 const busy = ref(false), error = ref(''), notice = ref('');
 // A later month refresh invalidates all earlier in-flight report responses.
 let loadSequence = 0;
@@ -391,26 +393,20 @@ async function confirm(r){
   busy.value=true;
   try{await call('receipts/'+r.id+'/confirm',{method:'POST'});await load()}catch(ex){error.value=ex.message}finally{busy.value=false}
 }
-function open(sectionId){
-  section.value=sectionId;
+function open(sectionId) {
+  if (router.hasRoute(sectionId)) router.push({ name: sectionId });
 }
-function locationChanged(){
-  const requested=fromPath();
-  section.value=sections.some(s=>s.id===requested)?requested:'not-found';
-}
-watch(section,(id)=>{
-  const url='/finance/'+id+'/';
-  if(id !== 'not-found' && location.pathname!==url)history.pushState({},'',url);
-  openForm.value='';notice.value='';error.value='';
+watch(() => route.name, () => {
+  openForm.value = ''; notice.value = ''; error.value = '';
 });
 watch(()=>accrual.client_id,()=>{accrual.project_id='';});
 watch(month,()=>{budgetVariance.value=null;load();});
-onMounted(()=>{window.addEventListener('popstate',locationChanged);load()});
-onBeforeUnmount(()=>{loadSequence++;window.removeEventListener('popstate',locationChanged);});
+onMounted(load);
+onBeforeUnmount(()=>{loadSequence++;});
 </script>
 
 <template>
-  <UiAppShell service="finance" v-model:section="section" :items="visible" :current-user="auth.user" :platform-access="() => auth.fetch('/api/employees/access/me')" @logout="auth.logout">
+  <UiAppShell service="finance" :section="section" @update:section="open" :items="visible" :current-user="auth.user" :platform-access="() => auth.fetch('/api/employees/access/me')" @logout="auth.logout">
     <template #actions>
       <UiButton v-if="section==='invoices' && can('finance.invoices.manage')" @click="openForm='invoices'">Создать счёт</UiButton>
       <UiButton v-if="section==='invoices' && can('finance.cash.confirm')" @click="openForm='receipts'">Поступление</UiButton>

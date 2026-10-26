@@ -1,6 +1,7 @@
 import '@fontsource-variable/onest/wght.css';
-import { createApp, h, ref, onMounted, onUnmounted } from 'vue';
-import { UiAppSidebar, UiAppTopbar, UiServiceDashboard, isPlatformAdministratorAccess, renderNavigationError } from '@irlix/ui';
+import { createApp, h, ref, computed } from 'vue';
+import { router } from './router';
+import { UiAppSidebar, UiAppTopbar, UiServiceDashboard, UiErrorState, isPlatformAdministratorAccess, renderNavigationError } from '@irlix/ui';
 import AttentionCenter from './AttentionCenter.vue';
 import { createBrowserAuth } from '@irlix/auth';
 import '@irlix/ui/styles/base.css';
@@ -77,9 +78,7 @@ const start = async () => {
     }
 
     // Unknown paths must never be interpreted as the Dashboard homepage.
-    const portalPath = window.location.pathname;
-    const portalRoutes = new Set(['/', '/tasks', '/tasks/']);
-    if (!portalRoutes.has(portalPath)) {
+    if (router.resolve(window.location.pathname).name === 'not-found') {
       const shell = document.getElementById('portal-shell');
       shell.hidden = true;
       const errorRoot = document.createElement('div');
@@ -91,29 +90,27 @@ const start = async () => {
     }
 
     const platformAdmin = isPlatformAdministratorAccess(access);
-    const section = ref(location.pathname.startsWith('/tasks/') ? 'tasks' : 'dashboard');
-    const navigate = value => {
-      section.value = value;
-      const path = value === 'tasks' ? '/tasks/' : '/';
-      if (location.pathname !== path) history.pushState(null, '', path);
-    };
+    const section = computed(() => router.currentRoute.value.meta.section || 'not-found');
+    const navigate = value => { if (router.hasRoute(value)) router.push({ name: value }); };
     const actionCount = ref(0);
     const navigation = [
       {id:'dashboard',label:'Дашборд',icon:'dashboard'},
       {id:'tasks',label:'Задачи',icon:'list'},
     ];
-    createApp({ render: () => h(UiAppSidebar, {
+    const sidebarApp = createApp({ render: () => h(UiAppSidebar, {
       section: section.value, items: navigation.map(item => ({...item,badge:item.id==='tasks'?actionCount.value:0})),
       currentService: 'dashboard', currentUser: auth.user || {}, platformAdmin, serviceAccess: access,
       'onUpdate:section': navigate, onLogout: () => auth.logout(),
-    }) }).mount('#portal-sidebar');
+    }) });
+    sidebarApp.use(router);
+    await router.isReady();
+    sidebarApp.mount('#portal-sidebar');
     createApp({ render: () => h(UiAppTopbar, {service:'dashboard',breadcrumbs:section.value === 'tasks' ? [{label:'Задачи'}] : []}) }).mount('#portal-topbar');
     createApp({
       setup() {
-        const back = () => { section.value = location.pathname.startsWith('/tasks/') ? 'tasks' : 'dashboard'; };
-        onMounted(() => window.addEventListener('popstate', back));
-        onUnmounted(() => window.removeEventListener('popstate', back));
-        return () => h('div', {class: 'dashboard-content dashboard-home ' + (section.value === 'dashboard' ? 'dashboard-home--overview' : 'dashboard-home--tasks')}, [
+        return () => section.value === 'not-found'
+          ? h(UiErrorState, { status:404,backHref:'/',backLabel:'На дашборд' })
+          : h('div', {class: 'dashboard-content dashboard-home ' + (section.value === 'dashboard' ? 'dashboard-home--overview' : 'dashboard-home--tasks')}, [
           h(AttentionCenter, { auth, serviceAccess:access, full:section.value==='tasks', showAll:section.value==='dashboard', onOpenAll:()=>navigate('tasks'), onCount:value=>{actionCount.value=value} }),
           ...(section.value === 'dashboard' ? [h(UiServiceDashboard, {platformAdmin, serviceAccess:access, layout:'list', showToolbar:false})] : []),
         ]);
