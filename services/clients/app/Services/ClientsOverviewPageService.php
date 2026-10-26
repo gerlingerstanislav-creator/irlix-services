@@ -37,7 +37,7 @@ final class ClientsOverviewPageService
         'reports' => ['reports.view'],
     ];
 
-    public function page(array $access, string $section, int $page, int $perPage, ?int $leadId = null, array $filters = [], ?array $visibleClientIds = null, ?array $visibleLeadEmployeeIds = null): array
+    public function page(array $access, string $section, int $page, int $perPage, ?int $leadId = null, array $filters = [], ?array $visibleClientIds = null, ?array $visibleLeadEmployeeIds = null, ?array $visibleContactIds = null): array
     {
         abort_unless(isset(self::PERMISSIONS[$section]), 422, 'Unsupported overview section');
         $granted = (bool) ($access['platform_admin'] ?? false);
@@ -85,6 +85,9 @@ final class ClientsOverviewPageService
         }
         if ($section === 'leads' && $visibleLeadEmployeeIds !== null) {
             $query->whereIn('responsible_employee_id', $visibleLeadEmployeeIds);
+        }
+        if ($section === 'contacts' && $visibleContactIds !== null) {
+            $query->whereIn('id', $visibleContactIds);
         }
         if ($section === 'clients') {
             $this->applyClientFilters($query, $filters);
