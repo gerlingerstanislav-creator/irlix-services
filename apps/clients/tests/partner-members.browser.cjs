@@ -23,6 +23,13 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.route('**/.well-known/openid-configuration',r=>r.fulfill({json:{issuer,authorization_endpoint:issuer+'/auth',token_endpoint:issuer+'/token'}}));
   await page.route('**/api/**',r=>{
    const path=new URL(r.request().url()).pathname;
+   if(path==='/api/clients/specialists/client-members'){
+    const ids=new URL(r.request().url()).searchParams.getAll('client_ids[]');
+    return r.fulfill({json:{data:[
+     ...(ids.includes('1')?[{employee_id:1,terms:[{valid_from:'2000-01-01',valid_to:null}]}]:[]),
+     ...(ids.includes('2')?[{employee_id:11,terms:[{valid_from:'2000-01-01',valid_to:null}]}]:[]),
+    ]}});
+   }
    if(path.endsWith('/client-members') && r.request().method()==='POST'){saved.push(r.request().postDataJSON());return r.fulfill({status:201,json:{data:{id:72,client_id:1,partner_specialist_id:9,employee_id:null,specialist_name:'Synthetic Partner',terms:[],projects:[],feedbacks:[]}}});}
    if(path.endsWith('/client-members')) return r.fulfill({json:{data:saved.some(x=>x.partner_specialist_id===9)?[{id:72,client_id:1,partner_specialist_id:9,employee_id:null,specialist_name:'Synthetic Partner',terms:[],projects:[],feedbacks:[{id:99,text:'Synthetic feedback with metadata',project_id:null,occurred_on:'2026-10-12',rating:'Strong',legacy_interview_id:31},{id:100,text:'Legacy feedback without metadata',project_id:null,occurred_on:null,rating:null,legacy_interview_id:null}]}]:[]}});
    if(path==='/api/clients/partners/3'&&r.request().method()==='PATCH'){const payload=r.request().postDataJSON();partnerWrites.push({path,payload});Object.assign(partnerState,payload);return r.fulfill({json:{data:partnerState}});}
@@ -45,8 +52,17 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    if(path==='/api/clients/partners/3/legal-entities/41'&&r.request().method()==='PATCH'){
      Object.assign(partnerLegal[0],r.request().postDataJSON());return r.fulfill({json:{data:{}}});
    }
-   if(path==='/api/vacations/client-service-calendar') return r.fulfill({json:{data:{employees:[{id:1,full_name:'Synthetic Employee',department_id:42,department_name:'Synthetic Department'}],departments:[{id:42,name:'Synthetic Department'}],absences:[{id:5,employee_id:1,starts_on:'2026-10-26',ends_on:'2026-10-29',status:'planned'}]}}});
-   if(path==='/api/clients/specialists/filter-clients') return r.fulfill({json:{data:[{id:1,name:'Synthetic Client'}]}});
+   if(path==='/api/vacations/client-service-calendar') return r.fulfill({json:{data:{employees:[
+    {id:1,full_name:'Synthetic Employee',department_id:42,department_name:'Synthetic Department'},
+    {id:11,full_name:'Synthetic Colleague',department_id:42,department_name:'Synthetic Department'},
+    {id:12,full_name:'Synthetic Another',department_id:52,department_name:'Another Department'},
+   ],departments:[
+    {id:40,name:'Synthetic Direction',parent_id:null,is_production:true},
+    {id:42,name:'Synthetic Department',parent_id:40,is_production:false},
+    {id:50,name:'Another Direction',parent_id:null,is_production:true},
+    {id:52,name:'Another Department',parent_id:50,is_production:false},
+   ],absences:[{id:5,employee_id:1,starts_on:'2026-10-26',ends_on:'2026-10-29',status:'planned'}]}}});
+   if(path==='/api/clients/specialists/filter-clients') return r.fulfill({json:{data:[{id:1,name:'Synthetic Client'},{id:2,name:'Another Client'}]}});
    if(path==='/api/clients/partners') return r.fulfill({json:{data:{partners:[partnerState],unassigned:[]}}});
    if(path.endsWith('/members') && r.request().method()==='POST'){saved.push(r.request().postDataJSON());return r.fulfill({status:201,json:{data:{member_id:71}}});}
    const data=path.endsWith('/employees/access/me')?{services:{clients:true},roles:['platform-admin']}:
@@ -63,6 +79,33 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const nav=page.getByRole('navigation',{name:'Навигация сервиса клиентов'});
   await nav.getByRole('button',{name:'Специалисты',exact:true}).click();
   await page.getByRole('table').getByText('Synthetic Employee',{exact:true}).waitFor();
+  const roster=page.locator('.specialists-roster');
+  const filterRect=await page.locator('.specialists-roster__filters').evaluate(el=>({top:el.getBoundingClientRect().top,bottom:el.getBoundingClientRect().bottom}));
+  const topbarBottom=await page.locator('.irlix-app-topbar').evaluate(el=>el.getBoundingClientRect().bottom);
+  assert.ok(filterRect.top>=topbarBottom-1,'Filters start below the topbar');
+  assert.ok(filterRect.bottom<=await page.locator('.specialists-roster__scroll').evaluate(el=>el.getBoundingClientRect().top+1),'Filters stay above the calendar');
+  const directions=roster.getByRole('button',{name:'Направления',exact:true});
+  await directions.click();
+  await page.getByRole('option',{name:'Synthetic Direction',exact:true}).click();
+  assert.equal(await roster.getByText('Synthetic Employee',{exact:true}).count(),1,'Child department belongs to its production direction');
+  assert.equal(await roster.getByText('Synthetic Another',{exact:true}).count(),0);
+  await page.getByRole('option',{name:'Another Direction',exact:true}).click();
+  assert.equal(await roster.getByText('Synthetic Another',{exact:true}).count(),1,'Direction selections form a union');
+  await page.getByRole('option',{name:'Synthetic Direction',exact:true}).click();
+  assert.equal(await roster.getByText('Synthetic Employee',{exact:true}).count(),0);
+  await page.keyboard.press('Escape');
+  await roster.locator('.specialists-roster__control--department .ui-search-select__clear').click();
+  const clientsFilter=roster.getByRole('button',{name:'Клиенты',exact:true});
+  await clientsFilter.click();
+  await page.getByRole('option',{name:'Synthetic Client',exact:true}).click();
+  await roster.getByText('Synthetic Employee',{exact:true}).waitFor();
+  assert.equal(await roster.getByText('Synthetic Colleague',{exact:true}).count(),0);
+  await page.getByRole('option',{name:'Another Client',exact:true}).click();
+  await roster.getByText('Synthetic Colleague',{exact:true}).waitFor();
+  assert.equal(await roster.getByText('Synthetic Another',{exact:true}).count(),0,'Multiple clients combine matching memberships');
+  await page.keyboard.press('Escape');
+  await roster.locator('.specialists-roster__control--client .ui-search-select__clear').click();
+  await roster.getByText('Synthetic Another',{exact:true}).waitFor();
   assert.equal(await page.getByRole('columnheader',{name:'Отсутствия / статус'}).count(),0);
   assert.ok(await page.locator('.specialists-roster__absence>span').count()>0);
   const rosterHeight=await page.locator('.specialists-roster__scroll').evaluate(el=>({bottom:el.getBoundingClientRect().bottom,viewport:innerHeight}));

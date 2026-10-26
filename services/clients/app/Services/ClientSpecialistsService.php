@@ -18,8 +18,13 @@ final class ClientSpecialistsService
     /** Return only employee identity and ClientMember term dates for filter matching. */
     public function members(int $clientId): array
     {
-        abort_unless(Client::query()->whereKey($clientId)->exists(), 404);
-        $members = ClientMember::query()->where('client_id', $clientId)
+        return $this->membersForClients([$clientId]);
+    }
+
+    public function membersForClients(array $clientIds): array
+    {
+        abort_unless(Client::query()->whereIn('id', $clientIds)->count() === count($clientIds), 404);
+        $members = ClientMember::query()->whereIn('client_id', $clientIds)
             ->whereNotNull('employee_id')->select(['id', 'employee_id'])->get();
         if ($members->isEmpty()) return [];
         $terms = MemberTerm::query()->whereIn('client_member_id', $members->pluck('id')->all())

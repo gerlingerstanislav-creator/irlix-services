@@ -27,7 +27,12 @@ final class ClientSpecialistsController extends Controller
     public function members(Request $request, ClientSpecialistsService $service)
     {
         $this->verifyMembership($request);
-        $data = $request->validate(['client_id' => ['required', 'integer', 'min:1']]);
-        return response()->json(['data' => $service->members((int) $data['client_id'])]);
+        $data = $request->validate([
+            'client_id' => ['required_without:client_ids', 'integer', 'min:1'],
+            'client_ids' => ['required_without:client_id', 'array', 'min:1', 'max:100'],
+            'client_ids.*' => ['integer', 'min:1', 'distinct'],
+        ]);
+        $ids = isset($data['client_ids']) ? array_map('intval', $data['client_ids']) : [(int) $data['client_id']];
+        return response()->json(['data' => $service->membersForClients($ids)]);
     }
 }
