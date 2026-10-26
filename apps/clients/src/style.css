@@ -45,6 +45,16 @@
   font-weight:600;
   text-align:center;
 }
+.clients-load-more--sentinel {
+  min-height:1px;
+  height:1px;
+  padding:0;
+  border:0;
+  box-shadow:none;
+  overflow:hidden;
+  background:transparent;
+}
+.clients-load-more__quiet { display:block; height:1px; width:1px; }
 .clients-load-more--floating {
   position:sticky;
   bottom:0;
