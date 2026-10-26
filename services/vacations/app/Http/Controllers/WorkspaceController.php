@@ -277,6 +277,8 @@ final class WorkspaceController extends Controller
                 : 'approve';
         }
 
+        if ($this->authorization->isAdmin($access)) $actions[] = 'delete';
+
         return array_values(array_unique($actions));
     }
 
