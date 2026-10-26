@@ -8,6 +8,7 @@ use App\Services\EmployeePurgeService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
+Illuminate\Database\Eloquent\Model::setConnectionResolver($app['db']);
 $unusedEmployee = 999;
 DB::table('timesheet_entries')->where('employee_id', $unusedEmployee)->delete();
 DB::table('final_approvals')->where('employee_id', $unusedEmployee)->delete();
