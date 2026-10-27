@@ -14,6 +14,17 @@ class StorageAuthenticatedNavigationChecks(unittest.TestCase):
         self.assertIn("urllib.request.HTTPRedirectHandler", script)
         self.assertIn('assert "storage=1" not in location', script)
 
+    def test_employees_runtime_copies_storage_gate_and_auth_smoke(self):
+        dockerfile = (ROOT / "services/employees/Dockerfile").read_text()
+        self.assertIn(
+            "COPY app/Support/StoragePilotGate.php /app/app/Support/StoragePilotGate.php",
+            dockerfile,
+        )
+        self.assertIn(
+            "COPY tests/storage_pilot_session_runtime.php /app/tests/storage_pilot_session_runtime.php",
+            dockerfile,
+        )
+
     def test_never_write_session_cookie_to_logs(self):
         script = (ROOT / "scripts/ci/verify_plan.py").read_text()
         php = (ROOT / "services/employees/tests/storage_pilot_session_runtime.php").read_text()
