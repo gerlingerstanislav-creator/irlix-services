@@ -22,6 +22,11 @@ checkSequence(DB::table('absences')->find(1)->status==='in_review',
     'Only lifecycle is persisted, never employee_review');
 checkSequence($service->get(1)['status']==='employee_review' && $service->get(1)['lifecycle_status']==='in_review',
     'UI status is derived from the active approval stage');
+$reads = new App\Application\AbsenceReadService();
+checkSequence(count($reads->registry([10], ['status' => 'employee_review'])) === 1,
+    'Review filters must use the active approval task, not the stored lifecycle');
+checkSequence(count($reads->registry([10], ['status' => 'manager_review'])) === 0,
+    'Other stages must not match the current review task');
 checkSequence(DB::table('absence_approvals')->where('status','pending')->count()===2,'Only first unresolved sequence becomes pending');
 $service->approve(2,22,'synthetic-approver',fn()=>true);
 checkSequence((int) DB::table('absence_approvals')->find(2)->acted_by_employee_id===22,'Actual approving employee must be recorded');
