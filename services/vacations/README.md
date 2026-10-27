@@ -240,3 +240,31 @@ Clients является source of truth по подключениям к про
 `GET /api/vacations/department-roster?year=YYYY` exposes the scoped historical Employees employment segments for the calendar year. `GET /api/vacations/registry?historical_year=YYYY&from=...&to=...` restricts rows to the chosen year and periods intersecting authorized employment segments; legacy registry without the flag is unchanged. `GET /api/vacations/absences/{id}/workspace?historical_year=YYYY` allows **read-only** historical detail for a previously authorized department segment when current employee-scope access fails. Other endpoints and mutations do not gain historical permission.
 
 The department UI shows people working at any time in the selected month, with their historical department at that time. Work fund and absence hours are summed only over distinct working dates covered by those employment and department segments; month cards therefore handle mid-month hire, dismissal, rehire, transfer, and overlap without multiplying hours. Statuses rejected/cancelled do not contribute to absence hours. The normal Employees directory remains the source for creating new absences, so former employees are never accidentally offered as creation targets.
+
+
+## Вычисляемый статус отпуска (27.10.2026)
+
+Хранение и отображение разделены: в `absences.status` остаётся **только жизненное
+состояние** (`planned`, `in_review`, `confirmed`, `rejected`, `cancelled`).
+Текущий этап процесса не сохраняется там повторно: при `in_review` клиентский
+`status` вычисляется из первой активной (`pending`) группы
+`absence_approvals`, отсортированной по `sequence` и `id`.
+API сохраняет прежние значения отображаемого `status` и дополнительно отдаёт
+`lifecycle_status`. Реестр/календари/очередь согласований используют ту же
+проекцию, а серверный фильтр по этапу ищет соответствующую активную approval
+task. Проекция выполняется пакетно, без N+1 запросов.
+
+Применяется однократная консервативная нормализация старых workflow-статусов.
+У старого импорта `on_approval` первая незавершённая sequence активируется
+только при наличии явно зафиксированного согласующего; `false` означает
+«ещё не согласовано», а не отказ. Записи без доказуемой текущей группы
+останавливаются конфликтом; отсутствующие события или времена действий не
+восстанавливаются по предположениям. Уже изменённые пользователями записи
+не перезаписываются. Старое значение этапа без подтверждённой активной задачи
+остаётся доступным для чтения до ручного разбора; оно не исправляется наугад.
+
+Важно: исторический `not_approved` переносится как терминальное `rejected`;
+новое действие «Отклонить с комментарием» по-прежнему возвращает заявку в
+`planned`, сохраняя причину в аудите. Физические изменения данных при выпуске
+требуют проверенного rollback checkpoint; откат нормализации без восстановления
+данных из checkpoint невозможен.
