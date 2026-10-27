@@ -27,7 +27,7 @@ namespace {
     });
     $schema = \Illuminate\Support\Facades\DB::connection()->getSchemaBuilder();
     $schema->create('client_contour_permissions', function ($t) {
-        $t->id(); $t->string('role'); $t->string('permission'); $t->boolean('allowed'); $t->string('scope');
+        $t->id(); $t->string('role'); $t->string('permission'); $t->boolean('allowed'); $t->string('scope'); $t->timestamps();
     });
     // Old tester permission grants must remain ineffective after privilege removal.
     foreach (['platform-tester', 'account-manager'] as $role) {
@@ -237,5 +237,27 @@ namespace {
     if ($oldJwtMode === false) putenv('IRLIX_AUTHZ_JWT_ENABLED');
     else putenv('IRLIX_AUTHZ_JWT_ENABLED='.$oldJwtMode);
 
+    // Production matrices can contain old or manually disabled entries.
+    // Repair only the owner-approved Account Manager workspaces with own
+    // default scope, and preserve already wider customized scopes.
+    $matrix = \Illuminate\Support\Facades\DB::table('client_contour_permissions');
+    $matrix->where('role', 'account-manager')->where('permission', 'reports.view')
+        ->update(['allowed'=>false, 'scope'=>'none']);
+    $matrix->where('role', 'account-manager')->where('permission', 'cashflow.view')
+        ->update(['allowed'=>false, 'scope'=>'team']);
+    $migration = require dirname(__DIR__).'/database/migrations/2026_10_27_000002_restore_account_manager_workspace_permissions.php';
+    $migration->up();
+    $report = \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','account-manager')->where('permission','reports.view')->first();
+    $cashflow = \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','account-manager')->where('permission','cashflow.view')->first();
+    $check((bool) $report->allowed && $report->scope === 'own',
+        'Account Manager reports disabled in persisted matrix');
+    $check((bool) $cashflow->allowed && $cashflow->scope === 'team',
+        'Client matrix repair expanded or downgraded a configured scope');
+    $migration->up();
+    $check(\Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','account-manager')->where('permission','reports.view')->count() === 1,
+        'Workspace restoration migration is not idempotent');
     echo "Clients tester and department alias access smoke passed: {$checks} checks\n";
 }
