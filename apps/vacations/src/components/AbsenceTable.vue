@@ -3,7 +3,7 @@ import { UiRegistryTable, UiTooltip } from '@irlix/ui';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import AbsenceActions from './AbsenceActions.vue';
 import { formatDateNumeric, statusLabels, typeLabels } from '../constants';
-import { absenceRegistryColumns, absenceRegistryMinWidth } from '../absenceRegistryLayout';
+import { absenceRegistryColumns, absenceRegistryMinWidth, absenceTypeTone, formatAbsenceDays } from '../absenceRegistryLayout';
 
 const props=defineProps({
   items:{type:Array,default:()=>[]},
@@ -50,7 +50,7 @@ const registryColumns = computed(() => absenceRegistryColumns({
   typeBadgeWidth:typeBadgeWidth.value,
   statusBadgeWidth:statusBadgeWidth.value,
 }));
-const registryMinWidth = computed(() => absenceRegistryMinWidth(registryColumns.value));
+const registryMinWidth = computed(() => absenceRegistryMinWidth(registryColumns.value, {centerColumns:props.centerColumns}));
 
 
 const actionsOf=(item)=>(item.available_actions||[]).filter((action)=>!props.hiddenActions.includes(action));
@@ -110,8 +110,8 @@ const iconPath=(task)=>{
         <tr>
           <th v-if="showEmployee" class="employee-column">Сотрудник</th>
           <th class="period-column">Период</th>
-          <th class="days-column">Длительность</th>
           <th class="type-column">Тип</th>
+          <th v-if="centerColumns" class="registry-spacer-column" aria-hidden="true"></th>
           <th class="status-column">Статус</th>
           <th v-if="showProgress" class="progress-column">Этапы</th>
           <th v-if="showStage" class="stage-column">Этап</th>
@@ -129,9 +129,9 @@ const iconPath=(task)=>{
             <td :colspan="registryColumns.length-(showEmployee ? 1 : 0)" class="empty-absence-label">—</td>
           </template>
           <template v-else>
-          <td class="period-column"><span class="period-text">{{ formatDateNumeric(item.starts_on) }} — {{ formatDateNumeric(item.ends_on) }}</span></td>
-          <td class="days-column">{{ item.calendar_days??'—' }}</td>
-          <td class="type-column"><span class="vacation-type-badge">{{ typeLabels[item.type]||item.type }}</span></td>
+          <td class="period-column"><span class="period-text"><span>{{ formatDateNumeric(item.starts_on) }} — {{ formatDateNumeric(item.ends_on) }}</span><span v-if="formatAbsenceDays(item.calendar_days)" class="period-duration">{{ formatAbsenceDays(item.calendar_days) }}</span></span></td>
+          <td class="type-column"><span class="vacation-type-badge" :class="`vacation-type-badge--${absenceTypeTone(item.type)}`">{{ typeLabels[item.type]||item.type }}</span></td>
+          <td v-if="centerColumns" class="registry-spacer-column" aria-hidden="true"></td>
           <td class="status-column">
             <span class="status-text vacation-status-badge" :class="`vacation-status-badge--${statusTone(item)}`" :title="statusLabels[item.absence_status||item.status]||item.absence_status||item.status">{{ statusLabels[item.absence_status||item.status]||item.absence_status||item.status }}</span>
           </td>
