@@ -111,8 +111,15 @@ class ClientContourAccess
         $departmentAliases = $jwtMode
             ? $specialRoles
             : $chain->map(fn ($d) => (string) ($d['alias'] ?? ''))->all();
+        // Functional client roles are assigned by Employees and signed into
+        // Keycloak JWTs. Unlike arbitrary imported labels, these verified
+        // assignments are authoritative in JWT mode. Preserve the legacy
+        // membership-based derivation for existing accounts during rollout.
+        $jwtFunctionalRoles = $jwtMode
+            ? array_values(array_intersect($specialRoles, ['account-manager', 'sales-manager']))
+            : [];
         $roles = array_values(array_unique(array_merge(
-            ['employee'], self::importedMatrixLabels($specialRoles)
+            ['employee'], self::importedMatrixLabels($specialRoles), $jwtFunctionalRoles
         )));
         $managedProductionRoots = $departments
             ->filter(fn ($department) => (bool) ($department['is_production'] ?? false)
@@ -203,8 +210,10 @@ class ClientContourAccess
             (int) ($person['id'] ?? 0) === (int) ($employee['id'] ?? 0));
         $actorDepartmentId = (int) ($actorDirectory['department_id'] ?? 0);
         $inAccounting = in_array('account-management', $departmentAliases, true)
+            || in_array('account-manager', $jwtFunctionalRoles, true)
             || ($actorDepartmentId > 0 && in_array($actorDepartmentId, $accountingDepartmentIds, true));
         $inSales = in_array('sales', $departmentAliases, true)
+            || in_array('sales-manager', $jwtFunctionalRoles, true)
             || ($actorDepartmentId > 0 && in_array($actorDepartmentId, $salesDepartmentIds, true));
         $managedDepartmentAliases = $jwtMode
             ? array_values(array_map(fn ($role) => substr($role, 0, -5),
