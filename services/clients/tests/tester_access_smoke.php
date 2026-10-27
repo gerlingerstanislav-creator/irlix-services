@@ -207,6 +207,54 @@ namespace {
     $check(!in_array('account-manager', $financeTitle['roles'], true),
         'Finance employee inherited account-management from same position title');
 
+    // One resolver computes all functional and management matrix roles from
+    // the same signed/verified Employees directory, not separate page hacks.
+    $actorStub = ['id'=>511,'position'=>'Sales Manager','functional_roles'=>['sales-manager']];
+    $directSales = $resolver->resolve($request('api/permissions/me'));
+    $check(in_array('sales-manager', $directSales['roles'], true),
+        'Client Service Sales position did not receive sales-manager');
+    $check(!in_array('sales-head', $directSales['roles'], true),
+        'Sales job title unexpectedly granted a manager role');
+    foreach (['leads.view','requests.view','positions.view','attempts.view'] as $permission) {
+        $check(($directSales['permissions'][$permission]['scope'] ?? '') === 'own',
+            'Sales role matrix not applied to '.$permission);
+    }
+    $actorStub = ['id'=>510,'position'=>'Sales Manager','functional_roles'=>[]];
+    $financeSalesTitle = $resolver->resolve($request('api/permissions/me'));
+    $check(!in_array('sales-manager', $financeSalesTitle['roles'], true),
+        'Finance employee inherited functional Sales role by title');
+
+    $matrixDb = \Illuminate\Support\Facades\DB::table('client_contour_permissions');
+    foreach ([
+        ['role'=>'sales-head','permission'=>'leads.view','scope'=>'team'],
+        ['role'=>'accounting-head','permission'=>'reports.view','scope'=>'team'],
+        ['role'=>'client-service-head','permission'=>'requests.view','scope'=>'all'],
+    ] as $grant) {
+        $matrixDb->insert($grant + ['allowed'=>true]);
+    }
+    $actorStub = ['id'=>512,'position'=>'Sales Manager','functional_roles'=>['sales-manager']];
+    $accessDepartmentIdsStub = [106];
+    $salesHeadMatrix = $resolver->resolve($request('api/permissions/me'));
+    $check(in_array('sales-head', $salesHeadMatrix['roles'], true)
+        && ($salesHeadMatrix['permissions']['leads.view']['scope'] ?? '') === 'team',
+        'Sales leader did not keep editable team scope');
+    $check(in_array(503, $salesHeadMatrix['team_employee_ids'], true),
+        'Sales leader did not receive team scope from Employees');
+    $actorStub = ['id'=>513,'position'=>'Account Manager','functional_roles'=>['account-manager']];
+    $accessDepartmentIdsStub = [102,103];
+    $accountHeadMatrix = $resolver->resolve($request('api/permissions/me'));
+    $check(in_array('accounting-head', $accountHeadMatrix['roles'], true)
+        && ($accountHeadMatrix['permissions']['reports.view']['scope'] ?? '') === 'team',
+        'Account leader did not keep editable team scope');
+    $actorStub = ['id'=>514,'position'=>'Client Service Head','functional_roles'=>[]];
+    $accessDepartmentIdsStub = [101,102,103,106,107];
+    $clientHeadMatrix = $resolver->resolve($request('api/permissions/me'));
+    $check(in_array('client-service-head', $clientHeadMatrix['roles'], true)
+        && ($clientHeadMatrix['permissions']['requests.view']['scope'] ?? '') === 'all',
+        'Client Service head did not keep independently editable all scope');
+    $accessDepartmentIdsStub = [];
+
+    $actorStub = ['id'=>511,'position'=>'Sales Manager','functional_roles'=>['sales-manager']];
     // JWT labels describe DIRECT organizational membership only; the verified
     // employee ID and Employees directory must recover ancestry in this mode.
     $oldJwtMode = getenv('IRLIX_AUTHZ_JWT_ENABLED');
@@ -247,6 +295,15 @@ namespace {
         $check(($jwtTitle['permissions'][$permission]['allowed'] ?? false) === true,
             'JWT verified position denied '. $permission);
     }
+    $jwtSalesRequest = $request('api/permissions/me');
+    $jwtSalesRequest->attributes->set('identity', ['realm_roles'=>[
+        'employee-id:511','client-service','service:clients',
+    ]]);
+    $jwtSales = $resolver->resolve($jwtSalesRequest);
+    $check(in_array('sales-manager', $jwtSales['roles'], true)
+        && ($jwtSales['permissions']['leads.view']['scope'] ?? '') === 'own'
+        && ($jwtSales['permissions']['positions.view']['scope'] ?? '') === 'own',
+        'A signed JWT with no sales-manager label lost trusted Employees Sales projection');
     $jwtFinanceRequest = $request('api/permissions/me');
     $jwtFinanceRequest->attributes->set('identity', ['realm_roles'=>['employee-id:502','service:timesheets','accounting']]);
     $jwtFinance = $resolver->resolve($jwtFinanceRequest);
