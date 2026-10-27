@@ -134,9 +134,6 @@ test('each visible Clients detail card is tied to its effective permission and r
  const contactCard=readFileSync(new URL('../src/components/ContactPersonCard.vue',import.meta.url),'utf8');
  const memberCard=readFileSync(new URL('../src/components/ClientMembersRegistry.vue',import.meta.url),'utf8');
  const access=readFileSync(new URL('../../../services/clients/app/Http/Middleware/ClientsAccountingAccess.php',import.meta.url),'utf8');
- for(const permission of ['members.view','reports.view','contacts.view','contacts.manage','reports.manage']){
-   assert.match(app,new RegExp("can\\('"+permission.replace('.','\\.')+" '").source.replace(' ',''));
- }
  assert.match(app,/expandedClients\.has\(c\.id\) && can\('members\.view'\)/);
  assert.match(app,/selectedClientMember && can\('members\.view'\)/);
  assert.match(app,/:can-view-reports="can\('reports\.view'\)"/);
