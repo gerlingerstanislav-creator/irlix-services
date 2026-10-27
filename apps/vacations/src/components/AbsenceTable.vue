@@ -1,6 +1,6 @@
 <script setup>
 import { UiRegistryTable, UiTooltip } from '@irlix/ui';
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import AbsenceActions from './AbsenceActions.vue';
 import { formatDateNumeric, statusLabels, typeLabels } from '../constants';
 
@@ -9,14 +9,40 @@ const props=defineProps({
   showEmployee:{type:Boolean,default:false},
   showStage:{type:Boolean,default:false},
   showProgress:{type:Boolean,default:false},
+  centerColumns:{type:Boolean,default:false},
   showDocuments:{type:Boolean,default:true},
   showActions:{type:Boolean,default:true},
   hiddenActions:{type:Array,default:()=>[]},
 });
 const emit=defineEmits(['action']);
+const typeRuler=ref(null),statusRuler=ref(null);
+const typeBadgeWidth=ref(0),statusBadgeWidth=ref(0);
+const displayedItems=computed(()=>props.items.filter(item=>!item.is_employee_without_absences));
+const visibleTypeLabels=computed(()=>[...new Set(displayedItems.value.map(item=>typeLabels[item.type]||item.type).filter(Boolean))]);
+const visibleStatusLabels=computed(()=>[...new Set(displayedItems.value.map(item=>statusLabels[item.absence_status||item.status]||item.absence_status||item.status).filter(Boolean))]);
+const measureBadges=()=>{
+  typeBadgeWidth.value=Math.ceil(typeRuler.value?.getBoundingClientRect().width||0);
+  statusBadgeWidth.value=Math.ceil(statusRuler.value?.getBoundingClientRect().width||0);
+};
+let badgeObserver;
+onMounted(()=>{
+  if(!props.centerColumns)return;
+  measureBadges();
+  if(typeof ResizeObserver!=='undefined'){
+    badgeObserver=new ResizeObserver(measureBadges);
+    if(typeRuler.value)badgeObserver.observe(typeRuler.value);
+    if(statusRuler.value)badgeObserver.observe(statusRuler.value);
+  }
+});
+onBeforeUnmount(()=>badgeObserver?.disconnect());
+const badgeStyles=computed(()=>props.centerColumns?{
+  '--absence-type-badge-width':typeBadgeWidth.value?`${typeBadgeWidth.value}px`:'max-content',
+  '--absence-status-badge-width':statusBadgeWidth.value?`${statusBadgeWidth.value}px`:'max-content',
+}:{});
 const registryColumns = computed(() => [
   ...(props.showEmployee ? ['220px'] : []),
-  '230px', '110px', '205px', '190px',
+  '230px', '110px',
+  ...(props.centerColumns ? [`${Math.max(190,typeBadgeWidth.value+18)}px`,`${Math.max(150,statusBadgeWidth.value+18)}px`] : ['205px','190px']),
   ...(props.showProgress ? ['112px'] : []),
   ...(props.showStage ? ['180px'] : []),
   ...(props.showDocuments ? ['135px'] : []),
@@ -68,7 +94,15 @@ const iconPath=(task)=>{
 </script>
 
 <template>
-  <div class="table-wrap vacations-table-wrap">
+  <div class="table-wrap vacations-table-wrap" :style="badgeStyles">
+    <div v-if="centerColumns" class="vacations-badge-rulers" aria-hidden="true">
+      <div ref="typeRuler" class="vacations-badge-ruler">
+        <span v-for="label in visibleTypeLabels" :key="label">{{ label }}</span>
+      </div>
+      <div ref="statusRuler" class="vacations-badge-ruler">
+        <span v-for="label in visibleStatusLabels" :key="label">{{ label }}</span>
+      </div>
+    </div>
     <UiRegistryTable class="shared-registry-content" table-class="irlix-data-table vacations-table" :columns="registryColumns" :min-width="registryMinWidth" aria-label="Отсутствия" density="compact">
       <template #head>
         <tr>
