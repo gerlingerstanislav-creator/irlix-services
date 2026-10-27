@@ -12,6 +12,7 @@ const props = defineProps({
   platformAdmin: { type: Boolean, default: false },
   platformAccess: { type: Function, default: null },
   serviceAccess: { type: Object, default: null },
+  reportSubmit: { type: Function, default: null },
   breadcrumbs: { type: Array, default: null },
   loading: { type: Boolean, default: false },
 });
@@ -20,7 +21,7 @@ const emit = defineEmits(['update:section', 'logout']);
 
 <template>
   <div class="irlix-app-shell irlix-ui">
-    <slot name="sidebar"><UiAppSidebar :section="section" :items="items" :bottom-items="bottomItems" :current-service="service" :current-user="currentUser" :account-enabled="accountEnabled" :platform-admin="platformAdmin" :platform-access="platformAccess" :service-access="serviceAccess" @update:section="emit('update:section', $event)" @logout="emit('logout')" /></slot>
+    <slot name="sidebar"><UiAppSidebar :section="section" :items="items" :bottom-items="bottomItems" :current-service="service" :current-user="currentUser" :account-enabled="accountEnabled" :platform-admin="platformAdmin" :platform-access="platformAccess" :service-access="serviceAccess" :report-submit="reportSubmit" @update:section="emit('update:section', $event)" @logout="emit('logout')" /></slot>
     <section class="irlix-app-shell__workspace">
       <UiAppTopbar :service="service" :service-name="serviceName" :section="section" :items="[...items, ...bottomItems]" :breadcrumbs="breadcrumbs" :loading="loading">
         <template v-if="$slots.actions" #actions><slot name="actions" /></template>

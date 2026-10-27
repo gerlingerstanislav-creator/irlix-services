@@ -258,6 +258,7 @@ onBeforeUnmount(stopTimer);
       current-service="cv-converter"
       :current-user="auth.user"
     :platform-access="() => auth.fetch('/api/employees/access/me')"
+      :report-submit="(url, options) => auth.fetch(url, options)"
       @update:section="goSection"
       @logout="auth.logout()"
     />

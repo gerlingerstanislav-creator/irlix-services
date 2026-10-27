@@ -857,6 +857,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
       current-service="timesheets"
       :current-user="auth.user"
       :platform-access="() => auth.fetch('/api/employees/access/me')"
+      :report-submit="(url, options) => auth.fetch(url, options)"
       :bottom-items="bottomItems"
       aria-label="Навигация сервиса таймшитов"
       @update:section="id => router.hasRoute(id) && router.push({ name: id })"
