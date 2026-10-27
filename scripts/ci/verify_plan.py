@@ -195,7 +195,10 @@ def main():
     # or script-only plans where no application container is selected.
     verify_brandbook(host)
     verify_design_system(host)
-    verify_storage_authenticated_navigation(compose, sudo, host)
+    # Probe real SSO only when Employees or Storage is in the release;
+    # unrelated Finance and client smoke checks remain independent.
+    if selected.intersection({'employees', 'storage-s3', 'storage-web'}):
+        verify_storage_authenticated_navigation(compose, sudo, host)
     if selected.intersection({'storage-s3','storage-web'}):
         verify_storage_pilot(host)
     for c in data["components"]:
