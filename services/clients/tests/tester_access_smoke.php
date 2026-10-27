@@ -167,6 +167,15 @@ namespace {
     $jwtAccount = $resolver->resolve($jwtRequest);
     $check(in_array('account-manager', $jwtAccount['roles'], true), 'JWT descendant Account Manager lost role');
     $check(($jwtAccount['permissions']['timesheets.management.view']['allowed'] ?? false) === true, 'JWT descendant Timesheets permission missing');
+    $jwtFunctionalRequest = $request('api/permissions/me');
+    $jwtFunctionalRequest->attributes->set('identity', ['realm_roles'=>[
+        'employee-id:505', 'account-manager', 'service:clients', 'service:timesheets',
+    ]]);
+    $jwtFunctionalAccount = $resolver->resolve($jwtFunctionalRequest);
+    $check(in_array('account-manager', $jwtFunctionalAccount['roles'], true), 'Signed functional account-manager role was ignored');
+    $check(($jwtFunctionalAccount['permissions']['clients.view']['allowed'] ?? false) === true, 'Signed functional account-manager lost Clients access');
+    $check(($jwtFunctionalAccount['permissions']['timesheets.management.view']['allowed'] ?? false) === true, 'Signed functional account-manager lost Timesheets access');
+    $check(!in_array('client-service', $jwtFunctionalAccount['roles'], true), 'Functional role inherited parent organizational role');
     $jwtFinanceRequest = $request('api/permissions/me');
     $jwtFinanceRequest->attributes->set('identity', ['realm_roles'=>['employee-id:502','service:timesheets','accounting']]);
     $jwtFinance = $resolver->resolve($jwtFinanceRequest);
