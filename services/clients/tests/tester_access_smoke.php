@@ -289,6 +289,7 @@ namespace {
         'JWT client-service child cannot open Clients workspace');
     $check(!($jwtOperations['permissions']['reports.view']['allowed'] ?? false),
         'JWT client-service baseline leaked other business sections');
+    $actorStub = ['id'=>509,'position'=>'account-manager','functional_roles'=>['account-manager']];
     $jwtTitleRequest = $request('api/permissions/me');
     $jwtTitleRequest->attributes->set('identity', ['realm_roles'=>[
         'employee-id:509', 'client-service', 'service:clients', 'service:timesheets',
@@ -301,6 +302,7 @@ namespace {
         $check(($jwtTitle['permissions'][$permission]['allowed'] ?? false) === true,
             'JWT verified position denied '. $permission);
     }
+    $actorStub = ['id'=>511,'position'=>'Sales Manager','functional_roles'=>['sales-manager']];
     $jwtSalesRequest = $request('api/permissions/me');
     $jwtSalesRequest->attributes->set('identity', ['realm_roles'=>[
         'employee-id:511','client-service','service:clients',
