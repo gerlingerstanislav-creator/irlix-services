@@ -334,5 +334,48 @@ namespace {
     $check(\Illuminate\Support\Facades\DB::table('client_contour_permissions')
         ->where('role','account-manager')->where('permission','reports.view')->count() === 1,
         'Workspace restoration migration is not idempotent');
+    // The global Specialists calendar is no longer a hidden organizational
+    // exception: both its navigation and API use an editable matrix key.
+    $specialistsMigration = require dirname(__DIR__).'/database/migrations/2026_10_27_000003_seed_specialists_matrix_permission.php';
+    $specialistsMigration->up();
+    $specialistsMigration->up();
+    $check(\Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','client-service')->where('permission','specialists.view')->count() === 1,
+        'Global specialists baseline migration duplicated permission rows');
+    $actorStub = ['id'=>511,'position'=>'Sales Manager','functional_roles'=>['sales-manager']];
+    $salesRoster = $resolver->resolve($request('api/permissions/me'));
+    $check(($salesRoster['permissions']['specialists.view']['scope'] ?? '') === 'all',
+        'Sales member lacks specialists calendar after baseline migration');
+    $calendarController = new \App\Http\Controllers\ClientSpecialistsController();
+    $checkRoster = new \ReflectionMethod($calendarController, 'verifyMembership');
+    $rosterRequest = $request('api/specialists/filter-clients');
+    $rosterRequest->attributes->set('client_contour_access', $salesRoster);
+    $checkRoster->invoke($calendarController, $rosterRequest);
+    $check(true, 'Authorized Sales calendar was refused');
+
+    \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','client-service')->where('permission','specialists.view')
+        ->update(['allowed'=>false,'scope'=>'none']);
+    $specialistsMigration->up(); // Existing administrator changes survive.
+    $disabled = $resolver->resolve($request('api/permissions/me'));
+    $check(!($disabled['permissions']['specialists.view']['allowed'] ?? false),
+        'Editable specialist permission ignored an explicit deny');
+    $rosterRequest->attributes->set('client_contour_access', $disabled);
+    try {
+        $checkRoster->invoke($calendarController, $rosterRequest);
+        throw new \RuntimeException('Disabled specialists roster was unexpectedly accepted');
+    } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+        $check($exception->getStatusCode() === 403, 'Specialist API denied wrong status');
+    }
+    \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','client-service')->where('permission','specialists.view')
+        ->update(['allowed'=>true,'scope'=>'own']);
+    $rosterRequest->attributes->set('client_contour_access', $resolver->resolve($request('api/permissions/me')));
+    try {
+        $checkRoster->invoke($calendarController, $rosterRequest);
+        throw new \RuntimeException('Own-scope calendar leaked the global roster');
+    } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+        $check($exception->getStatusCode() === 403, 'Own-scope calendar denied wrong status');
+    }
     echo "Clients tester and department alias access smoke passed: {$checks} checks\n";
 }
