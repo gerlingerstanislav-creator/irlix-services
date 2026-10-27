@@ -20,7 +20,11 @@ final class ApprovalQueryService
             });
         }
         return $query->orderBy('a.created_at')->get()->map(
-            static fn (AbsenceApproval $item) => $item->getRawOriginal()
+            static function (AbsenceApproval $item): array {
+                $row = $item->getRawOriginal();
+                if ($row['absence_status'] === 'in_review') $row['absence_status'] = $row['stage'];
+                return $row;
+            }
         )->all();
     }
 

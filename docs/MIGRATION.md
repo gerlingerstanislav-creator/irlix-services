@@ -1,3 +1,30 @@
+
+
+## Vacations status reconciliation (27.10.2026)
+
+Legacy source `on_approval` maps to target **lifecycle** `in_review`, not
+`planned`. Its current UI stage is computed from actual imported
+`absence_approvals`: the lowest unfinished historical `order` becomes
+`pending`, prior approved rows remain approved, later rows remain waiting.
+Unresolved, missing or fully approved groups under `on_approval` block
+import and need explicit operator investigation; no phantom actions are
+created. Other aliases map only to lifecycle values; unknown codes block.
+
+Target Vacations upgrades existing workflow rows with a valid pending
+approval to `in_review`. A narrowly guarded fix for pre-cutover imported
+`on_approval` records is restricted to a single `legacy_migrated` audit
+event, no subsequent edits and an unambiguous waiting group. Previous
+legacy mappings allow only these evidenced normalizations; any other
+target modification remains a blocking conflict. Do not delete mappings
+or rerun a partial production import to bypass conflicts.
+
+Before release/migration, capture a compatible checkpoint, inventory
+source status distributions and approvals, verify pre-existing target
+and mapping state, and dry-run. After a staged upgrade and dry-run,
+verify every stage/status pair, document counts, history preservation,
+`Validate` and idempotent re-import. Report unresolved historical
+statuses explicitly. No real production migration is implicitly
+authorized by this code change.
 # Historical data migration
 
 ## Timesheets Control run #351 — root cause and standard member flow (25.10.2026)

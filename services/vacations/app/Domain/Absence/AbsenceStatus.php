@@ -6,6 +6,7 @@ enum AbsenceStatus: string
 {
     case EmployeeReview = 'employee_review';
     case Planned = 'planned';
+    case InReview = 'in_review';
     case HrReview = 'hr_review';
     case AccountManagerReview = 'account_manager_review';
     case ManagerReview = 'manager_review';

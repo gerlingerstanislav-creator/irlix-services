@@ -226,7 +226,7 @@ Clients является source of truth по подключениям к про
 
 ### Перенос документов и назначенной цепочки согласования Vacations
 
-Миграция добавляет старых согласующих в обычные `absence_approvals` нового сервиса: stage `employee_review` («Согласование сотрудниками»), конкретный Employees ID, без выдуманной роли HR/AM/RN. UUID согласующего разрешается через исходные users и их проверенное login-сопоставление; при отсутствии исходного user допускается подтверждённый Employees UUID mapping с существующим target. `order` становится sequence; одинаковый order — параллельная группа. `is_approved=true` становится approved, false — waiting (отказ из этого boolean не выводится). `acted_at`/acted_by остаются неизвестными. Текущий статус отсутствия сохраняет принятые aliases; `on_approval` и `approvers_definition` остаются planned. При явном submit такой цепочки активируется первая не завершённая sequence, затем следующие группы; все известные approved сохраняются. Последняя группа завершает обычный workflow статусом confirmed. Точные назначенные участники и platform-admin имеют существующее право согласования, роли остальных пользователей не расширяются. Возврат на доработку и редактирование planned сохраняют состав цепочки, но сбрасывают решения. В интерфейсе это обычная история/прогресс, отдельного исторического маршрута нет. Для обычных новых отпусков сохраняется HR → AM → руководитель → HR.
+Миграция добавляет старых согласующих в обычные `absence_approvals` нового сервиса: stage `employee_review` («Согласование сотрудниками»), конкретный Employees ID, без выдуманной роли HR/AM/RN. UUID согласующего разрешается через исходные users и их проверенное login-сопоставление; при отсутствии исходного user допускается подтверждённый Employees UUID mapping с существующим target. `order` становится sequence; одинаковый order — параллельная группа. `is_approved=true` становится approved, false — waiting (отказ из этого boolean не выводится). `acted_at`/acted_by остаются неизвестными. Текущий статус отсутствия сохраняет принятые aliases; `on_approval` и `approvers_definition` остаются planned. Для `approvers_definition` первая незавершённая sequence активируется при явном submit; для `on_approval` — уже при переносе, если она достоверно установлена из назначенных согласующих. Последующие группы активируются по порядку; все известные approved сохраняются. Последняя группа завершает обычный workflow статусом confirmed. Точные назначенные участники и platform-admin имеют существующее право согласования, роли остальных пользователей не расширяются. Возврат на доработку и редактирование planned сохраняют состав цепочки, но сбрасывают решения. В интерфейсе это обычная история/прогресс, отдельного исторического маршрута нет. Для обычных новых отпусков сохраняется HR → AM → руководитель → HR.
 
 Вложения, связанные с Vacation по attachmentable_type/id, загружаются read-only по исходным HTTP/HTTPS URL. Поддерживаются Vacation/vacations и namespaced class Vacation. Остальные polymorphic objects сохраняются с warning и не прикрепляются к чужим отпускам. Все документы предварительно скачиваются во временные файлы до target writes; Dry run не пишет в target DB/хранилище. Реальный проход использует проверенные staged bytes и кладёт их в общий `vacations_files`, который Migration API/worker монтируют как `/vacation-files`, Vacations — `/app/storage/app/vacations`. Применяются лимит 10 МБ, timeout 30 секунд/соединение 5 секунд, максимум 5 переходов; каждый redirect снова проверяется и DNS адрес фиксируется для соединения. Loopback, link-local/metadata, userinfo и не-HTTP схемы запрещены. Частная сеть допускается только для legacy DB host или явно заданных `MIGRATION_LEGACY_FILE_HOSTS`; bearer tokens платформы в старое хранилище не передаются. HTTP ошибки, пустые/большие документы, HTML/JSON вместо файла блокируют preflight с ошибкой конкретного attachments ID. Исходные URL/имя и row остаются в приватной metadata, публичные CI логи их не содержат. При изменении уже перенесённого согласования/документа в новой системе повторный импорт отказывается его перезаписывать.
 
@@ -240,3 +240,31 @@ Clients является source of truth по подключениям к про
 `GET /api/vacations/department-roster?year=YYYY` exposes the scoped historical Employees employment segments for the calendar year. `GET /api/vacations/registry?historical_year=YYYY&from=...&to=...` restricts rows to the chosen year and periods intersecting authorized employment segments; legacy registry without the flag is unchanged. `GET /api/vacations/absences/{id}/workspace?historical_year=YYYY` allows **read-only** historical detail for a previously authorized department segment when current employee-scope access fails. Other endpoints and mutations do not gain historical permission.
 
 The department UI shows people working at any time in the selected month, with their historical department at that time. Work fund and absence hours are summed only over distinct working dates covered by those employment and department segments; month cards therefore handle mid-month hire, dismissal, rehire, transfer, and overlap without multiplying hours. Statuses rejected/cancelled do not contribute to absence hours. The normal Employees directory remains the source for creating new absences, so former employees are never accidentally offered as creation targets.
+
+
+## Вычисляемый статус отпуска (27.10.2026)
+
+Хранение и отображение разделены: в `absences.status` остаётся **только жизненное
+состояние** (`planned`, `in_review`, `confirmed`, `rejected`, `cancelled`).
+Текущий этап процесса не сохраняется там повторно: при `in_review` клиентский
+`status` вычисляется из первой активной (`pending`) группы
+`absence_approvals`, отсортированной по `sequence` и `id`.
+API сохраняет прежние значения отображаемого `status` и дополнительно отдаёт
+`lifecycle_status`. Реестр/календари/очередь согласований используют ту же
+проекцию, а серверный фильтр по этапу ищет соответствующую активную approval
+task. Проекция выполняется пакетно, без N+1 запросов.
+
+Применяется однократная консервативная нормализация старых workflow-статусов.
+У старого импорта `on_approval` первая незавершённая sequence активируется
+только при наличии явно зафиксированного согласующего; `false` означает
+«ещё не согласовано», а не отказ. Записи без доказуемой текущей группы
+останавливаются конфликтом; отсутствующие события или времена действий не
+восстанавливаются по предположениям. Уже изменённые пользователями записи
+не перезаписываются. Старое значение этапа без подтверждённой активной задачи
+остаётся доступным для чтения до ручного разбора; оно не исправляется наугад.
+
+Важно: исторический `not_approved` переносится как терминальное `rejected`;
+новое действие «Отклонить с комментарием» по-прежнему возвращает заявку в
+`planned`, сохраняя причину в аудите. Физические изменения данных при выпуске
+требуют проверенного rollback checkpoint; откат нормализации без восстановления
+данных из checkpoint невозможен.

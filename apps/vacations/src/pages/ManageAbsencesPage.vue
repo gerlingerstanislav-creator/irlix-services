@@ -13,7 +13,7 @@ const currentMonth=new Date().getMonth()+1;
 const items=ref([]),productionCalendar=ref({}),loading=ref(false),search=ref(''),statuses=ref([]),departmentId=ref(''),type=ref(''),activeMonth=ref(currentMonth),onlyMyActions=ref(false),showCreate=ref(false);
 const yearValue=computed(()=>Number(props.year));
 const yearRange=computed(()=>({from:`${yearValue.value}-01-01`,to:`${yearValue.value}-12-31`}));
-const statusOptions=computed(()=>Object.entries(statusLabels).filter(([value])=>value!=='planned').map(([value,label])=>({value,label})));
+const statusOptions=computed(()=>Object.entries(statusLabels).filter(([value])=>!['planned','in_review'].includes(value)).map(([value,label])=>({value,label})));
 
 const buildDepartmentOptions=(departments)=>{
   const byParent=new Map();

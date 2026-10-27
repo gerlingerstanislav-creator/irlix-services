@@ -9,6 +9,10 @@ use Illuminate\Support\Facades\DB;
 class VacationsV2Migration extends SchemaMigration
 {
     private ?\App\Migration\Core\LegacyVacationDocuments $documents = null;
+    /** @var array<string,int> */
+    private array $pendingLegacySequence = [];
+    /** @var array<string,string> */
+    private array $legacyLifecycle = [];
 
     protected function documents(): \App\Migration\Core\LegacyVacationDocuments { return $this->documents ??= app(\App\Migration\Core\LegacyVacationDocuments::class); }
 
@@ -28,6 +32,21 @@ class VacationsV2Migration extends SchemaMigration
 
     protected function import(): void
     {
+        // Work only with the actual historic approval evidence. A legacy
+        // "on_approval" with no unfinished assigned step is a conflict.
+        $this->pendingLegacySequence = [];
+        $this->legacyLifecycle = [];
+        foreach ($this->source['vacations'] ?? [] as $vacation) {
+            $id = (string) $vacation['id'];
+            $this->legacyLifecycle[$id] = config('migration.vacation_statuses')[mb_strtolower(trim((string) ($vacation['status'] ?? '')))] ?? null;
+        }
+        foreach ($this->source['approvers'] ?? [] as $approval) {
+            $id = (string) $approval['vacation_id'];
+            if (($this->legacyLifecycle[$id] ?? null) !== 'in_review' || $this->boolean($approval['is_approved'])) continue;
+            $order = filter_var($approval['order'], FILTER_VALIDATE_INT);
+            if ($order === false || $order <= 0) continue; // rows('approvers') reports the precise conflict.
+            $this->pendingLegacySequence[$id] = min($this->pendingLegacySequence[$id] ?? $order, $order);
+        }
         $this->rows('users', function ($row, $id) { $this->map('users', $id, $this->employee($row), $row); });
         $this->rows('vacations', function ($row, $id) {
             $employee = $this->ref('users', $row['user_id']);
@@ -35,6 +54,10 @@ class VacationsV2Migration extends SchemaMigration
             $this->need($to, 'Absence end is required');
             $type = $this->enum($row['type'], config('migration.vacation_types'), 'type');
             $status = $this->enum($row['status'], config('migration.vacation_statuses'), 'status');
+            if ($status === 'in_review') {
+                $this->need(isset($this->pendingLegacySequence[(string) $id]),
+                    'LEGACY_VACATION_APPROVAL_UNRESOLVED: on_approval without a pending assigned approver');
+            }
             $this->number($row['working_hours'], 32767);
             $absence = $this->writeRelated('vacations', $id, 'absences', [
                 'employee_id' => $employee, 'type' => $type, 'starts_on' => $from, 'ends_on' => $to,
@@ -65,9 +88,16 @@ class VacationsV2Migration extends SchemaMigration
             }
             $order = filter_var($row['order'], FILTER_VALIDATE_INT);
             $this->need($order !== false && $order > 0, 'Некорректный порядок согласующего');
+            $lifecycle = $this->legacyLifecycle[(string) $row['vacation_id']] ?? null;
+            $approved = $this->boolean($row['is_approved']);
+            $approvalStatus = $approved ? 'approved' : (
+                $lifecycle === 'in_review'
+                && $order === ($this->pendingLegacySequence[(string) $row['vacation_id']] ?? null)
+                    ? 'pending' : 'waiting'
+            );
             $this->writeRelated('approvers', $id, 'absence_approvals', [
                 'absence_id'=>$absence, 'sequence'=>$order, 'stage'=>'employee_review',
-                'status'=>$this->boolean($row['is_approved']) ? 'approved' : 'waiting',
+                'status'=>$approvalStatus,
                 'required_role'=>null, 'approver_employee_id'=>(int) $approver,
                 'approver_subject'=>null, 'acted_by_subject'=>null, 'acted_at'=>null,
                 'comment'=>null,
@@ -117,7 +147,24 @@ class VacationsV2Migration extends SchemaMigration
             $prior = json_decode($mapping->metadata, true)['target_payload'] ?? [];
             foreach ($prior as $key=>$expected) {
                 $actual = $existing?->$key;
-                $this->need($expected === null ? $actual === null : ($actual !== null && (string) $actual === (string) $expected), 'Перенесённые данные изменены в новом сервисе; повторный импорт не перезаписывает пользовательские изменения');
+                $same = $expected === null ? $actual === null : ($actual !== null && (string) $actual === (string) $expected);
+                if (!$same && $key === 'status' && $expected !== null && $actual !== null) {
+                    // Only a system-normalized pre-cutover on_approval row may
+                    // differ from the private old mapping. Every actual user
+                    // action remains a blocking conflict on repeated imports.
+                    $vacation = $entity === 'vacations' ? $row : collect($this->source['vacations'] ?? [])
+                        ->firstWhere('id', $row['vacation_id'] ?? null);
+                    $vacationId = $entity === 'vacations' ? (int) $mapping->target_id : (int) ($existing->absence_id ?? 0);
+                    $sourceIsReview = mb_strtolower(trim((string) ($vacation['status'] ?? ''))) === 'on_approval';
+                    $normalized = ($entity === 'vacations' && $expected === 'planned' && $actual === 'in_review')
+                        || ($entity === 'approvers' && $expected === 'waiting' && $actual === 'pending');
+                    if ($sourceIsReview && $normalized && $vacationId > 0) {
+                        $audit = DB::connection('target_vacations')->table('absence_audit_log')->where('absence_id', $vacationId);
+                        $events = $audit->pluck('event');
+                        $same = $events->count() === 1 && $events->first() === 'legacy_migrated';
+                    }
+                }
+                $this->need($same, 'Перенесённые данные изменены в новом сервисе; повторный импорт не перезаписывает пользовательские изменения');
             }
         }
         return $this->write($entity,$id,$table,$payload,$row);

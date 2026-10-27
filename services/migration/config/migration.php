@@ -220,7 +220,15 @@ return [
         'granted' => 'confirmed',
         'not_approved' => 'rejected',
         'approvers_definition' => 'planned',
-        'on_approval' => 'planned',
+        'on_approval' => 'in_review',
+        // Imported stages are derived from the approval sequence, never persisted
+        // independently as a second source of truth.
+        'employee_review' => 'in_review',
+        'hr_review' => 'in_review',
+        'account_manager_review' => 'in_review',
+        'manager_review' => 'in_review',
+        'hr_final_review' => 'in_review',
+        'in_review' => 'in_review',
         'planned' => 'planned',
         'запланирован' => 'planned',
         'confirmed' => 'confirmed',

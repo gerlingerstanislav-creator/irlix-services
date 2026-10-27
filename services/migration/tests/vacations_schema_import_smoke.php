@@ -125,7 +125,10 @@ try {
     $vacations->fixture = array_fill_keys(config('migration.legacy.vacations.required_tables'), []);
     $vacations->fixture['users'] = [['id'=>4,'employee_id'=>'synthetic-employee-uuid','email'=>'synthetic.operator@example.invalid']];
     $vacations->fixture['vacations'] = [['id'=>8,'user_id'=>4,'type'=>'paid_vacation','status'=>'confirmed','from'=>'2026-01-10','to'=>'2026-01-12','working_hours'=>8]];
-    $vacations->fixture['approvers'] = [['id'=>9,'vacation_id'=>8,'employee_id'=>'synthetic-employee-uuid','order'=>1,'is_approved'=>true]];
+    $vacations->fixture['approvers'] = [
+        ['id'=>9,'vacation_id'=>8,'employee_id'=>'synthetic-employee-uuid','order'=>1,'is_approved'=>true],
+        ['id'=>22,'vacation_id'=>8,'employee_id'=>'synthetic-employee-uuid','order'=>2,'is_approved'=>false],
+    ];
     verify(runImport($vacations,true)['conflicts']===0 && db('vacations')->table('absences')->count()===0,'Vacations v2 dry run is read-only');
     $result = runImport($vacations,false);
     verify($result['conflicts']===0 && $result['warnings']===0,'Approvals imported into assigned employee stages');
@@ -139,12 +142,18 @@ try {
         verify(db('vacations')->table('absences')->value('type')===$target, 'Alias maps to target type: '.$target);
     }
     $vacations->fixture['vacations'][0]['type']='sick';
-    foreach (['granted'=>'confirmed','not_approved'=>'rejected','approvers_definition'=>'planned','on_approval'=>'planned'] as $legacy=>$target) {
+    foreach (['granted'=>'confirmed','not_approved'=>'rejected','approvers_definition'=>'planned','on_approval'=>'in_review'] as $legacy=>$target) {
         $vacations->fixture['vacations'][0]['status']=$legacy;
         verify(runImport($vacations,true)['conflicts']===0, 'Legacy status alias preflight: '.$legacy);
         verify(runImport($vacations,false)['conflicts']===0, 'Legacy status imports: '.$legacy);
         $absence=db('vacations')->table('absences')->first();
         verify($absence->type==='sick_leave' && $absence->status===$target, 'Stored type and status correspond');
+        if ($legacy === 'on_approval') {
+            verify(db('vacations')->table('absence_approvals')->where('sequence',2)->value('status')==='pending',
+                'First unfinished legacy group must be the active stage');
+            verify(runImport($vacations,false)['conflicts']===0 && db('vacations')->table('absences')->count()===1,
+                'Repeated in-review import is idempotent');
+        }
     }
     $vacations->fixture['approvers'] = [
         ['id'=>9,'vacation_id'=>8,'employee_id'=>'synthetic-employee-uuid','order'=>1,'is_approved'=>true],
@@ -162,7 +171,7 @@ try {
     $vacations->fixture['attachments'][0]['url']='https://files.example.invalid/synthetic-application.pdf';
     verify(runImport($vacations,true)['conflicts']===0 && db('vacations')->table('absence_approvals')->count()===2,'Approval/document dry run does not write');
     verify(runImport($vacations,false)['conflicts']===0,'Approvals and documents imported');
-    verify(db('vacations')->table('absence_approvals')->orderBy('sequence')->pluck('status')->all()===['approved','waiting'],'Order and known approval preserved; false is not rejection');
+    verify(db('vacations')->table('absence_approvals')->orderBy('sequence')->pluck('status')->all()===['approved','pending'],'Historical active sequence is preserved; false is not a rejection');
     verify(db('vacations')->table('absence_approvals')->whereNotNull('acted_at')->count()===0,'Approval timestamps never fabricated');
     verify(db('vacations')->table('absence_attachments')->value('external_url')==='https://files.example.invalid/synthetic-application.pdf','Original link preserved');
     $document = db('vacations')->table('absence_attachments')->first();
@@ -173,7 +182,12 @@ try {
     $vacations->fixture['attachments'][0]['url']='https://files.example.invalid/synthetic-application.pdf';
     db('vacations')->table('absence_approvals')->where('sequence',2)->update(['status'=>'approved']);
     verify(runImport($vacations,true)['conflicts']===1,'New decisions cannot be overwritten by repeat migration');
-    db('vacations')->table('absence_approvals')->where('sequence',2)->update(['status'=>'waiting']);
+    db('vacations')->table('absence_approvals')->where('sequence',2)->update(['status'=>'pending']);
+    $vacations->fixture['vacations'][0]['status']='on_approval';
+    $vacations->fixture['approvers'][1]['is_approved']=true;
+    verify(runImport($vacations,true)['conflicts']>=1,
+        'Review with no unresolved approver must be a conflict, not an invented stage');
+    $vacations->fixture['approvers'][1]['is_approved']=false;
     $vacations->fixture['approvers']=[];$vacations->fixture['attachments']=[];
     config(['migration.vacation_documents_enabled'=>false]);
     $vacations->fixture['vacations'][0]['status']='confirmed';

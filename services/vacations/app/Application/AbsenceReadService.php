@@ -7,14 +7,16 @@ use App\Models\AbsenceApproval;
 use App\Models\AbsenceAttachment;
 use App\Models\AbsenceAuditLog;
 use App\Models\AbsenceStatusHistory;
+use App\Domain\Absence\AbsenceStatusProjection;
 use Illuminate\Support\Collection;
 
 final class AbsenceReadService
 {
     /** Exact raw values protect legacy API timestamp/field formats from model serialization. */
-    private function rows($query): array
+    private function rows($query, bool $projectStatus = false, string $idField = 'id'): array
     {
-        return $query->get()->map(static fn ($row): array => $row->getRawOriginal())->all();
+        $rows = $query->get()->map(static fn ($row): array => $row->getRawOriginal())->all();
+        return $projectStatus ? AbsenceStatusProjection::many($rows, $idField) : $rows;
     }
 
     public function attachmentCounts(array $absenceIds): array
@@ -66,17 +68,17 @@ final class AbsenceReadService
         return $this->rows(Absence::query()->where('employee_id', $employeeId)
             ->whereNotIn('status', $excludedStatuses)
             ->select(['id', 'type', 'status', 'starts_on', 'ends_on'])
-            ->orderBy('starts_on'));
+            ->orderBy('starts_on'), true);
     }
 
     public function calendarAbsences(string $from, string $to, array $employeeIds = []): array
     {
         $query = Absence::query()->select([
-            'employee_id', 'type', 'status', 'starts_on', 'ends_on',
+            'id', 'employee_id', 'type', 'status', 'starts_on', 'ends_on',
         ])->whereDate('starts_on', '<=', $to)
             ->where(fn ($q) => $q->whereNull('ends_on')->orWhereDate('ends_on', '>=', $from));
         if ($employeeIds) $query->whereIn('employee_id', array_values(array_unique($employeeIds)));
-        return $this->rows($query->orderBy('employee_id')->orderBy('starts_on'));
+        return $this->rows($query->orderBy('employee_id')->orderBy('starts_on'), true);
     }
 
     /**
@@ -119,8 +121,21 @@ final class AbsenceReadService
         }
         if ($to = trim((string) ($filters['to'] ?? ''))) $query->whereDate('starts_on', '<=', $to);
         if ($type = trim((string) ($filters['type'] ?? ''))) $query->where('type', $type);
-        if ($status = trim((string) ($filters['status'] ?? ''))) $query->where('status', $status);
-        return $this->rows($query->orderBy('starts_on')->orderBy('id'));
+        if ($status = trim((string) ($filters['status'] ?? ''))) {
+            if (in_array($status, AbsenceStatusProjection::REVIEW_STAGES, true)) {
+                $query->where(function ($query) use ($status) {
+                    $query->where('status', $status) // Pre-normalization legacy rows.
+                        ->orWhere(function ($review) use ($status) {
+                            $review->where('status', 'in_review')->whereExists(function ($step) use ($status) {
+                                $step->selectRaw('1')->from('absence_approvals as step')
+                                    ->whereColumn('step.absence_id', 'absences.id')
+                                    ->where('step.status', 'pending')->where('step.stage', $status);
+                            });
+                        });
+                });
+            } else $query->where('status', $status);
+        }
+        return $this->rows($query->orderBy('starts_on')->orderBy('id'), true);
     }
 
     public function auditHistory(array $employeeIds, array $filters): array
@@ -136,6 +151,6 @@ final class AbsenceReadService
         if ($to = trim((string) ($filters['to'] ?? ''))) $query->whereDate('log.created_at', '<=', $to);
         if ($employee = (int) ($filters['employee_id'] ?? 0)) $query->where('x.employee_id', $employee);
         if ($event = trim((string) ($filters['event'] ?? ''))) $query->where('log.event', $event);
-        return $this->rows($query->orderByDesc('log.created_at')->orderByDesc('log.id')->limit(500));
+        return $this->rows($query->orderByDesc('log.created_at')->orderByDesc('log.id')->limit(500), true, 'absence_id');
     }
 }
