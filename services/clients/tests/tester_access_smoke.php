@@ -240,10 +240,11 @@ namespace {
     // Production matrices can contain old or manually disabled entries.
     // Repair only the owner-approved Account Manager workspaces with own
     // default scope, and preserve already wider customized scopes.
-    $matrix = \Illuminate\Support\Facades\DB::table('client_contour_permissions');
-    $matrix->where('role', 'account-manager')->where('permission', 'reports.view')
+    \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role', 'account-manager')->where('permission', 'reports.view')
         ->update(['allowed'=>false, 'scope'=>'none']);
-    $matrix->where('role', 'account-manager')->where('permission', 'cashflow.view')
+    \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role', 'account-manager')->where('permission', 'cashflow.view')
         ->update(['allowed'=>false, 'scope'=>'team']);
     $migration = require dirname(__DIR__).'/database/migrations/2026_10_27_000002_restore_account_manager_workspace_permissions.php';
     $migration->up();
