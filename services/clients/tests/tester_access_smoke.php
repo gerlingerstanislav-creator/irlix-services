@@ -150,6 +150,8 @@ namespace {
         ['id'=>502,'department_id'=>105],
         ['id'=>503,'department_id'=>106],
         ['id'=>508,'department_id'=>107],
+        ['id'=>509,'department_id'=>101,'position'=>'account-manager'],
+        ['id'=>510,'department_id'=>105,'position'=>'account-manager'],
     ];
     $roles = [];
     $chainStub = [];
@@ -171,6 +173,22 @@ namespace {
     $check(in_array('client-service', $clientOperations['roles'], true), 'Client-service descendant lost base role');
     $check(($clientOperations['permissions']['clients.view']['scope'] ?? '') === 'own', 'Client-service baseline must be own-scope');
     $check(!($clientOperations['permissions']['clients.manage']['allowed'] ?? false), 'Client-service baseline granted management actions');
+
+    // Real organizational clients can appoint Account Managers directly in
+    // Client Service; account-management is not necessarily their department.
+    $actorStub = ['id'=>509,'position'=>'account-manager'];
+    $positionAccount = $resolver->resolve($request('api/permissions/me'));
+    $check(in_array('account-manager', $positionAccount['roles'], true),
+        'Verified Account Manager position did not yield functional client role');
+    foreach (['reports.view', 'cashflow.view', 'requests.view', 'positions.view',
+              'attempts.view', 'timesheets.management.view', 'timesheets.management.manage'] as $permission) {
+        $check(($positionAccount['permissions'][$permission]['allowed'] ?? false) === true,
+            'Account Manager denied '. $permission);
+    }
+    $actorStub = ['id'=>510,'position'=>'account-manager'];
+    $financeTitle = $resolver->resolve($request('api/permissions/me'));
+    $check(!in_array('account-manager', $financeTitle['roles'], true),
+        'Finance employee inherited account-management from same position title');
 
     // JWT labels describe DIRECT organizational membership only; the verified
     // employee ID and Employees directory must recover ancestry in this mode.
@@ -200,6 +218,18 @@ namespace {
         'JWT client-service child cannot open Clients workspace');
     $check(!($jwtOperations['permissions']['reports.view']['allowed'] ?? false),
         'JWT client-service baseline leaked other business sections');
+    $jwtTitleRequest = $request('api/permissions/me');
+    $jwtTitleRequest->attributes->set('identity', ['realm_roles'=>[
+        'employee-id:509', 'client-service', 'service:clients', 'service:timesheets',
+    ]]);
+    $jwtTitle = $resolver->resolve($jwtTitleRequest);
+    $check(in_array('account-manager', $jwtTitle['roles'], true),
+        'JWT verified position lost Account Manager rights pending Keycloak reconciliation');
+    foreach (['reports.view','cashflow.view','requests.view','positions.view',
+              'attempts.view','timesheets.management.view'] as $permission) {
+        $check(($jwtTitle['permissions'][$permission]['allowed'] ?? false) === true,
+            'JWT verified position denied '. $permission);
+    }
     $jwtFinanceRequest = $request('api/permissions/me');
     $jwtFinanceRequest->attributes->set('identity', ['realm_roles'=>['employee-id:502','service:timesheets','accounting']]);
     $jwtFinance = $resolver->resolve($jwtFinanceRequest);
