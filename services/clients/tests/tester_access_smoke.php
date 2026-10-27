@@ -385,5 +385,28 @@ namespace {
     } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
         $check($exception->getStatusCode() === 403, 'Own-scope calendar denied wrong status');
     }
+    // A historically disabled Account Manager members.view row prevented the
+    // specialist drawer from opening despite the client row being visible.
+    // The one-time repair keeps the matrix editable and preserves wider scope.
+    $matrix = \Illuminate\Support\Facades\DB::table('client_contour_permissions');
+    $matrix->where('role','account-manager')->where('permission','members.view')
+        ->update(['allowed'=>false,'scope'=>'none']);
+    $memberMigration = require dirname(__DIR__).'/database/migrations/2026_10_27_000004_restore_account_manager_member_card_view.php';
+    $memberMigration->up();
+    $member = \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','account-manager')->where('permission','members.view')->first();
+    $check((bool) $member->allowed && $member->scope === 'own',
+        'Account Manager canonical connection card cannot be opened');
+    $memberMigration->up();
+    $check(\Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','account-manager')->where('permission','members.view')->count() === 1,
+        'Member card baseline migration duplicated the permission');
+    $matrix->where('role','account-manager')->where('permission','members.view')
+        ->update(['allowed'=>true,'scope'=>'team']);
+    $memberMigration->up();
+    $teamMember = \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','account-manager')->where('permission','members.view')->first();
+    $check((bool) $teamMember->allowed && $teamMember->scope === 'team',
+        'Member card migration lost configured team scope');
     echo "Clients tester and department alias access smoke passed: {$checks} checks\n";
 }
