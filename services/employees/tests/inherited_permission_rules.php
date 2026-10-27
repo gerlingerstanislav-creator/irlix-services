@@ -45,10 +45,13 @@ foreach ([
     ['id'=>33,'login'=>'sales.example','department_id'=>6],
     ['id'=>34,'login'=>'operations.example','department_id'=>7],
     ['id'=>35,'login'=>'finance.example','department_id'=>9],
+    ['id'=>36,'login'=>'account-root.example','department_id'=>4, 'position'=>'Account Manager'],
+    ['id'=>37,'login'=>'finance-title.example','department_id'=>9, 'position'=>'Account Manager'],
 ] as $row) {
     $db->table('employees')->insert([
         ...$row,
         'full_name'=>'Synthetic User '.(int)$row['id'],
+        'position'=>$row['position'] ?? 'Specialist',
         'employment_status'=>'Трудоустроен',
         'keycloak_user_id'=>'synthetic-id-'.(int)$row['id'],
     ]);
@@ -94,6 +97,21 @@ $check($operations['services']['timesheets'] === true, 'Generic Client Service d
 $finance = $resolve(35);
 $check($finance['services']['clients'] === false && $finance['services']['finance'] === true,
     'Finance Accounting confused with client Accounting');
+
+$rootAccount = $resolve(36);
+$check(in_array('account-manager', $rootAccount['roles'], true),
+    'An Account Manager position at the Client Service root lost functional role');
+$check($rootAccount['services']['clients'] === true && $rootAccount['services']['timesheets'] === true,
+    'Client Service Account Manager cannot enter Clients and Timesheets');
+$jwtGrants = \App\Support\KeycloakAuthorizationSync::grants($rootAccount);
+$check(in_array('account-manager', $jwtGrants, true)
+    && in_array('service:clients', $jwtGrants, true)
+    && in_array('service:timesheets', $jwtGrants, true),
+    'JWT authorization misses Account Manager or service entitlement');
+$financeTitle = $resolve(37);
+$check(!in_array('account-manager', $financeTitle['roles'], true)
+    && $financeTitle['services']['clients'] === false,
+    'Finance position was incorrectly promoted to client Account Manager');
 
 // Explicit local service denial must override inherited client-team entry.
 $addRule('client-operations', 'services.clients', false);
