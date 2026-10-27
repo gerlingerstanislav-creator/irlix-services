@@ -23,7 +23,7 @@ const isHr=computed(()=>isAdmin.value||roles.value.includes('hr'));
 const isManager=computed(()=>isAdmin.value||roles.value.includes('manager')||roles.value.some(role=>role.endsWith('-head')));
 const isElevated=computed(()=>isPersonnelOfficer.value||isHr.value||isManager.value);
 const menuItems=computed(()=>[
-  {id:'mine',icon:'calendar',label:'Отсутствия',visible:true},
+  {id:'mine',icon:'calendar',label:'Мои отсутствия',visible:true},
   {id:'department',icon:'team',label:'Отсутствия подразделения',visible:isElevated.value},
   {id:'manage',icon:'manage',label:'Управление отсутствиями',visible:isElevated.value},
 ].filter(i=>i.visible));
