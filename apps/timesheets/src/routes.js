@@ -1,7 +1,14 @@
 // Timesheets owns its URLs; old ?section= links remain supported.
 export const routes = [
-  { path: '/', redirect: to => {
-    const section = typeof to.query.section === 'string' ? to.query.section : 'mine';
+  // The bare launcher URL is a permission-aware entry point. Never guess
+  // that every admitted Timesheets user can view 'mine': Account Managers may
+  // have management.view but no mine.view. App resolves the first permitted
+  // page after loading the actual Clients permission matrix.
+  { path: '/', name: 'entry', meta: { section: 'entry' }, beforeEnter: to => {
+    if (to.query.section === undefined) return true;
+    // An explicitly requested legacy ?section=... is a deep link: keep its
+    // destination (and its normal 403 if forbidden) rather than bypassing it.
+    const section = typeof to.query.section === 'string' ? to.query.section : '';
     const target = ({ mine:'mine', management:'management', partners:'management', analytics:'analytics', audit:'audit' })[section];
     if (!target) return { name:'not-found', params:{pathMatch:'invalid-section'}, query: to.query, hash: to.hash };
     const query = { ...to.query };
