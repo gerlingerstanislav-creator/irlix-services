@@ -45,6 +45,14 @@ class PlannerTests(unittest.TestCase):
         self.assertFalse(plan["schema"])
         self.assertFalse(plan["cv_check"])
 
+    def test_shared_ui_test_does_not_rebuild_every_frontend(self):
+        changed = ["packages/ui/tests/navigation.test.js"]
+        plan = self.plan(changed)
+        self.assertEqual(self.ids(plan), set())
+        self.assertFalse(plan["deploy"])
+        combined = self.plan([*changed, "apps/timesheets/src/routes.js"])
+        self.assertEqual(self.ids(combined), {"timesheets-web"})
+
     def test_browser_auth_change_does_not_bootstrap_keycloak(self):
         plan = self.plan(["packages/auth/src/index.js"])
         self.assertNotIn("design-system", self.ids(plan))
