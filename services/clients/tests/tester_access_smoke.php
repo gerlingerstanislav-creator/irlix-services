@@ -28,6 +28,7 @@ namespace {
     $schema = \Illuminate\Support\Facades\DB::connection()->getSchemaBuilder();
     $schema->create('client_contour_permissions', function ($t) {
         $t->id(); $t->string('role'); $t->string('permission'); $t->boolean('allowed'); $t->string('scope'); $t->timestamps();
+        $t->unique(['role', 'permission']);
     });
     // Old tester permission grants must remain ineffective after privilege removal.
     foreach (['platform-tester', 'account-manager'] as $role) {
@@ -149,12 +150,12 @@ namespace {
     // hierarchy and may still use the short accounting alias. Only accounting
     // in the CLIENT subtree is an Account Manager, never Finance accounting.
     $departmentsStub = [
-        ['id'=>101,'name'=>'Client Service','alias'=>'client-service','parent_id'=>null,'manager_id'=>null],
-        ['id'=>102,'name'=>'ACCOUNTING','alias'=>'accounting','parent_id'=>101,'manager_id'=>null],
+        ['id'=>101,'name'=>'Client Service','alias'=>'client-service','parent_id'=>null,'manager_id'=>514],
+        ['id'=>102,'name'=>'ACCOUNTING','alias'=>'accounting','parent_id'=>101,'manager_id'=>513],
         ['id'=>103,'name'=>'Account delivery','alias'=>null,'parent_id'=>102,'manager_id'=>null],
         ['id'=>104,'name'=>'Finance','alias'=>'finance','parent_id'=>null,'manager_id'=>null],
         ['id'=>105,'name'=>'Accounting','alias'=>'accounting','parent_id'=>104,'manager_id'=>null],
-        ['id'=>106,'name'=>'Sales','alias'=>'sales','parent_id'=>101,'manager_id'=>null],
+        ['id'=>106,'name'=>'Sales','alias'=>'sales','parent_id'=>101,'manager_id'=>512],
         ['id'=>107,'name'=>'Client Operations','alias'=>'client-operations','parent_id'=>101,'manager_id'=>null],
     ];
     $directoryEmployeesStub = [
@@ -164,6 +165,10 @@ namespace {
         ['id'=>508,'department_id'=>107],
         ['id'=>509,'department_id'=>101,'position'=>'account-manager'],
         ['id'=>510,'department_id'=>105,'position'=>'account-manager'],
+        ['id'=>511,'department_id'=>101,'position'=>'Sales Manager'],
+        ['id'=>512,'department_id'=>106,'position'=>'Sales Manager'],
+        ['id'=>513,'department_id'=>102,'position'=>'Account Manager'],
+        ['id'=>514,'department_id'=>101,'position'=>'Client Service Head'],
     ];
     $roles = [];
     $chainStub = [];
@@ -188,7 +193,7 @@ namespace {
 
     // Real organizational clients can appoint Account Managers directly in
     // Client Service; account-management is not necessarily their department.
-    $actorStub = ['id'=>509,'position'=>'account-manager'];
+    $actorStub = ['id'=>509,'position'=>'account-manager','functional_roles'=>['account-manager']];
     $positionAccount = $resolver->resolve($request('api/permissions/me'));
     $check(in_array('account-manager', $positionAccount['roles'], true),
         'Verified Account Manager position did not yield functional client role');
@@ -197,7 +202,7 @@ namespace {
         $check(($positionAccount['permissions'][$permission]['allowed'] ?? false) === true,
             'Account Manager denied '. $permission);
     }
-    $actorStub = ['id'=>510,'position'=>'account-manager'];
+    $actorStub = ['id'=>510,'position'=>'account-manager','functional_roles'=>[]];
     $financeTitle = $resolver->resolve($request('api/permissions/me'));
     $check(!in_array('account-manager', $financeTitle['roles'], true),
         'Finance employee inherited account-management from same position title');
