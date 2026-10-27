@@ -153,8 +153,8 @@ def main():
     for c in data["components"]:
         if not selected.intersection([c["service"], *c.get("aliases", [])]):
             continue
-        if c["id"] in {"brandbook", "design-system"}:
-            continue  # Their actual origins and SSO gates were already checked.
+        if c["id"] in {"brandbook", "design-system", "storage-s3", "storage"}:
+            continue  # Specialized checks cover branded SPAs and private S3/Filestash origins.
         path = c.get("health_path") or c["page_path"]
         try:
             body = subprocess.check_output(["curl", "-H", f"Host: {host}", "-fsS", "--connect-timeout", "2", "--max-time", "10",
