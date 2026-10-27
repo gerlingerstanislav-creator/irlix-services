@@ -38,13 +38,13 @@ class VacationsV2Migration extends SchemaMigration
         $this->legacyLifecycle = [];
         foreach ($this->source['vacations'] ?? [] as $vacation) {
             $id = (string) $vacation['id'];
-            $this->legacyLifecycle[$id] = $this->enum($vacation['status'], config('migration.vacation_statuses'), 'status');
+            $this->legacyLifecycle[$id] = config('migration.vacation_statuses')[mb_strtolower(trim((string) ($vacation['status'] ?? '')))] ?? null;
         }
         foreach ($this->source['approvers'] ?? [] as $approval) {
             $id = (string) $approval['vacation_id'];
             if (($this->legacyLifecycle[$id] ?? null) !== 'in_review' || $this->boolean($approval['is_approved'])) continue;
             $order = filter_var($approval['order'], FILTER_VALIDATE_INT);
-            $this->need($order !== false && $order > 0, 'Некорректный порядок согласования');
+            if ($order === false || $order <= 0) continue; // rows('approvers') reports the precise conflict.
             $this->pendingLegacySequence[$id] = min($this->pendingLegacySequence[$id] ?? $order, $order);
         }
         $this->rows('users', function ($row, $id) { $this->map('users', $id, $this->employee($row), $row); });
