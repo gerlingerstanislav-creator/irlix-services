@@ -1,8 +1,8 @@
 <script setup>
-import { UiRegistryTable } from '@irlix/ui';
+import { UiRegistryTable, UiTooltip } from '@irlix/ui';
 import { computed } from 'vue';
 import AbsenceActions from './AbsenceActions.vue';
-import { formatDate, statusLabels, typeLabels } from '../constants';
+import { formatDateNumeric, statusLabels, typeLabels } from '../constants';
 
 const props=defineProps({
   items:{type:Array,default:()=>[]},
@@ -15,11 +15,12 @@ const props=defineProps({
 });
 const emit=defineEmits(['action']);
 const registryColumns = computed(() => [
-  ...(props.showEmployee ? ['170px'] : []),
-  '215px', '110px', '165px', '310px',
+  ...(props.showEmployee ? ['220px'] : []),
+  '230px', '110px', '205px', '190px',
+  ...(props.showProgress ? ['112px'] : []),
   ...(props.showStage ? ['180px'] : []),
   ...(props.showDocuments ? ['135px'] : []),
-  ...(props.showActions ? ['165px'] : []),
+  ...(props.showActions ? ['48px'] : []),
 ]);
 const registryMinWidth = computed(() => registryColumns.value.reduce((sum, width) => sum + parseInt(width,10), 0) + 'px');
 
@@ -76,6 +77,7 @@ const iconPath=(task)=>{
           <th class="days-column">Длительность</th>
           <th class="type-column">Тип</th>
           <th class="status-column">Статус</th>
+          <th v-if="showProgress" class="progress-column">Этапы</th>
           <th v-if="showStage" class="stage-column">Этап</th>
           <th v-if="showDocuments" class="documents-column">Документы</th>
           <th v-if="showActions" class="actions-cell actions-column"></th>
@@ -91,22 +93,31 @@ const iconPath=(task)=>{
             <td :colspan="registryColumns.length-(showEmployee ? 1 : 0)" class="empty-absence-label">—</td>
           </template>
           <template v-else>
-          <td class="period-column"><span class="period-text">{{ formatDate(item.starts_on) }} — {{ formatDate(item.ends_on) }}</span></td>
+          <td class="period-column"><span class="period-text">{{ formatDateNumeric(item.starts_on) }} — {{ formatDateNumeric(item.ends_on) }}</span></td>
           <td class="days-column">{{ item.calendar_days??'—' }}</td>
           <td class="type-column"><span class="vacation-type-badge">{{ typeLabels[item.type]||item.type }}</span></td>
           <td class="status-column">
-            <div class="status-progress-cell">
-              <span class="status-text vacation-status-badge" :class="`vacation-status-badge--${statusTone(item)}`">{{ statusLabels[item.absence_status||item.status]||item.absence_status||item.status }}</span>
-              <div v-if="showProgress&&item.approval_progress?.length" class="approval-progress icon-progress">
-                <template v-for="(task,index) in item.approval_progress" :key="task.id">
-                  <span v-if="index" class="approval-connector"></span>
-                  <span class="approval-step approval-icon" :class="taskClass(task)" :data-tooltip="taskTooltip(task)" tabindex="0">
+            <span class="status-text vacation-status-badge" :class="`vacation-status-badge--${statusTone(item)}`" :title="statusLabels[item.absence_status||item.status]||item.absence_status||item.status">{{ statusLabels[item.absence_status||item.status]||item.absence_status||item.status }}</span>
+          </td>
+          <td v-if="showProgress" class="progress-column" @click.stop>
+            <div v-if="item.approval_progress?.length" class="approval-progress icon-progress">
+              <template v-for="(task,index) in item.approval_progress" :key="task.id">
+                <span v-if="index" class="approval-connector" aria-hidden="true"></span>
+                <UiTooltip :aria-label="taskTooltip(task)">
+                  <span class="approval-step approval-icon" :class="taskClass(task)" aria-hidden="true">
                     <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <path v-for="(path,index) in iconPath(task)" :key="index" :d="path"/>
+                      <path v-for="(path,pathIndex) in iconPath(task)" :key="pathIndex" :d="path"/>
                     </svg>
                   </span>
-                </template>
-              </div>
+                  <template #content>
+                    <div class="approval-tooltip-content">
+                      <strong>{{ stageLabel(task) }}</strong>
+                      <span>{{ task.approver_name||'Согласующий не назначен' }}</span>
+                      <span>{{ taskStatus(task) }}</span>
+                    </div>
+                  </template>
+                </UiTooltip>
+              </template>
             </div>
           </td>
           <td v-if="showStage" class="stage-column">{{ stageLabel({stage:item.stage}) }}</td>
