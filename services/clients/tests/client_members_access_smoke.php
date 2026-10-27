@@ -99,7 +99,7 @@ $own = $guard->handle($overviewRequest,fn() => response()->json(['data'=>$sample
 clientCheck(count($own['data']['clients'][0]['client_members'])===1,
     'Account Manager with members.view lost specialist card data');
 clientCheck($own['data']['clients'][1]['client_members']===[],
-    'Own-scope Account Manager received unrelated client's specialist terms');
+    "Own-scope Account Manager received unrelated client's specialist terms");
 $resolver->scope='team';
 $team = $guard->handle($overviewRequest,fn() => response()->json(['data'=>$sample]))->getData(true);
 clientCheck(count($team['data']['clients'][1]['client_members'])===1,
