@@ -3,6 +3,8 @@
 import json
 import re
 import subprocess
+import urllib.error
+import urllib.request
 from pathlib import Path
 from service_plan import ROOT, registry, compose_command
 
@@ -124,6 +126,51 @@ def verify_storage_pilot(host):
     print("[verify] Storage pilot: protected Filestash + private signed-only S3 OK", flush=True)
 
 
+
+def verify_storage_authenticated_navigation(compose, sudo, host):
+    """Exercise cookie issuance against real admin DB and nginx authorization.
+
+    Never write the cookie to logs, disk or shell arguments. This is a read-only
+    smoke with an actual persisted platform-admin assignment, not a public login.
+    """
+    result = subprocess.run(
+        [*sudo, *compose, "exec", "-T", "employees", "php",
+         "tests/storage_pilot_session_runtime.php"],
+        cwd=ROOT, capture_output=True, text=True,
+        stdin=subprocess.DEVNULL, timeout=20,
+    )
+    if result.returncode:
+        raise AssertionError(
+            "Storage platform-admin session could not be issued; "
+            "inspect Employees safely without logging the cookie"
+        )
+    secret_cookie = result.stdout.strip()
+    assert secret_cookie and "\\n" not in secret_cookie, "Storage test cookie not issued"
+
+    class DoNotFollowRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+
+    opener = urllib.request.build_opener(DoNotFollowRedirect())
+    request = urllib.request.Request(
+        "http://127.0.0.1:8110/",
+        headers={"Host": host, "Cookie": "irlix_storage_pilot=" + secret_cookie},
+        method="GET",
+    )
+    try:
+        with opener.open(request, timeout=10) as response:
+            status = response.status
+            location = response.headers.get("Location", "")
+    except urllib.error.HTTPError as exc:
+        status, location = exc.code, exc.headers.get("Location", "")
+    assert status in {200, 302}, (
+        f"Storage authenticated nginx/Filestash route unhealthy: HTTP {status}"
+    )
+    assert "storage=1" not in location, (
+        "Storage authenticated cookie was rejected and looped to Dashboard"
+    )
+    print("[verify] Storage: real admin session cookie, nginx gate and Filestash OK", flush=True)
+
 def main():
     plan = json.loads((ROOT / ".ci/deploy-plan.json").read_text())
     data = registry()
@@ -148,6 +195,10 @@ def main():
     # or script-only plans where no application container is selected.
     verify_brandbook(host)
     verify_design_system(host)
+    # Probe real SSO only when Employees or Storage is in the release;
+    # unrelated Finance and client smoke checks remain independent.
+    if selected.intersection({'employees', 'storage-s3', 'storage-web'}):
+        verify_storage_authenticated_navigation(compose, sudo, host)
     if selected.intersection({'storage-s3','storage-web'}):
         verify_storage_pilot(host)
     for c in data["components"]:
