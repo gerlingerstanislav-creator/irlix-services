@@ -32,6 +32,7 @@ test('Clients routes use documented URLs and preserve legacy query and hash', as
  const named = Object.fromEntries(routes.filter(r=>r.name).map(r=>[r.name,r]));
  assert.equal(named.clients.path, '/clients/');
  assert.equal(named.specialists.path, '/specialists/');
+ assert.equal(named.members.path, '/members/', 'Historical connections URL stays accessible without a menu entry');
  assert.equal(named.reports.path, '/reporting-periods/');
  assert.equal(named['attempt-funnel'].path, '/attempt-funnel/');
  assert.equal(named['attempt-funnel'].meta.section, 'attempts');
@@ -87,8 +88,12 @@ test('partners and specialists use a dedicated menu section and inline editors',
  const sidebar=readFileSync(new URL('../src/components/ClientsSidebar.vue',import.meta.url),'utf8');
  const partner=readFileSync(new URL('../src/components/PartnersRegistry.vue',import.meta.url),'utf8');
  const roster=readFileSync(new URL('../src/components/SpecialistsAbsenceRoster.vue',import.meta.url),'utf8');
- assert.match(sidebar,/id: 'members', label: 'Подключения', icon: 'list', groupStart: true/);
- assert.match(sidebar,/id: 'specialists', label: 'Специалисты'/);
+ assert.doesNotMatch(sidebar,/id: 'members', label: 'Подключения'/);
+ assert.match(sidebar,/id: 'partners', label: 'Партнёры', icon: 'building'/);
+ assert.match(sidebar,/id: 'specialists', label: 'Специалисты', icon: 'users', groupStart: true/);
+ assert.match(sidebar,/id: 'contacts', label: 'Контактные лица', icon: 'contact', groupStart: !props.allowedSections.includes\('specialists'\)/);
+ assert.ok(sidebar.indexOf("id: 'partners'") < sidebar.indexOf("id: 'specialists'"));
+ assert.ok(sidebar.indexOf("id: 'specialists'") < sidebar.indexOf("id: 'contacts'"));
  assert.doesNotMatch(partner,/class="partner-pencil"/);
  assert.match(partner,/editingField === field.key/);
  assert.match(roster,/<UiPeriodPicker v-model="month" mode="month" \/>/);

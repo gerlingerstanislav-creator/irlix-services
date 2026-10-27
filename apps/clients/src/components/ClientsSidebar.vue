@@ -16,10 +16,9 @@ const items = computed(() => {
   { id: 'attempts', label: 'Попытки подключения', icon: 'rocket' },
   { id: 'leads', label: 'Лиды', icon: 'crown', groupStart: true },
   { id: 'clients', label: 'Клиенты', icon: 'briefcase' },
-  { id: 'partners', label: 'Партнёры', icon: 'users' },
-  { id: 'specialists', label: 'Специалисты', icon: 'users' },
-  { id: 'members', label: 'Подключения', icon: 'list', groupStart: true },
-  { id: 'contacts', label: 'Контактные лица', icon: 'contact' },
+  { id: 'partners', label: 'Партнёры', icon: 'building' },
+  { id: 'specialists', label: 'Специалисты', icon: 'users', groupStart: true },
+  { id: 'contacts', label: 'Контактные лица', icon: 'contact', groupStart: !props.allowedSections.includes('specialists') },
   { id: 'reports', label: 'Отчётные периоды', icon: 'reports', groupStart: true },
   { id: 'cashflow', label: 'ДДС', icon: 'cash' },
   ].filter((item) => props.allowedSections.includes(item.id));

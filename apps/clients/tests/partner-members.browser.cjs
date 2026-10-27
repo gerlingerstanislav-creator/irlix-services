@@ -161,8 +161,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.keyboard.press('Escape');
   // Wait for the preceding save-driven overview refresh and modal teardown.
   await page.waitForFunction(() => !document.querySelector('.entity-form') && !document.querySelector('.irlix-app-topbar__loading'));
-  const memberNav = page.getByRole('navigation',{name:'Навигация сервиса клиентов'}).getByRole('button',{name:'Подключения',exact:true});
-  await memberNav.click();
+  assert.equal(await nav.getByRole('button',{name:'Подключения',exact:true}).count(),0,'Connections are absent from the sidebar');
+  // Historical direct links still open the registry, even though the menu entry is gone.
+  await page.goto(base+'/clients/members/');
+  await page.waitForURL(url=>url.pathname==='/clients/members/');
   await page.locator('.cm-registry').waitFor({timeout:8000});
   try { await page.getByRole('button',{name:'＋ Подключить специалиста',exact:true}).click({timeout:8000}); }
   catch(error) { console.error('Client member page diagnostic',{url:page.url(),body:(await page.locator('body').innerText()).slice(0,3500),errors}); throw error; }
@@ -172,18 +174,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByRole('button',{name:'Создать',exact:true}).click();
   await page.waitForFunction(()=>!document.querySelector('.cm-registry')?.textContent.includes('Новое подключение к клиенту'));
   assert.equal(saved.length,2);assert.equal(saved[1].partner_specialist_id,9);assert.equal(saved[1].employee_id,null);
-  // Creating a connection intentionally opens its detail drawer. Close it
-  // before navigating away; the modal backdrop must block sidebar clicks.
-  // Concurrent refresh can stack detail drawers; close every layer before navigating.
-  for (let attempt=0; attempt<6; attempt++) {
-    if (!await page.locator('.irlix-drawer-backdrop').count()) break;
-    await page.evaluate(() => [...document.querySelectorAll('.irlix-drawer-layer .irlix-drawer-close')].at(-1)?.click());
-    await page.waitForTimeout(80);
-  }
-  assert.equal(await page.locator('.irlix-drawer-backdrop').count(),0,'All drawer layers must be closed before navigating');
-  // The asynchronous overview refresh may reopen a detail layer just after it
-  // was closed. Reloading also verifies the saved connection survives refresh.
+  // Creation opens a detail drawer; do not race its asynchronous refresh while
+  // closing nested layers. Reload also verifies the saved connection persists.
   await page.reload();
+  await page.locator('.cm-registry').waitFor({timeout:8000});
   await page.locator('.irlix-drawer-backdrop').waitFor({state:'detached'});
   await page.getByRole('navigation',{name:'Навигация сервиса клиентов'}).getByRole('button',{name:'Партнёры',exact:true}).click();
   // The accessible button name includes the displayed specialist count, e.g. 'Synthetic Agency (1)'.
@@ -345,12 +339,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.screenshot({path:screenshotDir+'/clients-partner-member.png',fullPage:true});
 
   membershipAccess='members-manage';
-  await page.reload();
-  await page.getByRole('navigation',{name:'Навигация сервиса клиентов'}).getByRole('button',{name:'Подключения',exact:true}).click();
+  await page.goto(base+'/clients/members/');
   await page.getByRole('button',{name:'＋ Подключить специалиста',exact:true}).waitFor();
   membershipAccess='members-read';
   await page.reload();
-  await page.getByRole('navigation',{name:'Навигация сервиса клиентов'}).getByRole('button',{name:'Подключения',exact:true}).click();
+  assert.equal(new URL(page.url()).pathname,'/clients/members/','Read-only member registry remains available through historical route');
   const readonlyMember=page.locator('.cm-registry tr[role="button"]').filter({hasText:'Synthetic Partner'});
   await readonlyMember.waitFor();
   assert.equal(await page.getByRole('button',{name:'＋ Подключить специалиста',exact:true}).count(),0);
