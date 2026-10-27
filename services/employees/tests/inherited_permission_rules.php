@@ -47,6 +47,8 @@ foreach ([
     ['id'=>35,'login'=>'finance.example','department_id'=>9],
     ['id'=>36,'login'=>'account-root.example','department_id'=>4, 'position'=>'Account Manager'],
     ['id'=>37,'login'=>'finance-title.example','department_id'=>9, 'position'=>'Account Manager'],
+    ['id'=>38,'login'=>'sales-root.example','department_id'=>4, 'position'=>'Sales Manager'],
+    ['id'=>39,'login'=>'finance-sales-title.example','department_id'=>9, 'position'=>'Sales Manager'],
 ] as $row) {
     $db->table('employees')->insert([
         ...$row,
@@ -112,6 +114,17 @@ $financeTitle = $resolve(37);
 $check(!in_array('account-manager', $financeTitle['roles'], true)
     && $financeTitle['services']['clients'] === false,
     'Finance position was incorrectly promoted to client Account Manager');
+
+$rootSales = $resolve(38);
+$check(in_array('sales-manager', $rootSales['roles'], true)
+    && $rootSales['services']['clients'] === true,
+    'Sales Manager job title in Client Service lost its functional role or service access');
+$check(in_array('sales-manager', \App\Support\KeycloakAuthorizationSync::grants($rootSales), true),
+    'Keycloak functional Sales role was not reconciled');
+$financeSalesTitle = $resolve(39);
+$check(!in_array('sales-manager', $financeSalesTitle['roles'], true)
+    && $financeSalesTitle['services']['clients'] === false,
+    'Finance employee gained Client Service role from Sales job title');
 
 // Explicit local service denial must override inherited client-team entry.
 $addRule('client-operations', 'services.clients', false);
