@@ -33,7 +33,7 @@ watch(()=>props.year,load);
   <UiPanel class="vacations-page-panel">
     <UiLoader v-if="loading" page label="Загрузка моих отсутствий" />
     <div v-else-if="!rows.length" class="empty"><strong>На {{ props.year }} год отсутствий пока нет</strong><span>Создайте первое отсутствие.</span></div>
-    <AbsenceTable v-else :items="rows" :show-documents="false" :show-actions="false" show-progress @action="emit('action',$event)"/>
+    <AbsenceTable v-else :items="rows" :show-documents="false" :show-actions="false" show-progress center-columns @action="emit('action',$event)"/>
   </UiPanel>
 
   <AbsenceCreateModal :open="showForm" @close="showForm=false" @changed="created"/>
