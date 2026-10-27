@@ -7,6 +7,7 @@ use App\Support\EmployeesDirectory;
 use App\Support\ProductionDepartmentRoster;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 
 /**
  * Minimal cross-contour read model for active Employees, restricted to
@@ -25,7 +26,7 @@ final class ClientServiceCalendarController extends Controller
         $year = (int) substr($month, 0, 4);
         $number = (int) substr($month, 5, 2);
 
-        [$activeIds, $employees, $departments] = $this->authorizedDirectory($request, $directory);
+        [$activeIds, $employees, $departments] = $this->authorizedDirectory($request, $directory, true);
 
         $production = ProductionDepartmentRoster::filter($departments, $employees);
         $productionEmployees = $production['employees'];
@@ -69,7 +70,7 @@ final class ClientServiceCalendarController extends Controller
         return response()->json(['data' => $levels]);
     }
 
-    private function authorizedDirectory(Request $request, EmployeesDirectory $directory): array
+    private function authorizedDirectory(Request $request, EmployeesDirectory $directory, bool $requireSpecialistsPermission = false): array
     {
         $identity = (array) $request->attributes->get('identity', []);
         $jwt = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
