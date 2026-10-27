@@ -308,6 +308,32 @@ class ClientsAccountingAccess
         if (!$response instanceof JsonResponse || !$response->isSuccessful()) return $response;
         $payload = $response->getData(true);
         if ($path === 'api/overview') {
+            // The Clients registry can be visible to Sales or managers without
+            // any members.view grant. Never embed specialist terms, rates and
+            // project assignments in its payload unless the exact membership
+            // permission also allows that client. This applies to both the
+            // paginated Clients list and the legacy overview response, and
+            // prevents rows that display a card which the detail API rejects.
+            $memberViewIds = $this->accessResolver->allows($access, 'members.view')
+                ? $employeeIdsForPermission('members.view') : [];
+            $memberClientIds = $memberViewIds === null ? null : $idsForEmployees($memberViewIds);
+            if ($memberViewIds !== null && $memberViewIds !== []) {
+                $delegatedMemberClients = DB::table('client_account_delegations')
+                    ->whereNull('revoked_at')->whereDate('starts_at', '<=', today())
+                    ->whereDate('ends_at', '>=', today())
+                    ->whereIn('to_employee_id', $memberViewIds)->pluck('client_id')
+                    ->map(fn ($clientId) => (int) $clientId)->all();
+                $memberClientIds = array_values(array_unique([...$memberClientIds, ...$delegatedMemberClients]));
+            }
+            $payload['data']['clients'] = array_map(static function (array $client) use ($memberClientIds): array {
+                $allowed = $memberClientIds === null || in_array((int) ($client['id'] ?? 0), $memberClientIds, true);
+                if (!$allowed) {
+                    $client['client_members'] = [];
+                    $client['projects'] = array_map(static fn ($project) =>
+                        [...(array) $project, 'members' => []], (array) ($client['projects'] ?? []));
+                }
+                return $client;
+            }, (array) ($payload['data']['clients'] ?? []));
             $canViewRequests = $this->accessResolver->allows($access, 'requests.view');
             $canViewPositions = $this->accessResolver->allows($access, 'positions.view');
             $canViewAttempts = $this->accessResolver->allows($access, 'attempts.view');
