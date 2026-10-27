@@ -126,8 +126,13 @@ final class RoleLabels
         $accounting = in_array('account-management', $aliases, true)
             || ($inClientService && count(array_intersect($names, ['accounting', 'аккаунтинг'])) > 0)
             || $accountPosition;
+        $salesPosition = $inClientService && in_array($position, [
+            'sales-manager', 'sales manager', 'сейлз-менеджер', 'сейлз менеджер',
+            'менеджер по продажам', 'менеджер продаж',
+        ], true);
         $sales = in_array('sales', $aliases, true)
-            || ($inClientService && count(array_intersect($names, ['sales', 'продажи'])) > 0);
+            || ($inClientService && count(array_intersect($names, ['sales', 'продажи', 'сейлз'])) > 0)
+            || $salesPosition;
         return array_values(array_filter([
             $accounting ? 'account-manager' : null,
             $sales ? 'sales-manager' : null,
