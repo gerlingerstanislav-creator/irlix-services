@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
-import { UiButton, UiIcon } from '@irlix/ui';
+import { UiButton } from '@irlix/ui';
 const props=defineProps({auth:{type:Object,required:true}});
 const rows=ref([]),loading=ref(false),error=ref(''),busy=ref(false),selected=ref([]);
 const filters=reactive({status:'open',service_key:'',employee_id:'',from:'',to:''});
@@ -29,7 +29,7 @@ onMounted(load);
 </div>
 <p v-if="error" role="alert" class="bug-reports-error">{{error}}</p>
 <div class="bug-reports-table-wrap"><table class="bug-reports-table"><thead><tr><th><input type="checkbox" aria-label="Выбрать все на странице" :checked="allSelected" @change="toggleAll"/></th><th>ID</th><th>Дата</th><th>Сотрудник</th><th>Сервис / страница</th><th>Описание</th><th>Статус</th><th>Действие</th></tr></thead><tbody>
-<tr v-for="report in rows" :key="report.id"><td><input v-model="selected" type="checkbox" :value="report.id" :aria-label="'Выбрать репорт '+report.id"/></td><td>#{{report.id}}</td><td>{{date(report.created_at)}}</td><td>ID {{report.employee_id}}</td><td><strong>{{report.service_key}}</strong><small class="bug-reports-path">{{report.page_path}}</small></td><td class="bug-reports-description">{{report.description}}</td><td>{{report.status==='open'?'Открыт':'Закрыт'}}</td><td><button type="button" :disabled="busy" @click="setStatus([report.id],report.status==='open'?'closed':'open')">{{report.status==='open'?'Закрыть':'Открыть'}}</button></td></tr>
+<tr v-for="report in rows" :key="report.id"><td><input v-model="selected" type="checkbox" :value="report.id" :aria-label="'Выбрать репорт '+report.id"/></td><td>#{{report.id}}</td><td>{{date(report.created_at)}}</td><td>{{report.employee_name}}<small class="bug-reports-path">ID {{report.employee_id}}</small></td><td><strong>{{report.service_key}}</strong><small class="bug-reports-path">{{report.page_path}}</small></td><td class="bug-reports-description">{{report.description}}</td><td>{{report.status==='open'?'Открыт':'Закрыт'}}</td><td><button type="button" :disabled="busy" @click="setStatus([report.id],report.status==='open'?'closed':'open')">{{report.status==='open'?'Закрыть':'Открыть'}}</button></td></tr>
 <tr v-if="!rows.length"><td colspan="8">{{loading?'Загрузка…':'Репортов не найдено'}}</td></tr>
 </tbody></table></div>
 <footer class="bug-reports-pages"><button :disabled="page<=1||loading" @click="page--;load()">Назад</button><span>{{page}} / {{lastPage}}</span><button :disabled="page>=lastPage||loading" @click="page++;load()">Вперёд</button></footer>

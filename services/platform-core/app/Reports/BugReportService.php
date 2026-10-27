@@ -18,6 +18,7 @@ final class BugReportService
         }
         return BugReport::query()->create([
             'employee_id' => $identity['employee_id'],
+            'employee_name' => $identity['employee_name'],
             'reporter_keycloak_sub' => $identity['subject'],
             'service_key' => $input['service_key'],
             'page_path' => $input['page_path'],
@@ -63,7 +64,7 @@ final class BugReportService
             foreach ($reports as $report) {
                 $lines[] = '## Репорт #'.$report->id;
                 $lines[] = '- Статус: '.$report->status;
-                $lines[] = '- Сотрудник ID: '.$report->employee_id;
+                $lines[] = '- Сотрудник: '.$report->employee_name.' (ID '.$report->employee_id.')';
                 $lines[] = '- Сервис: '.$report->service_key;
                 $lines[] = '- Страница: '.str_replace(["\r","\n"], '', $report->page_path);
                 $lines[] = '- Создан: '.$report->created_at?->toIso8601String();

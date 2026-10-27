@@ -9,6 +9,7 @@ return new class extends Migration {
         Schema::create('bug_reports', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('employee_id');
+            $table->string('employee_name', 255);
             $table->string('reporter_keycloak_sub', 191);
             $table->string('service_key', 64);
             $table->string('page_path', 2048);

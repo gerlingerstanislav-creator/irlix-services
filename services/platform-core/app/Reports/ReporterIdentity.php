@@ -29,6 +29,6 @@ final class ReporterIdentity
             return response()->json(['message' => 'Сотрудник не определён'], 403);
         }
         // The trusted Employees API owns employee identity. Browser-supplied identity is never accepted.
-        return ['employee_id' => (int) $data['employee_id'], 'subject' => (string) ($data['keycloak_user_id'] ?? $data['sub'] ?? $data['employee_id'])];
+        return ['employee_id' => (int) $data['employee_id'], 'employee_name' => (string) ($data['employee_name'] ?? 'Сотрудник #'.$data['employee_id']), 'subject' => (string) ($data['keycloak_user_id'] ?? $data['sub'] ?? $data['employee_id'])];
     }
 }
