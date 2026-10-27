@@ -114,8 +114,18 @@ final class RoleLabels
         $inClientService = in_array('client-service', $aliases, true)
             || in_array('client service', $names, true)
             || in_array('клиентская служба', $names, true);
+        // A functional Account Manager can hold a position directly inside
+        // Client Service without being assigned to an account-management
+        // department. Only exact, normalized position names within this
+        // organizational contour are eligible; a Finance position is not.
+        $position = mb_strtolower(trim(preg_replace('/\\s+/u', ' ',
+            str_replace(['_', '–', '—'], ['-', '-', '-'], (string) ($employee->position ?? '')))));
+        $accountPosition = $inClientService && in_array($position, [
+            'account-manager', 'account manager', 'аккаунт-менеджер', 'аккаунт менеджер',
+        ], true);
         $accounting = in_array('account-management', $aliases, true)
-            || ($inClientService && count(array_intersect($names, ['accounting', 'аккаунтинг'])) > 0);
+            || ($inClientService && count(array_intersect($names, ['accounting', 'аккаунтинг'])) > 0)
+            || $accountPosition;
         $sales = in_array('sales', $aliases, true)
             || ($inClientService && count(array_intersect($names, ['sales', 'продажи'])) > 0);
         return array_values(array_filter([
