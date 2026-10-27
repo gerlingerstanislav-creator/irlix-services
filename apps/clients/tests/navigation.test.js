@@ -126,3 +126,28 @@ test('specialists backend contracts enforce the editable matrix and reject non-g
  assert.match(clients,/platform_admin/);
  assert.match(roster,/client-service-calendar\?month=/);
 });
+
+
+test('each visible Clients detail card is tied to its effective permission and readonly actions',()=>{
+ const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8');
+ const clientCard=readFileSync(new URL('../src/components/ClientCard.vue',import.meta.url),'utf8');
+ const contactCard=readFileSync(new URL('../src/components/ContactPersonCard.vue',import.meta.url),'utf8');
+ const memberCard=readFileSync(new URL('../src/components/ClientMembersRegistry.vue',import.meta.url),'utf8');
+ const access=readFileSync(new URL('../../../services/clients/app/Http/Middleware/ClientsAccountingAccess.php',import.meta.url),'utf8');
+ for(const permission of ['members.view','reports.view','contacts.view','contacts.manage','reports.manage']){
+   assert.match(app,new RegExp("can\\('"+permission.replace('.','\\.')+" '").source.replace(' ',''));
+ }
+ assert.match(app,/expandedClients\.has\(c\.id\) && can\('members\.view'\)/);
+ assert.match(app,/selectedClientMember && can\('members\.view'\)/);
+ assert.match(app,/:can-view-reports="can\('reports\.view'\)"/);
+ assert.match(app,/:can-manage-reports="can\('reports\.manage'\)"/);
+ assert.match(app,/:can-manage="can\('contacts\.manage'\)"/);
+ assert.match(clientCard,/props\.canViewReports/);
+ assert.match(clientCard,/props\.canViewContacts/);
+ assert.match(clientCard,/v-if="canManageReports"/);
+ assert.match(contactCard,/v-if="!isLink && canManage"/);
+ assert.match(memberCard,/if\(!res\.ok\)throw new Error/);
+ assert.match(access,/if \(!\$canReadCardSection\('reports\.view'\)\)/);
+ assert.match(access,/if \(!\$canReadCardSection\('contacts\.view'\)\)/);
+ assert.match(access,/client_members'\] = \[\]/);
+});
