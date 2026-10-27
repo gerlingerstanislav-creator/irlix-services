@@ -3,6 +3,7 @@ import { UiRegistryTable, UiTooltip } from '@irlix/ui';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import AbsenceActions from './AbsenceActions.vue';
 import { formatDateNumeric, statusLabels, typeLabels } from '../constants';
+import { absenceRegistryColumns, absenceRegistryMinWidth } from '../absenceRegistryLayout';
 
 const props=defineProps({
   items:{type:Array,default:()=>[]},
@@ -39,16 +40,17 @@ const badgeStyles=computed(()=>props.centerColumns?{
   '--absence-type-badge-width':typeBadgeWidth.value?`${typeBadgeWidth.value}px`:'max-content',
   '--absence-status-badge-width':statusBadgeWidth.value?`${statusBadgeWidth.value}px`:'max-content',
 }:{});
-const registryColumns = computed(() => [
-  ...(props.showEmployee ? ['220px'] : []),
-  '230px', '110px',
-  ...(props.centerColumns ? [`${Math.max(190,typeBadgeWidth.value+18)}px`,`${Math.max(150,statusBadgeWidth.value+18)}px`] : ['205px','190px']),
-  ...(props.showProgress ? ['112px'] : []),
-  ...(props.showStage ? ['180px'] : []),
-  ...(props.showDocuments ? ['135px'] : []),
-  ...(props.showActions ? ['48px'] : []),
-]);
-const registryMinWidth = computed(() => registryColumns.value.reduce((sum, width) => sum + parseInt(width,10), 0) + 'px');
+const registryColumns = computed(() => absenceRegistryColumns({
+  showEmployee:props.showEmployee,
+  showProgress:props.showProgress,
+  showStage:props.showStage,
+  showDocuments:props.showDocuments,
+  showActions:props.showActions,
+  centerColumns:props.centerColumns,
+  typeBadgeWidth:typeBadgeWidth.value,
+  statusBadgeWidth:statusBadgeWidth.value,
+}));
+const registryMinWidth = computed(() => absenceRegistryMinWidth(registryColumns.value));
 
 
 const actionsOf=(item)=>(item.available_actions||[]).filter((action)=>!props.hiddenActions.includes(action));
