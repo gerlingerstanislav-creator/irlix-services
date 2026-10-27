@@ -114,6 +114,14 @@ def validate(data, config):
     assert (ROOT / "docker-compose.images.yml").read_text() == image_overlay(data), "Regenerate docker-compose.images.yml"
 
 
+def nonbuild_shared_ui_test(path):
+    # Tests are exercised by QA, but are never packaged into production UI.
+    # Treating packages/ui/tests as a shared UI build source previously selected
+    # ALL 14 frontends for a single navigation contract test change, exceeding
+    # the verified-image transfer gate on production.
+    return path.startswith("packages/ui/tests/")
+
+
 def tracked_inputs(ref, paths):
     # ls-tree pathspecs do NOT treat a partial filename as a prefix. Registry build paths
     # may be prefixes like "apps/portal/src/serviceMap" (both serviceMapData.js and
@@ -126,7 +134,7 @@ def tracked_inputs(ref, paths):
         if "\t" not in line:
             continue
         filename = line.split("\t", 1)[1]
-        if not filename.endswith(".md") and any(filename.startswith(root) for root in paths):
+        if not filename.endswith(".md") and not nonbuild_shared_ui_test(filename) and any(filename.startswith(root) for root in paths):
             matched.append(line)
     return "\n".join(matched)
 
@@ -149,7 +157,7 @@ def make_plan(data, current, previous, changed, ref="HEAD", base=None, full=Fals
         name = c["service"]
         spec = new_services[name]
         selected = full or name not in old_services or old_components.get(c["id"]) != c
-        matching = [p for p in changed if not p.endswith(".md") and any(p.startswith(root) for root in [*c["paths"], *BUILD_INPUTS])]
+        matching = [p for p in changed if not p.endswith(".md") and not nonbuild_shared_ui_test(p) and any(p.startswith(root) for root in [*c["paths"], *BUILD_INPUTS])]
         old_build = old_services.get(name, {}).get("build")
         if matching or old_build != spec["build"]:
             selected = True
