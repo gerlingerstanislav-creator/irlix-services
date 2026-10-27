@@ -9,13 +9,16 @@ foreach([1,2,3]as $id)DB::table('client_members')->insert(['id'=>$id,'client_id'
 DB::table('client_account_delegations')->insert(['client_id'=>2,'to_employee_id'=>5,'starts_at'=>'2026-01-01','ends_at'=>'2026-12-31']);
 Http::fake(['*/self'=>Http::response(['data'=>['id'=>5]]),'*/clients-directory'=>Http::response(['data'=>['employees'=>[['id'=>7,'department_id'=>11]]]])]);
 $resolver=new class extends App\Support\ClientContourAccess {
-    public string $scope='own';public bool $manage=true;public bool $membersView=true;
+    public string $scope='own';public bool $manage=true;public bool $membersView=true;public bool $reportsView=true;public bool $contactsView=true;public array $permissionScopes=[];
     public function resolve(Illuminate\Http\Request $request):array {
         $permissions=[];
         foreach(['clients.view','clients.manage','members.view','members.manage',
                  'reports.view','contacts.view','requests.view','leads.view','positions.view','attempts.view']as $p)
             $permissions[$p]=['allowed'=>(!str_ends_with($p,'manage')||$this->manage)
-                && ($p!=='members.view'||$this->membersView),'scope'=>$this->scope];
+                && ($p!=='members.view'||$this->membersView)
+                && ($p!=='reports.view'||$this->reportsView)
+                && ($p!=='contacts.view'||$this->contactsView),
+                'scope'=>$this->permissionScopes[$p]??$this->scope];
         return ['platform_admin'=>false,'employee'=>['id'=>5],'permissions'=>$permissions,'client_service_permissions'=>$permissions,'department_ids'=>[11],'roles'=>['account-manager']];
     }
 };
@@ -101,4 +104,21 @@ $resolver->scope='team';
 $team = $guard->handle($overviewRequest,fn() => response()->json(['data'=>$sample]))->getData(true);
 clientCheck(count($team['data']['clients'][1]['client_members'])===1,
     'Team-scoped head lost team specialist terms');
+$cardPayload=['data'=>['client'=>['id'=>3,'name'=>'Team'], 'reporting_periods'=>[['id'=>19]],
+    'contacts'=>[['id'=>19]]]];
+$readCard = fn() => $guard->handle(Illuminate\Http\Request::create('/api/clients/clients/3/card'),
+    fn() => response()->json($cardPayload))->getData(true)['data'];
+$resolver->scope='all';
+$resolver->permissionScopes=['reports.view'=>'own','contacts.view'=>'own'];
+$limitedCard=$readCard();
+clientCheck($limitedCard['reporting_periods']===[] && $limitedCard['contacts']===[],
+    'Client card exposed reports/contacts beyond their independent matrix scopes');
+$resolver->permissionScopes=[];$resolver->reportsView=false;$resolver->contactsView=false;
+$hiddenSections=$readCard();
+clientCheck($hiddenSections['reporting_periods']===[] && $hiddenSections['contacts']===[],
+    'Visible Client card exposed separately denied tabs');
+$resolver->reportsView=true;$resolver->contactsView=true;
+$fullCard=$readCard();
+clientCheck(count($fullCard['reporting_periods'])===1 && count($fullCard['contacts'])===1,
+    'All-scope Client head lost permitted card tabs');
 echo "Canonical membership and Cards own/delegate/team/all, view-only and denied: PASS\n";
