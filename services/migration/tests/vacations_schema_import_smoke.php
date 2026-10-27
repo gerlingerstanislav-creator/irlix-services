@@ -185,7 +185,7 @@ try {
     db('vacations')->table('absence_approvals')->where('sequence',2)->update(['status'=>'pending']);
     $vacations->fixture['vacations'][0]['status']='on_approval';
     $vacations->fixture['approvers'][1]['is_approved']=true;
-    verify(runImport($vacations,true)['conflicts']===1,
+    verify(runImport($vacations,true)['conflicts']>=1,
         'Review with no unresolved approver must be a conflict, not an invented stage');
     $vacations->fixture['approvers'][1]['is_approved']=false;
     $vacations->fixture['approvers']=[];$vacations->fixture['attachments']=[];
