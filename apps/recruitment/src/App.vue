@@ -85,7 +85,8 @@ onBeforeUnmount(() => window.removeEventListener('popstate', onPopState));
 
 <template>
   <div class="recruitment-app">
-    <UiAppSidebar :section="sidebarSection" :items="navItems" current-service="recruitment" :current-user="auth.user" :platform-access="() => auth.fetch('/api/employees/access/me')" aria-label="Навигация Recruitment" @update:section="(id) => navigate(id === 'dashboard' ? '' : id)" @logout="auth.logout()" />
+    <UiAppSidebar :section="sidebarSection" :items="navItems" current-service="recruitment" :current-user="auth.user" :platform-access="() => auth.fetch('/api/employees/access/me')"
+      :report-submit="(url, options) => auth.fetch(url, options)" aria-label="Навигация Recruitment" @update:section="(id) => navigate(id === 'dashboard' ? '' : id)" @logout="auth.logout()" />
     <main class="irlix-service-workspace">
       <UiAppTopbar service="recruitment" :section="sidebarSection" :items="navItems" />
       <div class="content irlix-service-content">

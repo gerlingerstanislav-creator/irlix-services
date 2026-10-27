@@ -121,7 +121,7 @@ const start = async () => {
     ];
     const sidebarApp = createApp({ render: () => h(UiAppSidebar, {
       section: section.value, items: navigation.map(item => ({...item,badge:item.id==='tasks'?actionCount.value:0})),
-      currentService: 'dashboard', currentUser: auth.user || {}, platformAdmin, serviceAccess: access,
+      currentService: 'dashboard', currentUser: auth.user || {}, platformAdmin, serviceAccess: access, reportSubmit: (url, options) => auth.fetch(url, options),
       'onUpdate:section': navigate, onLogout: () => auth.logout(),
     }) });
     sidebarApp.use(router);

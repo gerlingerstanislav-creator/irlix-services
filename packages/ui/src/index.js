@@ -3,6 +3,7 @@ import './searchableSelectUpgrade';
 import './styles/searchable-select.css';
 import './styles/kanban.css';
 
+export { default as UiBugReport } from './components/UiBugReport.vue';
 export { default as UiAppSidebar } from './components/UiAppSidebar.vue';
 export { default as UiAppShell } from './components/UiAppShell.vue';
 export { default as UiAppTopbar } from './components/UiAppTopbar.vue';

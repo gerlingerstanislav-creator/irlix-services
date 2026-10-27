@@ -33,6 +33,7 @@ const bottomItems = computed(() => [
     current-service="employees"
     :current-user="auth.user"
     :platform-access="() => auth.fetch('/api/employees/access/me')"
+      :report-submit="(url, options) => auth.fetch(url, options)"
     :bottom-items="bottomItems"
     aria-label="Навигация сервиса сотрудников"
     @update:section="emit('update:section', $event)"

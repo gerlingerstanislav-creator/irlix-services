@@ -157,7 +157,8 @@ watch(() => editor.type, (type, previous) => { if(editor.open && type !== previo
 </script>
 
 <template>
-  <UiAppShell service="equipment" service-name="Учёт техники" :section="section" :items="sections" :current-user="auth.user" :platform-access="() => auth.fetch('/api/employees/access/me')" :loading="loading" @update:section="changeSection" @logout="auth.logout">
+  <UiAppShell service="equipment" service-name="Учёт техники" :section="section" :items="sections" :current-user="auth.user" :platform-access="() => auth.fetch('/api/employees/access/me')"
+      :report-submit="(url, options) => auth.fetch(url, options)" :loading="loading" @update:section="changeSection" @logout="auth.logout">
     <template #actions>
       <div class="equipment-topbar-summary">
         <span v-if="section==='registry'"><strong>{{ filtered.length }}</strong> из {{ items.length }} единиц</span>

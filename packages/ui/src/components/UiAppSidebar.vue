@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import UiIcon from './UiIcon.vue';
 import UiButton from './UiButton.vue';
+import UiBugReport from './UiBugReport.vue';
 import { getTheme, setTheme } from '../theme';
 import { getVisibleServiceGroups, isPlatformAdminAccess } from '../serviceCatalog';
 
@@ -15,6 +16,7 @@ const props = defineProps({
   platformAdmin: { type: Boolean, default: false },
   platformAccess: { type: Function, default: null },
   serviceAccess: { type: Object, default: null },
+  reportSubmit: { type: Function, default: null },
   ariaLabel: { type: String, default: 'Навигация сервиса' },
 });
 
@@ -178,6 +180,7 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', handleEscape); d
       </div>
     </div>
     <div class="sidebar-bottom" aria-label="Системные действия">
+      <UiBugReport v-if="accountEnabled && reportSubmit" :service="currentService" :submit="reportSubmit" />
       <button
         v-for="item in bottomItems"
         :key="item.id || item.key"

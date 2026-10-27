@@ -2,6 +2,7 @@
 const props = defineProps({
   serviceAccess: { type: Object, required: true },
   currentUser: { type: Object, required: true },
+  reportSubmit: { type: Function, required: true },
 });
 const emit = defineEmits(['logout']);
 import { computed, ref, watch } from 'vue';
@@ -75,7 +76,7 @@ function copyArticle(article) {
   <a class="brandbook-skip-link" href="#brandbook-main">К основному содержимому</a>
   <UiAppShell service="brandbook" service-name="Брендбук IRLIX"
     :section="current" :items="nav" :breadcrumbs="crumbs"
-    :account-enabled="true" :current-user="currentUser"
+    :account-enabled="true" :current-user="currentUser" :report-submit="reportSubmit"
     :platform-admin="isPlatformAdministratorAccess(serviceAccess)" :service-access="serviceAccess"
     @update:section="navigate" @logout="emit('logout')">
     <main id="brandbook-main" class="brandbook-page" tabindex="-1">

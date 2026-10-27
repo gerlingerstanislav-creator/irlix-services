@@ -406,7 +406,8 @@ onBeforeUnmount(()=>{loadSequence++;});
 </script>
 
 <template>
-  <UiAppShell service="finance" :section="section" @update:section="open" :items="visible" :current-user="auth.user" :platform-access="() => auth.fetch('/api/employees/access/me')" @logout="auth.logout">
+  <UiAppShell service="finance" :section="section" @update:section="open" :items="visible" :current-user="auth.user" :platform-access="() => auth.fetch('/api/employees/access/me')"
+      :report-submit="(url, options) => auth.fetch(url, options)" @logout="auth.logout">
     <template #actions>
       <UiButton v-if="section==='invoices' && can('finance.invoices.manage')" @click="openForm='invoices'">Создать счёт</UiButton>
       <UiButton v-if="section==='invoices' && can('finance.cash.confirm')" @click="openForm='receipts'">Поступление</UiButton>

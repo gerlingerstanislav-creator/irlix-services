@@ -25,6 +25,7 @@ async function start() {
     const app = createApp(App, {
       serviceAccess: access,
       currentUser: auth.user,
+      reportSubmit: (url, options) => auth.fetch(url, options),
       onLogout: () => auth.logout(),
     });
     app.use(router);

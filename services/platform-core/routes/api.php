@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
 require __DIR__.'/resources.php';
+require __DIR__.'/reports.php';
 
 Route::get('/production-calendar', function (\Illuminate\Http\Request $request, \App\Calendar\ProductionCalendar $calendar) {
     $data=$request->validate(['year'=>['required','integer','min:2000','max:2100']]);
