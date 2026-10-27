@@ -72,4 +72,33 @@ clientCheck($invoke('clients/1/client-members')===403,'Denied members.view opene
 clientCheck($invoke('members/19')===403,'Denied members.view opened legacy project card');
 $resolver->membersView=true;
 clientCheck($invoke('client-members/1/terms','POST')===403,'Read-only card granted editing permission');
+// A Sales role may view its client record but cannot read project terms
+// without members.view. Both the paginated Clients list and historical
+// overview must redact embedded rates before returning JSON.
+$overviewRequest = Illuminate\Http\Request::create('/api/overview?section=clients', 'GET');
+$sample = [
+    'clients' => [
+        ['id'=>1,'name'=>'Own','client_members'=>[['id'=>1,'terms'=>[['hourly_rate'=>999]]]],
+            'projects'=>[['id'=>19,'members'=>[['id'=>19,'terms'=>[['hourly_rate'=>999]]]]]]],
+        ['id'=>3,'name'=>'Team','client_members'=>[['id'=>3,'terms'=>[['hourly_rate'=>888]]]],
+            'projects'=>[['id'=>33,'members'=>[['id'=>33,'terms'=>[['hourly_rate'=>888]]]]]]],
+    ],
+];
+$resolver->scope='own';$resolver->membersView=false;
+$hidden = $guard->handle($overviewRequest,fn() => response()->json(['data'=>$sample]))->getData(true);
+clientCheck(count($hidden['data']['clients'])===2,'Client overview test fixture disappeared');
+foreach($hidden['data']['clients'] as $client){
+    clientCheck($client['client_members']===[] && $client['projects'][0]['members']===[],
+        'Client overview leaked specialist commercial terms to a role without members.view');
+}
+$resolver->membersView=true;
+$own = $guard->handle($overviewRequest,fn() => response()->json(['data'=>$sample]))->getData(true);
+clientCheck(count($own['data']['clients'][0]['client_members'])===1,
+    'Account Manager with members.view lost specialist card data');
+clientCheck($own['data']['clients'][1]['client_members']===[],
+    'Own-scope Account Manager received unrelated client's specialist terms');
+$resolver->scope='team';
+$team = $guard->handle($overviewRequest,fn() => response()->json(['data'=>$sample]))->getData(true);
+clientCheck(count($team['data']['clients'][1]['client_members'])===1,
+    'Team-scoped head lost team specialist terms');
 echo "Canonical membership and Cards own/delegate/team/all, view-only and denied: PASS\n";
