@@ -20,7 +20,8 @@ $service = new App\Application\AbsenceService(new App\Domain\Absence\AbsenceDayC
 $service->submitOwn(1,10,'synthetic-owner',[]);
 checkSequence(DB::table('absences')->find(1)->status==='in_review',
     'Only lifecycle is persisted, never employee_review');
-checkSequence($service->get(1)['status']==='employee_review' && $service->get(1)['lifecycle_status']==='in_review',
+checkSequence($service->get(1)['status']==='employee_review' && $service->get(1)['lifecycle_status']==='in_review'
+    && $service->get(1)['requires_reconciliation']===false,
     'UI status is derived from the active approval stage');
 $reads = new App\Application\AbsenceReadService();
 checkSequence(count($reads->registry([10], ['status' => 'employee_review'])) === 1,
@@ -52,4 +53,18 @@ $rejectionPayload = json_decode((string) ($rejectionAudit->after ?? ''), true);
 checkSequence(($rejectionPayload['rejection_comment'] ?? '')==='Уточните даты отсутствия','Rejection reason must be auditable');
 $service->submitOwn(1,10,'synthetic-owner',[]);
 checkSequence(DB::table('absence_approvals')->find(1)->status==='pending','Rejected absence can be resubmitted');
+// An imported historical review may have no active assigned task. It
+// remains in review without an invented approval or terminal outcome.
+DB::table('absences')->where('id',1)->update(['status'=>'in_review']);
+DB::table('absence_approvals')->where('absence_id',1)->update(['status'=>'approved']);
+$unresolved = $service->get(1);
+checkSequence($unresolved['status']==='in_review' && $unresolved['requires_reconciliation']===true,
+    'Unresolved historical review must remain visible and flagged for reconciliation');
+checkSequence(count($reads->registry([10],['status'=>'in_review']))===1,
+    'Generic in-review filter must include records without an active step');
+checkSequence(count($reads->registry([10],['status'=>'employee_review']))===0,
+    'Generic review without current task must not appear under employee review');
+DB::table('absence_approvals')->where('id',1)->update(['status'=>'pending']);
+checkSequence(count($reads->registry([10],['status'=>'in_review']))===0,
+    'Generic review filter must not duplicate named pending stages');
 echo "Assigned approval chain regression passed\n";
