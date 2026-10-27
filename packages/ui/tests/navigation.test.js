@@ -212,7 +212,7 @@ test('Timesheets launcher resolves only after effective section permissions; exp
     'timesheets.mine.view':{allowed:false,scope:'none'},
   };
   const employee = {'timesheets.mine.view':{allowed:true,scope:'own'}};
-  const both = {...employee,...manager};
+  const both = {...manager,...employee};
   assert.equal(chooseTimesheetsLanding(manager),'management');
   assert.equal(chooseTimesheetsLanding(employee),'mine');
   assert.equal(chooseTimesheetsLanding(both),'mine');
