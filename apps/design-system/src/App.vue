@@ -2,6 +2,7 @@
 defineProps({
   serviceAccess: { type: Object, required: true },
   currentUser: { type: Object, required: true },
+  reportSubmit: { type: Function, required: true },
 });
 const emit = defineEmits(['logout']);
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
@@ -111,7 +112,7 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
 </script>
 
 <template>
-  <UiAppShell :account-enabled="true" :service-access="serviceAccess" :current-user="currentUser" service="design-system" :section="section" :items="nav" @update:section="navigate" @logout="emit('logout')">
+  <UiAppShell :account-enabled="true" :service-access="serviceAccess" :current-user="currentUser" :report-submit="reportSubmit" service="design-system" :section="section" :items="nav" @update:section="navigate" @logout="emit('logout')">
     <main class="ds-page">
       <UiErrorState v-if="activeRoute.name === 'not-found'" :status="404" back-href="/design-system/" back-label="К дизайн-системе" />
       <template v-else>

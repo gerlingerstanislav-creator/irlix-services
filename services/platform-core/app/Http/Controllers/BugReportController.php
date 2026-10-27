@@ -51,7 +51,12 @@ final class BugReportController extends Controller
     public function export(Request $request, PlatformAdminAuthorizer $auth, BugReportService $service)
     {
         if ($denied = $auth->authorize($request)) return $denied;
-        $filters = $request->validate(['status' => ['nullable','in:open,closed']]);
+        $filters = $request->validate(['status' => ['nullable','in:open,closed'],
+            'service_key' => ['nullable','string','max:64'],
+            'employee_id' => ['nullable','integer','min:1'],
+            'from' => ['nullable','date_format:Y-m-d'],
+            'to' => ['nullable','date_format:Y-m-d'],
+        ]);
         return response($service->export($filters), 200, [
             'Content-Type' => 'text/markdown; charset=utf-8',
             'Content-Disposition' => 'attachment; filename="irlix-bug-reports.md"',

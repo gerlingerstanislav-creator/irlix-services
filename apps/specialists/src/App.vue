@@ -271,6 +271,7 @@ const openPerson = id => navigate(`people/${id}`);
       current-service="specialists"
       :current-user="auth.user"
       :platform-access="() => auth.fetch('/api/employees/access/me')"
+      :report-submit="(url, options) => auth.fetch(url, options)"
       aria-label="Навигация сервиса специалистов"
       @update:section="(id) => navigate(id === 'dashboard' ? '' : id)"
       @logout="auth.logout()"
