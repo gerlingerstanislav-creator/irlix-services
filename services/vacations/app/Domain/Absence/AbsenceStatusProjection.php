@@ -45,9 +45,13 @@ final class AbsenceStatusProjection
             $legacyStage = in_array($stored, self::REVIEW_STAGES, true);
             $row['lifecycle_status'] = $legacyStage ? 'in_review' : $stored;
             if ($stored === 'in_review') {
-                // A missing active step is inconsistent historical data. Expose
-                // an honest generic state, not an invented approval stage.
-                $row['status'] = $active[(int) ($row[$idField] ?? 0)] ?? 'in_review';
+                // Preserve the lifecycle but never invent a terminal result
+                // or an active approver when the legacy evidence is incomplete.
+                $currentStage = $active[(int) ($row[$idField] ?? 0)] ?? null;
+                $row['status'] = $currentStage ?? 'in_review';
+                $row['requires_reconciliation'] = $currentStage === null;
+            } else {
+                $row['requires_reconciliation'] = false;
             }
         }
         unset($row);

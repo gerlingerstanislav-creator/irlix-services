@@ -235,6 +235,26 @@ Clients является source of truth по подключениям к про
 Новые точки пульта со scope vacations/all включают `vacations-files.tar.gz`, защищённый checksums и закрытым серверным каталогом. Restore восстанавливает bytes и metadata; перед запуском Vacations применяет текущие DB migrations, чтобы старые точки работали с новым кодом. Старые точки без архива документов не обещают восстановления потерянных файлов и не очищают существующий volume. Независимый справочник login-сопоставлений остаётся вне rollback. Clients в этой задаче не меняется. Comments/changes/activity_log/calendar продолжают храниться в metadata; недостоверные события и даты согласования не реконструируются.
 
 
+### Historical review without an active approver (migration reconciliation, 27.10.2026)
+
+A legacy record may be `on_approval` with no `is_approved=false` approver:
+all assigned approvers were recorded as approved or no assignments exist.
+The importer now keeps its lifecycle `in_review`, with **no** artificial
+`pending` step or `confirmed` status. The original legacy status and
+the unresolved flag are retained in import audit/metadata, with a warning
+`LEGACY_APPROVAL_STAGE_RECONCILIATION_REQUIRED` for each such row.
+The shared status projection exposes `status=in_review` and
+`requires_reconciliation=true`, so the registry, generic-status filter
+and detail view visibly distinguish it from a genuinely active stage.
+The owner/authorized personnel may return it to planned for a new
+workflow; the historical approval outcome is never guessed.
+
+This narrowly supersedes the earlier fail-closed rule for *missing stage
+evidence only*. Invalid identities, invalid order, missing referenced
+people, mismatched mappings and edited target records still block.
+No production data is changed by the code alone; take a rollback
+checkpoint and use Dry run / Migrate / Validate on an authorized operation.
+
 ### Historical department absences roster (2026-10-26)
 
 `GET /api/vacations/department-roster?year=YYYY` exposes the scoped historical Employees employment segments for the calendar year. `GET /api/vacations/registry?historical_year=YYYY&from=...&to=...` restricts rows to the chosen year and periods intersecting authorized employment segments; legacy registry without the flag is unchanged. `GET /api/vacations/absences/{id}/workspace?historical_year=YYYY` allows **read-only** historical detail for a previously authorized department segment when current employee-scope access fails. Other endpoints and mutations do not gain historical permission.

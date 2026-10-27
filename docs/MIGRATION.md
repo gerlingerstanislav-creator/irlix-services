@@ -6,9 +6,13 @@ Legacy source `on_approval` maps to target **lifecycle** `in_review`, not
 `planned`. Its current UI stage is computed from actual imported
 `absence_approvals`: the lowest unfinished historical `order` becomes
 `pending`, prior approved rows remain approved, later rows remain waiting.
-Unresolved, missing or fully approved groups under `on_approval` block
-import and need explicit operator investigation; no phantom actions are
-created. Other aliases map only to lifecycle values; unknown codes block.
+For `on_approval` with no recorded unfinished approval group, preserve the
+absence in `in_review` **without** a fabricated pending task or an invented
+terminal decision. Emit `LEGACY_APPROVAL_STAGE_RECONCILIATION_REQUIRED`
+as a warning, retain the original status and source evidence in private
+migration metadata/audit, and show the generic stage and a visible
+reconciliation marker in Vacations. Unknown status codes, unresolved
+employee identities or changed target data remain blocking conflicts.
 
 Target Vacations upgrades existing workflow rows with a valid pending
 approval to `in_review`. A narrowly guarded fix for pre-cutover imported

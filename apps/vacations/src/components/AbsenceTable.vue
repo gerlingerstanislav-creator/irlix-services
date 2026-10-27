@@ -133,7 +133,7 @@ const iconPath=(task)=>{
           <td class="type-column"><span class="vacation-type-badge" :class="`vacation-type-badge--${absenceTypeTone(item.type)}`">{{ typeLabels[item.type]||item.type }}</span></td>
           <td v-if="centerColumns" class="registry-spacer-column" aria-hidden="true"></td>
           <td class="status-column">
-            <span class="status-text vacation-status-badge" :class="`vacation-status-badge--${statusTone(item)}`" :title="statusLabels[item.absence_status||item.status]||item.absence_status||item.status">{{ statusLabels[item.absence_status||item.status]||item.absence_status||item.status }}</span>
+            <span class="status-text vacation-status-badge" :class="`vacation-status-badge--${statusTone(item)}`" :title="statusLabels[item.absence_status||item.status]||item.absence_status||item.status">{{ statusLabels[item.absence_status||item.status]||item.absence_status||item.status }}</span><small v-if="item.requires_reconciliation" class="vacation-reconciliation-note" title="Не удалось установить активный этап из исторических согласований. Требуется ручная сверка.">⚠ Сверить этап</small>
           </td>
           <td v-if="showProgress" class="progress-column" @click.stop>
             <div v-if="item.approval_progress?.length" class="approval-progress icon-progress">
