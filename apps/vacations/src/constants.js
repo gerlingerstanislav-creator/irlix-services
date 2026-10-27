@@ -49,6 +49,12 @@ export const formatDate = (value) => value
   ? new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(`${value}T00:00:00`))
   : '—';
 
+// Date-only values are formatted without Date parsing to avoid timezone shifts.
+export const formatDateNumeric = (value) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/.exec(String(value || ''));
+  return match ? [match[3], match[2], match[1]].join('.') : '—';
+};
+
 export const formatDateTime = (value) => value
   ? new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
   : '—';
