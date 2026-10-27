@@ -50,6 +50,28 @@ $check(KeycloakAuthorizationSync::managedNames(
 $check(KeycloakAuthorizationSync::grants(['roles'=>['irlix','irlix-head'],
     'services'=>['finance'=>false,'dashboard'=>true],'scope'=>'all']),
     ['irlix','irlix-head','scope:all','service:dashboard']);
+// A real account employee in a nested legacy Accounting department must get
+// Clients service admission; that name in Finance must never imply it.
+$clientTree = [
+    (object) ['id'=>11,'name'=>'Client Service','alias'=>null,'parent_id'=>null],
+    (object) ['id'=>12,'name'=>'ACCOUNTING','alias'=>'accounting','parent_id'=>11],
+    (object) ['id'=>13,'name'=>'Account delivery','alias'=>null,'parent_id'=>12],
+    (object) ['id'=>14,'name'=>'Finance','alias'=>'finance','parent_id'=>null],
+    (object) ['id'=>15,'name'=>'Accounting','alias'=>'accounting-finance','parent_id'=>14],
+    (object) ['id'=>16,'name'=>'Sales','alias'=>'sales','parent_id'=>11],
+];
+$check(RoleLabels::belongsToClientContour((object)['department_id'=>13], $clientTree), true);
+$check(RoleLabels::belongsToClientContour((object)['department_id'=>12], $clientTree), true);
+$check(RoleLabels::belongsToClientContour((object)['department_id'=>16], $clientTree), true);
+$check(RoleLabels::belongsToClientContour((object)['department_id'=>15], $clientTree), false);
+$check(RoleLabels::belongsToClientContour((object)['department_id'=>99], $clientTree), false);
+$check(RoleLabels::belongsToClientContour(null, $clientTree), false);
+// Membership must follow current parentage even when the direct JWT label
+// names only the leaf department.
+$clientTree[1]->parent_id = 14;
+$check(RoleLabels::belongsToClientContour((object)['department_id'=>13], $clientTree), false);
+$clientTree[1]->parent_id = 11;
+
 // Realm role mapping writes should only contain the two stable required fields.
 // Keycloak GET RoleRepresentation may contain server-owned metadata.
 $check(KeycloakAuthorizationSync::mappingRole([
