@@ -85,3 +85,79 @@
   max-width:280px;
   white-space:normal;
 }
+
+/* The period and type form a compact left group. Status, approvals and menu
+   form a compact right group separated only by the flexible empty column. */
+.vacations-table .period-text {
+  display:inline-flex;
+  align-items:baseline;
+  justify-content:flex-start;
+  gap:6px;
+  max-width:none;
+  overflow:visible;
+  white-space:nowrap;
+  text-overflow:clip;
+}
+.vacations-table .period-duration {
+  flex:none;
+  font-size:var(--irlix-font-size-caption);
+  color:var(--irlix-color-text-muted);
+  white-space:nowrap;
+}
+.vacations-table :is(th,td).period-column,
+.vacations-table-wrap--centered .vacations-table :is(th,td).period-column {
+  text-align:left;
+  padding-left:12px;
+}
+.vacations-table-wrap--centered .vacations-table :is(th,td).registry-spacer-column {
+  padding:0;
+  border-left:0;
+  border-right:0;
+}
+.vacations-table-wrap--centered .vacations-table :is(th,td).status-column {
+  padding-left:3px;
+  padding-right:3px;
+}
+.vacations-table-wrap--centered .vacations-table :is(th,td).progress-column {
+  padding-left:2px;
+  padding-right:2px;
+}
+.vacations-table-wrap--centered .vacations-table :is(th,td).actions-column {
+  width:40px;
+  padding-left:2px;
+  padding-right:2px;
+  text-align:center;
+}
+
+/* Muted semantic tones: vacation blue, sickness red, unpaid amber,
+   parental leave mauve, and a day off green. All use shared theme tokens. */
+.vacations-table .vacation-type-badge--info {
+  background:var(--irlix-status-info-bg);
+  border-color:var(--irlix-status-info-border);
+  color:var(--irlix-status-info-text);
+}
+.vacations-table .vacation-type-badge--danger {
+  background:var(--irlix-status-danger-bg);
+  border-color:var(--irlix-status-danger-border);
+  color:var(--irlix-status-danger-text);
+}
+.vacations-table .vacation-type-badge--warning {
+  background:var(--irlix-status-warning-bg);
+  border-color:var(--irlix-status-warning-border);
+  color:var(--irlix-status-warning-text);
+}
+.vacations-table .vacation-type-badge--success {
+  background:var(--irlix-status-success-bg);
+  border-color:var(--irlix-status-success-border);
+  color:var(--irlix-status-success-text);
+}
+.vacations-table .vacation-type-badge--violet {
+  background:color-mix(in srgb, var(--irlix-status-info-bg) 50%, var(--irlix-status-danger-bg));
+  border-color:color-mix(in srgb, var(--irlix-status-info-border) 50%, var(--irlix-status-danger-border));
+  color:color-mix(in srgb, var(--irlix-status-info-text) 50%, var(--irlix-status-danger-text));
+}
+.vacations-table .vacation-type-badge--neutral {
+  background:var(--irlix-color-surface-muted);
+  border-color:var(--irlix-color-border);
+  color:var(--irlix-color-text);
+}
