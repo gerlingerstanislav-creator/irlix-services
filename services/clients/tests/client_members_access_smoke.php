@@ -106,7 +106,7 @@ clientCheck(count($team['data']['clients'][1]['client_members'])===1,
     'Team-scoped head lost team specialist terms');
 $cardPayload=['data'=>['client'=>['id'=>3,'name'=>'Team'], 'reporting_periods'=>[['id'=>19]],
     'contacts'=>[['id'=>19]]]];
-$readCard = fn() => $guard->handle(Illuminate\Http\Request::create('/api/clients/clients/3/card'),
+$readCard = fn() => $guard->handle(Illuminate\Http\Request::create('/api/clients/3/card'),
     fn() => response()->json($cardPayload))->getData(true)['data'];
 $resolver->scope='all';
 $resolver->permissionScopes=['reports.view'=>'own','contacts.view'=>'own'];
