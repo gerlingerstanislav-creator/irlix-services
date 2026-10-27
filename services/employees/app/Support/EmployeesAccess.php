@@ -344,6 +344,7 @@ class EmployeesAccess
             'finance' => $financeVisible,
             'recruitment' => $canRecruitment,
             'cv-converter' => $privileged,
+            'storage' => $privileged,
             'design-system' => true,
             'brandbook' => $privileged || in_array(SpecialRoles::TopManagement, $normalizedRoles, true),
             'migration' => in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true),

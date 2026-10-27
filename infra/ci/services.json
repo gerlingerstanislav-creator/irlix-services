@@ -9,7 +9,8 @@
     "docker-compose.equipment.yml",
     "docker-compose.finance.yml",
     "docker-compose.resources.yml",
-    "docker-compose.system.yml"
+    "docker-compose.system.yml",
+    "docker-compose.storage.yml"
   ],
   "ephemeral_services": [
     "equipment-db-init",
@@ -393,6 +394,28 @@
         "scripts/resource-host-memory.py"
       ],
       "health_path": "/api/platform/resources/health"
+    },
+    {
+      "id": "storage-s3",
+      "kind": "backend",
+      "service": "storage-s3",
+      "image": "irlix-storage-s3",
+      "tag_env": "STORAGE_S3_IMAGE_TAG",
+      "paths": [
+        "infra/storage/seaweedfs/"
+      ],
+      "health_path": "/"
+    },
+    {
+      "id": "storage",
+      "kind": "frontend",
+      "service": "storage-web",
+      "image": "irlix-storage-web",
+      "tag_env": "STORAGE_WEB_IMAGE_TAG",
+      "paths": [
+        "infra/storage/filestash/"
+      ],
+      "page_path": "/storage/"
     }
   ]
 }

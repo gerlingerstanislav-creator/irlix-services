@@ -55,3 +55,5 @@ socket. Карта не является показателем фактичес
 
 
 **27.10.2026 — репорты об ошибках:** все пользовательские frontend, включая Dashboard и System, используют общий UI диалога `UiAppSidebar` и отправляют репорты в Platform Core через nginx `/api/reports`. В Platform Core хранится таблица `bug_reports`; для аутентификации сотрудника API сверяется с Employees. Управление репортами в System (`/system/reports/`) доступно только `platform-admin`. Это новая горизонтальная зависимость frontend → Platform Core, соответствующие ребра добавлены в `serviceMapData.js`.
+
+**27.10.2026 — Storage pilot:** появилось отдельное frontend-приложение `storage` (`/storage/` переводит пользователя через Employees SSO к защищённому Filestash на том же host, порт 8110). Инфраструктурный backend `storage-s3-api` обслуживает только экспериментальный bucket, не вызывается Clients/Vacations/Employees/Timesheets и не читает их таблицы. Filestash работает на loopback-порту 8111, S3 API на 8113. Отдельный хост и Storage API — следующий этап после тестирования.

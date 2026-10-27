@@ -40,7 +40,8 @@ class PlannerTests(unittest.TestCase):
 
     def test_shared_ui_only_rebuilds_registered_frontend_consumers(self):
         plan = self.plan(["packages/ui/src/serviceCatalog.js"])
-        self.assertEqual(self.ids(plan), {c["id"] for c in self.data["components"] if c["kind"] == "frontend"})
+        self.assertEqual(self.ids(plan), {c["id"] for c in self.data["components"]
+            if c["kind"] == "frontend" and any(path.startswith("packages/ui/") for path in c["paths"])})
         self.assertFalse(plan["schema"])
         self.assertFalse(plan["cv_check"])
 

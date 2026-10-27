@@ -64,3 +64,7 @@ services:
     image: ghcr.io/gerlingerstanislav-creator/irlix-cv-web:${CV_WEB_IMAGE_TAG:-local}
   resource-monitor:
     image: ghcr.io/gerlingerstanislav-creator/irlix-resource-monitor:${RESOURCE_MONITOR_IMAGE_TAG:-local}
+  storage-s3:
+    image: ghcr.io/gerlingerstanislav-creator/irlix-storage-s3:${STORAGE_S3_IMAGE_TAG:-local}
+  storage-web:
+    image: ghcr.io/gerlingerstanislav-creator/irlix-storage-web:${STORAGE_WEB_IMAGE_TAG:-local}

@@ -10,6 +10,8 @@ eval "$(python3 scripts/ci/service_plan.py deploy-controls)"
 # Always provision before the first Compose config/up. Existing running/stopped
 # containers provide old keys so legacy ciphertext remains decryptable.
 $SUDO python3 scripts/provision-app-keys.py --env-file .env --project irlix-services
+# Pilot Storage secrets and host capacity are checked before image or container mutations.
+$SUDO sh scripts/storage/provision-pilot.sh
 
 upsert_env() {
   key="$1"; value="$2"; file=.env
