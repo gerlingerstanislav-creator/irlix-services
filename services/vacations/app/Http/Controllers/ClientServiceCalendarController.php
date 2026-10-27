@@ -7,6 +7,7 @@ use App\Support\EmployeesDirectory;
 use App\Support\ProductionDepartmentRoster;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 
 /**
  * Minimal cross-contour read model for active Employees, restricted to
@@ -25,7 +26,7 @@ final class ClientServiceCalendarController extends Controller
         $year = (int) substr($month, 0, 4);
         $number = (int) substr($month, 5, 2);
 
-        [$activeIds, $employees, $departments] = $this->authorizedDirectory($request, $directory);
+        [$activeIds, $employees, $departments] = $this->authorizedDirectory($request, $directory, true);
 
         $production = ProductionDepartmentRoster::filter($departments, $employees);
         $productionEmployees = $production['employees'];
@@ -69,7 +70,28 @@ final class ClientServiceCalendarController extends Controller
         return response()->json(['data' => $levels]);
     }
 
-    private function authorizedDirectory(Request $request, EmployeesDirectory $directory): array
+    private function checkClientsSpecialistsPermission(Request $request, int $employeeId): void
+    {
+        $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
+        abort_unless(is_string($token) && $token !== '', 403);
+        $base = rtrim((string) env('CLIENTS_URL', 'http://clients:8000/api'), '/');
+        try {
+            $response = Http::withToken($token)->acceptJson()
+                ->timeout(5)->get($base.'/permissions/me');
+        } catch (\Throwable) {
+            abort(503, 'Сервис разрешений Clients недоступен.');
+        }
+        abort_unless($response->successful(), $response->status() === 403 ? 403 : 503);
+        $access = (array) $response->json('data', []);
+        $permission = (array) ($access['permissions']['specialists.view'] ?? []);
+        abort_unless((int) ($access['employee']['id'] ?? 0) === $employeeId
+            && (($access['platform_admin'] ?? false) === true
+                || (($permission['allowed'] ?? false) === true
+                    && ($permission['scope'] ?? 'none') === 'all')),
+            403, 'Недостаточно прав на общий календарь специалистов.');
+    }
+
+    private function authorizedDirectory(Request $request, EmployeesDirectory $directory, bool $requireSpecialistsPermission = false): array
     {
         $identity = (array) $request->attributes->get('identity', []);
         $jwt = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
@@ -112,8 +134,12 @@ final class ClientServiceCalendarController extends Controller
         // The signed Keycloak bearer has been verified by KeycloakBearer.
         // A role preview, when present, is verified by Employees before replacement.
         $platformAdmin = in_array('platform-admin', $roles, true);
-        abort_unless($inService || $platformAdmin, 403,
-            'Календарь доступен только клиентской службе и администраторам платформы.');
+        if ($requireSpecialistsPermission) {
+            $this->checkClientsSpecialistsPermission($request, $actorId);
+        } else {
+            abort_unless($inService || $platformAdmin, 403,
+                'Календарь доступен только клиентской службе и администраторам платформы.');
+        }
 
         return [$activeIds, $employees, $departments];
     }

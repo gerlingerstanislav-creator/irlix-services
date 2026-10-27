@@ -18,7 +18,7 @@ test('partner and client link flows reuse the canonical contact card with search
  assert.match(select, /emit\('search', value\)/);
  assert.match(card, /\/api\/clients\/partners\/contact-options\?q=/);
  assert.match(card, /v-else-if="isLink && !activeContactId"/);
- assert.match(card, /v-if="!isLink" class="row-actions"/);
+ assert.match(card, /v-if="!isLink && canManage" class="row-actions"/);
  assert.match(card, /const payload = props\.linkPartnerId/);
  assert.match(card, /\/client-relations/);
  assert.match(card, /@click="linkExistingContact"/);

@@ -39,6 +39,7 @@ class ClientContourPermissionsController extends Controller
             'scope' => ['required', 'string', Rule::in(['none', 'own', 'team', 'all'])],
         ]);
         if (str_starts_with($data['permission'], 'permissions.') && $data['allowed'] && $data['scope'] !== 'all') return response()->json(['message' => 'Для управления глобальной матрицей разрешён только scope all.'], 422);
+        if ($data['permission'] === 'specialists.view' && $data['allowed'] && $data['scope'] !== 'all') return response()->json(['message' => 'Общий календарь содержит даты отсутствий по всей компании. Для него разрешён только scope all.'], 422);
         if (!$data['allowed']) $data['scope'] = 'none';
         if ($data['allowed'] && $data['scope'] === 'none') return response()->json(['message' => 'Для разрешённого действия укажите область данных.'], 422);
 

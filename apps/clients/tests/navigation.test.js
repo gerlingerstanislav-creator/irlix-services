@@ -7,11 +7,11 @@ test('Clients staff see pages granted by the permission matrix',()=>{
  for(const role of ['account-manager','sales-manager','accounting-head','sales-head','client-service-head']) {
   const pages=allowedClientSections({roles:[role],permissions});
   assert.ok(pages.includes('positions'));assert.ok(pages.includes('requests'));
-  assert.ok(pages.includes('members'));assert.ok(!pages.includes('specialists'));assert.ok(!pages.includes('tenders'));
+  assert.ok(pages.includes('members'));assert.ok(pages.includes('specialists'));assert.ok(!pages.includes('tenders'));
  }
 });
 test('production heads can access every page explicitly granted by the matrix',()=>{
- assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions}),Object.keys(sectionPermissions).filter(section=>section!=='specialists'));
+ assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions}),Object.keys(sectionPermissions));
  assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions:{'clients.view':{allowed:true,scope:'team'}}}),['clients']);
  assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions:{'clients.view':{allowed:true,scope:'team'},'members.view':{allowed:true,scope:'team'}}}),['clients','members']);
 });
@@ -100,15 +100,18 @@ test('partners and specialists use a dedicated menu section and inline editors',
  assert.match(roster,/statusText/);
 });
 
-test('specialists calendar is granted to client-service staff and platform administrators only',()=>{
- const employee={id:99}, client_service_employee_ids=[employee.id];
- const staff={employee,client_service_employee_ids,permissions:{}};
- assert.ok(allowedClientSections(staff).includes('specialists'));
- assert.ok(!allowedClientSections({...staff,client_service_employee_ids:[]}).includes('specialists'));
- assert.ok(allowedClientSections({platform_admin:true,employee,permissions}).includes('specialists'));
- assert.ok(!allowedClientSections({roles:['client-service-head'],employee,permissions}).includes('specialists'));
+test('specialists calendar is strictly controlled by the global-scope permission matrix',()=>{
+ const user={roles:['sales-manager'],permissions:{}};
+ assert.ok(!allowedClientSections(user).includes('specialists'));
+ assert.ok(allowedClientSections({platform_admin:true,permissions:{}}).includes('specialists'));
+ for(const scope of ['none','own','team']) {
+   assert.ok(!allowedClientSections({roles:['sales-manager'],permissions:{'specialists.view':{allowed:true,scope}}}).includes('specialists'));
+ }
+ const access={...user,permissions:{'specialists.view':{allowed:true,scope:'all'}}};
+ assert.ok(allowedClientSections(access).includes('specialists'));
+ assert.ok(!allowedClientSections({...access,permissions:{'specialists.view':{allowed:false,scope:'all'}}}).includes('specialists'));
 });
-test('specialists backend contracts restrict the global roster by actual client service membership',()=>{
+test('specialists backend contracts enforce the editable matrix and reject non-global scopes',()=>{
  const vacations=readFileSync(new URL('../../../services/vacations/app/Http/Controllers/ClientServiceCalendarController.php',import.meta.url),'utf8');
  const clients=readFileSync(new URL('../../../services/clients/app/Http/Controllers/ClientSpecialistsController.php',import.meta.url),'utf8');
  const roster=readFileSync(new URL('../src/components/SpecialistsAbsenceRoster.vue',import.meta.url),'utf8');
@@ -116,7 +119,32 @@ test('specialists backend contracts restrict the global roster by actual client 
  assert.match(vacations,/abort_unless\(\$inService \|\| \$platformAdmin, 403/);
  assert.match(vacations,/in_array\(\$actorId, \$activeIds, true\)/);
  assert.doesNotMatch(vacations,/['"]type['"]\s*=>\s*\$item/);
- assert.match(clients,/client_service_employee_ids/);
+ assert.match(clients,/specialists\.view/);
+ assert.match(clients,/scope/);
+ assert.match(vacations,/checkClientsSpecialistsPermission/);
+ assert.match(vacations,/\/permissions\/me/);
  assert.match(clients,/platform_admin/);
  assert.match(roster,/client-service-calendar\?month=/);
+});
+
+
+test('each visible Clients detail card is tied to its effective permission and readonly actions',()=>{
+ const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8');
+ const clientCard=readFileSync(new URL('../src/components/ClientCard.vue',import.meta.url),'utf8');
+ const contactCard=readFileSync(new URL('../src/components/ContactPersonCard.vue',import.meta.url),'utf8');
+ const memberCard=readFileSync(new URL('../src/components/ClientMembersRegistry.vue',import.meta.url),'utf8');
+ const access=readFileSync(new URL('../../../services/clients/app/Http/Middleware/ClientsAccountingAccess.php',import.meta.url),'utf8');
+ assert.match(app,/expandedClients\.has\(c\.id\) && can\('members\.view'\)/);
+ assert.match(app,/selectedClientMember && can\('members\.view'\)/);
+ assert.match(app,/:can-view-reports="can\('reports\.view'\)"/);
+ assert.match(app,/:can-manage-reports="can\('reports\.manage'\)"/);
+ assert.match(app,/:can-manage="can\('contacts\.manage'\)"/);
+ assert.match(clientCard,/props\.canViewReports/);
+ assert.match(clientCard,/props\.canViewContacts/);
+ assert.match(clientCard,/v-if="canManageReports"/);
+ assert.match(contactCard,/v-if="!isLink && canManage"/);
+ assert.match(memberCard,/if\(!res\.ok\)throw new Error/);
+ assert.match(access,/if \(!\$canReadCardSection\('reports\.view'\)\)/);
+ assert.match(access,/if \(!\$canReadCardSection\('contacts\.view'\)\)/);
+ assert.match(access,/client_members'\] = \[\]/);
 });

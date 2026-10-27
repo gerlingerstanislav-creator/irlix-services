@@ -67,7 +67,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    if(path==='/api/clients/partners') return r.fulfill({json:{data:{partners:[partnerState],unassigned:[]}}});
    if(path.endsWith('/members') && r.request().method()==='POST'){saved.push(r.request().postDataJSON());return r.fulfill({status:201,json:{data:{member_id:71}}});}
    const data=path.endsWith('/employees/access/me')?{services:{clients:true},roles:['platform-admin']}:
-    path.endsWith('/permissions/me')?{platform_admin:false,roles:[],employee:{id:1},client_service_employee_ids:[1],permissions:Object.fromEntries(['clients.view','clients.manage','members.view','members.manage','contacts.view','contacts.manage'].map(k=>[k,{allowed:membershipAccess==='full'||(k==='clients.view')||(membershipAccess==='members-manage'&&['members.view','members.manage'].includes(k))||(membershipAccess==='members-read'&&k==='members.view'),scope:'all'}]))}:
+    path.endsWith('/permissions/me')?{platform_admin:false,roles:[],employee:{id:1},client_service_employee_ids:[1],permissions:Object.fromEntries(['clients.view','clients.manage','members.view','members.manage','contacts.view','contacts.manage','specialists.view'].map(k=>[k,{allowed:membershipAccess==='full'||(k==='clients.view')||(membershipAccess==='members-manage'&&['members.view','members.manage'].includes(k))||(membershipAccess==='members-read'&&k==='members.view'),scope:'all'}]))}:
     path.endsWith('/clients-directory')?{employees:[{id:1,full_name:'Synthetic Employee',department_name:'Synthetic Department'}],departments:[],actor:{id:1}}:
     // Canonical endpoint intentionally omits `active`; rows are already scoped
     // to active specialists and active organizations by the server.

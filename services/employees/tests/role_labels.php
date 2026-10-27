@@ -94,7 +94,10 @@ $check(RoleLabels::resolve($clientRootPosition,$clientTree), ['account-manager']
 $check(RoleLabels::resolve((object)['id'=>508,'department_id'=>11,'position'=>'АККАУНТ-МЕНЕДЖЕР'],$clientTree), ['account-manager']);
 $check(RoleLabels::resolve((object)['id'=>509,'department_id'=>11,'position'=>'account_manager'],$clientTree), ['account-manager']);
 $check(RoleLabels::resolve((object)['id'=>510,'department_id'=>15,'position'=>'Account Manager'],$clientTree), ['accounting-finance']);
-$check(RoleLabels::resolve((object)['id'=>511,'department_id'=>11,'position'=>'Sales Manager'],$clientTree), []);
+$check(RoleLabels::resolve((object)['id'=>511,'department_id'=>11,'position'=>'Sales Manager'],$clientTree), ['sales-manager']);
+$check(RoleLabels::resolve((object)['id'=>513,'department_id'=>11,'position'=>'СЕЙЛЗ-МЕНЕДЖЕР'],$clientTree), ['sales-manager']);
+$check(RoleLabels::resolve((object)['id'=>514,'department_id'=>11,'position'=>'Менеджер по продажам'],$clientTree), ['sales-manager']);
+$check(RoleLabels::resolve((object)['id'=>515,'department_id'=>15,'position'=>'Sales Manager'],$clientTree), ['accounting-finance']);
 $check(RoleLabels::resolve((object)['id'=>512,'department_id'=>11,'position'=>'Senior Account Manager'],$clientTree), []);
 $check(RoleLabels::functionalClientRoles((object)['department_id'=>13], $clientTree), ['account-manager']);
 $check(RoleLabels::resolve((object)['id'=>502,'department_id'=>13], $clientTree),

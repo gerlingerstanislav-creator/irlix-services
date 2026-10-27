@@ -5,6 +5,7 @@ import { UiButton, UiDrawer, UiSearchSelect } from '@irlix/ui';
 const props = defineProps({
   open: { type: Boolean, default: false },
   contactId: { type: Number, default: null },
+  canManage: { type: Boolean, default: true },
   clients: { type: Array, default: () => [] },
   initialClientId: { type: Number, default: null },
   initialPartnerId: { type: Number, default: null },
@@ -379,7 +380,7 @@ watch(chosenContactId, () => {
         </template>
         <template v-else>
           <strong>{{ data.full_name || 'Контакт' }}</strong>
-          <button type="button" class="header-icon" title="Редактировать ФИО" @click="startNameEdit">✎</button>
+          <button type="button" class="header-icon" v-if="canManage" title="Редактировать ФИО" @click="startNameEdit">✎</button>
         </template>
       </div>
     </template>
@@ -391,7 +392,7 @@ watch(chosenContactId, () => {
       <section class="contact-section">
         <div class="section-title">
           <h3>Способы связи</h3>
-          <button v-if="!isLink" type="button" class="section-add" @click="addMethodOpen=!addMethodOpen">＋ способ связи</button>
+          <button v-if="!isLink && canManage" type="button" class="section-add" @click="addMethodOpen=!addMethodOpen">＋ способ связи</button>
         </div>
         <div v-if="isCreate" class="entity-list">
           <div v-for="(method, index) in createMethods" :key="`${method.type}-${method.contact}-${index}`" class="method-row" :class="{ inactive: !method.is_active }">
@@ -423,7 +424,7 @@ watch(chosenContactId, () => {
             <template v-else>
               <strong><span v-if="method.is_preferred" class="preferred-indicator">✓</span>{{ method.type }}</strong>
               <span class="method-value">{{ method.contact }}<button type="button" class="copy-method" title="Скопировать" aria-label="Скопировать способ связи" @click="copyMethod(method.contact)">⧉</button></span>
-              <div v-if="!isLink" class="row-actions">
+              <div v-if="!isLink && canManage" class="row-actions">
                 <button type="button" class="icon-action preferred" :class="{ active: method.is_preferred }" :title="method.is_preferred?'Убрать предпочтительный':'Сделать предпочтительным'" @click="togglePreferred(method)">✓</button>
                 <button type="button" class="icon-action state" :class="{ active: method.is_active }" :title="method.is_active?'Сделать неактуальным':'Сделать актуальным'" @click="toggleMethod(method)">{{method.is_active?'●':'○'}}</button>
                 <button type="button" class="icon-action" title="Редактировать" @click="method.editing=true">✎</button>
@@ -433,7 +434,7 @@ watch(chosenContactId, () => {
           </div>
           <div v-if="!data.methods.length" class="empty-state">Способы связи не добавлены</div>
         </div>
-        <div v-if="addMethodOpen" class="add-row methods-add">
+        <div v-if="addMethodOpen && canManage" class="add-row methods-add">
           <input v-model="newMethod.type" placeholder="Тип связи, например телефон">
           <input v-model="newMethod.contact" placeholder="Контакт, например +79050000001">
           <UiButton type="button" compact :disabled="!newMethod.type.trim()||!newMethod.contact.trim()" @click="isCreate ? addCreateMethod() : addMethod()">Добавить</UiButton>
@@ -444,7 +445,7 @@ watch(chosenContactId, () => {
       <section v-if="!isCreate || !initialPartnerId" class="contact-section">
         <div class="section-title">
           <h3>Клиенты</h3>
-          <button v-if="!isLink" type="button" class="section-add" @click="addRelationOpen=!addRelationOpen">＋ Клиент</button>
+          <button v-if="!isLink && canManage" type="button" class="section-add" @click="addRelationOpen=!addRelationOpen">＋ Клиент</button>
         </div>
         <div v-if="isCreate" class="entity-list">
           <div v-for="(relation, index) in createRelations" :key="`${relation.client_id}-${index}`" class="entity-row" :class="{ inactive: !relation.active }">
@@ -473,7 +474,7 @@ watch(chosenContactId, () => {
             </template>
             <template v-else>
               <span>{{ relation.position || '—' }}</span>
-              <div v-if="!isLink" class="row-actions">
+              <div v-if="!isLink && canManage" class="row-actions">
                 <button type="button" class="icon-action state" :class="{ active: relation.active }" :title="relation.active?'Сделать неактуальным':'Сделать актуальным'" @click="toggleRelation(relation)">{{relation.active?'●':'○'}}</button>
                 <button type="button" class="icon-action" title="Редактировать" @click="relation.editing=true">✎</button>
                 <button type="button" class="icon-action danger" title="Удалить" @click="deleteRelation(relation)">⌫</button>
@@ -482,7 +483,7 @@ watch(chosenContactId, () => {
           </div>
           <div v-if="!data.client_relations.length" class="empty-state">Клиенты не добавлены</div>
         </div>
-        <div v-if="addRelationOpen" class="add-row">
+        <div v-if="addRelationOpen && canManage" class="add-row">
           <UiSearchSelect v-model="newRelation.client_id" :options="clientOptions" placeholder="Клиент" search-placeholder="Поиск клиента"/>
           <input v-model="newRelation.position" placeholder="Должность у клиента">
           <UiButton type="button" compact :disabled="!newRelation.client_id" @click="isCreate ? addCreateRelation() : addRelation()">Добавить</UiButton>

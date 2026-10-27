@@ -26,6 +26,7 @@ class ClientContourAccess
         'clients.view' => 'Клиенты: просмотр страницы', 'clients.manage' => 'Клиенты: изменение',
         'contacts.view' => 'Контактные лица: просмотр', 'contacts.manage' => 'Контактные лица: изменение',
         'members.view' => 'Участники проектов: просмотр', 'members.manage' => 'Участники проектов: изменение',
+        'specialists.view' => 'Специалисты: общий календарь (вся компания)',
         'requests.view' => 'Запросы: просмотр', 'requests.manage' => 'Запросы: изменение',
         'positions.view' => 'Позиции: просмотр', 'positions.manage' => 'Позиции: изменение',
         'attempts.view' => 'Попытки: просмотр', 'attempts.manage' => 'Попытки: изменение',
@@ -210,31 +211,42 @@ class ClientContourAccess
         $actorDirectory = $directoryEmployees->first(fn ($person) =>
             (int) ($person['id'] ?? 0) === (int) ($employee['id'] ?? 0));
         $actorDepartmentId = (int) ($actorDirectory['department_id'] ?? 0);
-        $actorPosition = mb_strtolower(trim(preg_replace('/\\s+/u', ' ',
-            str_replace(['_', '–', '—'], ['-', '-', '-'], (string) ($actorDirectory['position'] ?? '')))));
-        // Employees is authoritative for the verified actor's position. A
-        // position-based Account Manager may sit directly in Client Service,
-        // so do not require the leaf department to be called Account Management.
-        // The role is never inferred for Finance/outside this contour.
-        $inClientContour = $actorDepartmentId > 0 && in_array($actorDepartmentId, $clientServiceDepartmentIds, true);
-        $accountPosition = $inClientContour && in_array($actorPosition, [
-            'account-manager', 'account manager', 'аккаунт-менеджер', 'аккаунт менеджер',
-        ], true);
+        // Employees owns functional role derivation. Its authenticated
+        // clients-directory actor projection is tied to the signed employee id:
+        // do not derive or grant Client permissions from arbitrary JWT strings,
+        // client-supplied job titles, or duplicated local position mappings.
+        $directoryActor = (array) $directoryResponse->json('data.actor', []);
+        $verifiedFunctionalRoles = (int) ($directoryActor['id'] ?? 0) === (int) ($employee['id'] ?? 0)
+            && (int) ($directoryActor['department_id'] ?? 0) === $actorDepartmentId
+            ? array_values(array_intersect((array) ($directoryActor['functional_roles'] ?? []),
+                ['account-manager', 'sales-manager']))
+            : [];
         $inAccounting = in_array('account-management', $departmentAliases, true)
             || in_array('account-manager', $jwtFunctionalRoles, true)
-            || ($actorDepartmentId > 0 && in_array($actorDepartmentId, $accountingDepartmentIds, true))
-            || $accountPosition;
+            || in_array('account-manager', $verifiedFunctionalRoles, true)
+            || ($actorDepartmentId > 0 && in_array($actorDepartmentId, $accountingDepartmentIds, true));
         $inSales = in_array('sales', $departmentAliases, true)
             || in_array('sales-manager', $jwtFunctionalRoles, true)
+            || in_array('sales-manager', $verifiedFunctionalRoles, true)
             || ($actorDepartmentId > 0 && in_array($actorDepartmentId, $salesDepartmentIds, true));
         $managedDepartmentAliases = $jwtMode
             ? array_values(array_map(fn ($role) => substr($role, 0, -5),
                 array_filter($specialRoles, fn ($role) => str_ends_with($role, '-head'))))
             : $departments->filter(fn ($d) => (int) ($d['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0))
                 ->pluck('alias')->filter()->values()->all();
-        $isAccountHead = in_array('account-management', $managedDepartmentAliases, true);
-        $isSalesHead = in_array('sales', $managedDepartmentAliases, true);
-        $isClientServiceManager = in_array('client-service', $managedDepartmentAliases, true);
+        // Manager assignment is verified against the current organizational
+        // tree. Exact department IDs also support legacy alias/name variants,
+        // unlike brittle hard-coded -head label comparisons. Scope comes from
+        // Employees' managed department ids; a job title never creates it.
+        $managedRoots = $departments->filter(fn ($d) =>
+            (int) ($d['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0))
+            ->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $isAccountHead = in_array('account-management', $managedDepartmentAliases, true)
+            || (bool) array_intersect($managedRoots, $accountingRoots);
+        $isSalesHead = in_array('sales', $managedDepartmentAliases, true)
+            || (bool) array_intersect($managedRoots, $salesRoots);
+        $isClientServiceManager = in_array('client-service', $managedDepartmentAliases, true)
+            || (bool) array_intersect($managedRoots, $clientServiceRoots);
         // Every member of this subtree inherits the baseline client-service
         // matrix role, not the client-service-head management role.
         if (($actorDepartmentId > 0 && in_array($actorDepartmentId, $clientServiceDepartmentIds, true))

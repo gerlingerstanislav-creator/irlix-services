@@ -308,6 +308,32 @@ class ClientsAccountingAccess
         if (!$response instanceof JsonResponse || !$response->isSuccessful()) return $response;
         $payload = $response->getData(true);
         if ($path === 'api/overview') {
+            // The Clients registry can be visible to Sales or managers without
+            // any members.view grant. Never embed specialist terms, rates and
+            // project assignments in its payload unless the exact membership
+            // permission also allows that client. This applies to both the
+            // paginated Clients list and the legacy overview response, and
+            // prevents rows that display a card which the detail API rejects.
+            $memberViewIds = $this->accessResolver->allows($access, 'members.view')
+                ? $employeeIdsForPermission('members.view') : [];
+            $memberClientIds = $memberViewIds === null ? null : $idsForEmployees($memberViewIds);
+            if ($memberViewIds !== null && $memberViewIds !== []) {
+                $delegatedMemberClients = DB::table('client_account_delegations')
+                    ->whereNull('revoked_at')->whereDate('starts_at', '<=', today())
+                    ->whereDate('ends_at', '>=', today())
+                    ->whereIn('to_employee_id', $memberViewIds)->pluck('client_id')
+                    ->map(fn ($clientId) => (int) $clientId)->all();
+                $memberClientIds = array_values(array_unique([...$memberClientIds, ...$delegatedMemberClients]));
+            }
+            $payload['data']['clients'] = array_map(static function (array $client) use ($memberClientIds): array {
+                $allowed = $memberClientIds === null || in_array((int) ($client['id'] ?? 0), $memberClientIds, true);
+                if (!$allowed) {
+                    $client['client_members'] = [];
+                    $client['projects'] = array_map(static fn ($project) =>
+                        [...(array) $project, 'members' => []], (array) ($client['projects'] ?? []));
+                }
+                return $client;
+            }, (array) ($payload['data']['clients'] ?? []));
             $canViewRequests = $this->accessResolver->allows($access, 'requests.view');
             $canViewPositions = $this->accessResolver->allows($access, 'positions.view');
             $canViewAttempts = $this->accessResolver->allows($access, 'attempts.view');
@@ -375,7 +401,23 @@ class ClientsAccountingAccess
         } elseif ($path === 'api/cash-flow') {
             $payload['data']['rows'] = array_values(array_filter($payload['data']['rows'] ?? [], fn ($row) => $ownsAccount((int)($row['client_id'] ?? DB::table('client_members')->where('id',$row['client_member_id']??0)->value('client_id')))));
         } elseif (preg_match('#^api/clients/(\d+)/card$#', $path, $cardMatch)) {
-            if (isset($payload['data']['client'])) $payload['data']['client']['can_manage'] = $ownsClientManage((int) $cardMatch[1]);
+            $cardClientId = (int) $cardMatch[1];
+            if (isset($payload['data']['client'])) $payload['data']['client']['can_manage'] = $ownsClientManage($cardClientId);
+            // The parent Client card's own visibility must not implicitly
+            // disclose contacts or reporting records with separately configured
+            // narrower permissions (or create tabs which then fail 403).
+            $canReadCardSection = function (string $key) use ($access, $cardClientId, $employeeIdsForPermission, $idsForEmployees): bool {
+                if (!$this->accessResolver->allows($access, $key)) return false;
+                $ids = $employeeIdsForPermission($key);
+                if ($ids === null) return true;
+                if (!$ids) return false;
+                if (in_array($cardClientId, $idsForEmployees($ids), true)) return true;
+                return DB::table('client_account_delegations')->where('client_id', $cardClientId)
+                    ->whereIn('to_employee_id', $ids)->whereNull('revoked_at')
+                    ->whereDate('starts_at', '<=', today())->whereDate('ends_at', '>=', today())->exists();
+            };
+            if (!$canReadCardSection('reports.view')) $payload['data']['reporting_periods'] = [];
+            if (!$canReadCardSection('contacts.view')) $payload['data']['contacts'] = [];
         } elseif (preg_match('#^api/contacts/\d+$#', $path)) {
             $payload['data']['client_relations'] = array_values(array_filter($payload['data']['client_relations'] ?? [], fn ($relation) => $ownsAccount((int) ($relation['client_id'] ?? 0))));
         }

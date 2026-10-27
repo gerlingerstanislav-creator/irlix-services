@@ -28,6 +28,7 @@ namespace {
     $schema = \Illuminate\Support\Facades\DB::connection()->getSchemaBuilder();
     $schema->create('client_contour_permissions', function ($t) {
         $t->id(); $t->string('role'); $t->string('permission'); $t->boolean('allowed'); $t->string('scope'); $t->timestamps();
+        $t->unique(['role', 'permission']);
     });
     // Old tester permission grants must remain ineffective after privilege removal.
     foreach (['platform-tester', 'account-manager'] as $role) {
@@ -41,19 +42,31 @@ namespace {
             'allowed' => true, 'scope' => 'own',
         ]);
     }
+    $db = \Illuminate\Support\Facades\DB::table('client_contour_permissions');
+    foreach (['leads.view','requests.view','positions.view','attempts.view'] as $permission) {
+        $db->insert(['role'=>'sales-manager','permission'=>$permission,'allowed'=>true,'scope'=>'own']);
+    }
     $roles = [];
     $actorStub = ['id' => 1, 'position' => 'Account Manager'];
     $chainStub = [];
     $departmentsStub = [];
     $directoryEmployeesStub = [];
+    $accessDepartmentIdsStub = [];
     \Illuminate\Support\Facades\Http::preventStrayRequests();
-    \Illuminate\Support\Facades\Http::fake(function ($request) use (&$roles, &$actorStub, &$chainStub, &$departmentsStub, &$directoryEmployeesStub) {
+    \Illuminate\Support\Facades\Http::fake(function ($request) use (&$roles, &$actorStub, &$chainStub, &$departmentsStub, &$directoryEmployeesStub, &$accessDepartmentIdsStub) {
         $url = parse_url($request->url(), PHP_URL_PATH);
         $data = match ($url) {
             '/api/self' => $actorStub,
-            '/api/access/me' => ['roles' => $roles, 'department_ids' => []],
+            '/api/access/me' => ['roles' => $roles, 'department_ids' => $accessDepartmentIdsStub],
             '/api/self/absence-approval-context' => ['department_chain' => $chainStub],
-            '/api/clients-directory' => ['departments' => $departmentsStub, 'employees' => $directoryEmployeesStub],
+            '/api/clients-directory' => [
+                'departments' => $departmentsStub, 'employees' => $directoryEmployeesStub,
+                'actor' => [
+                    'id' => $actorStub['id'],
+                    'department_id' => collect($directoryEmployeesStub)->first(fn ($row) => $row['id'] === $actorStub['id'])['department_id'] ?? null,
+                    'functional_roles' => $actorStub['functional_roles'] ?? [],
+                ],
+            ],
             default => throw new \RuntimeException('Unexpected dependency request'),
         };
         return \Illuminate\Support\Facades\Http::response(['data' => $data]);
@@ -137,12 +150,12 @@ namespace {
     // hierarchy and may still use the short accounting alias. Only accounting
     // in the CLIENT subtree is an Account Manager, never Finance accounting.
     $departmentsStub = [
-        ['id'=>101,'name'=>'Client Service','alias'=>'client-service','parent_id'=>null,'manager_id'=>null],
-        ['id'=>102,'name'=>'ACCOUNTING','alias'=>'accounting','parent_id'=>101,'manager_id'=>null],
+        ['id'=>101,'name'=>'Client Service','alias'=>'client-service','parent_id'=>null,'manager_id'=>514],
+        ['id'=>102,'name'=>'ACCOUNTING','alias'=>'accounting','parent_id'=>101,'manager_id'=>513],
         ['id'=>103,'name'=>'Account delivery','alias'=>null,'parent_id'=>102,'manager_id'=>null],
         ['id'=>104,'name'=>'Finance','alias'=>'finance','parent_id'=>null,'manager_id'=>null],
         ['id'=>105,'name'=>'Accounting','alias'=>'accounting','parent_id'=>104,'manager_id'=>null],
-        ['id'=>106,'name'=>'Sales','alias'=>'sales','parent_id'=>101,'manager_id'=>null],
+        ['id'=>106,'name'=>'Sales','alias'=>'sales','parent_id'=>101,'manager_id'=>512],
         ['id'=>107,'name'=>'Client Operations','alias'=>'client-operations','parent_id'=>101,'manager_id'=>null],
     ];
     $directoryEmployeesStub = [
@@ -152,6 +165,10 @@ namespace {
         ['id'=>508,'department_id'=>107],
         ['id'=>509,'department_id'=>101,'position'=>'account-manager'],
         ['id'=>510,'department_id'=>105,'position'=>'account-manager'],
+        ['id'=>511,'department_id'=>101,'position'=>'Sales Manager'],
+        ['id'=>512,'department_id'=>106,'position'=>'Sales Manager'],
+        ['id'=>513,'department_id'=>102,'position'=>'Account Manager'],
+        ['id'=>514,'department_id'=>101,'position'=>'Client Service Head'],
     ];
     $roles = [];
     $chainStub = [];
@@ -176,7 +193,7 @@ namespace {
 
     // Real organizational clients can appoint Account Managers directly in
     // Client Service; account-management is not necessarily their department.
-    $actorStub = ['id'=>509,'position'=>'account-manager'];
+    $actorStub = ['id'=>509,'position'=>'account-manager','functional_roles'=>['account-manager']];
     $positionAccount = $resolver->resolve($request('api/permissions/me'));
     $check(in_array('account-manager', $positionAccount['roles'], true),
         'Verified Account Manager position did not yield functional client role');
@@ -185,11 +202,65 @@ namespace {
         $check(($positionAccount['permissions'][$permission]['allowed'] ?? false) === true,
             'Account Manager denied '. $permission);
     }
-    $actorStub = ['id'=>510,'position'=>'account-manager'];
+    $actorStub = ['id'=>510,'position'=>'account-manager','functional_roles'=>[]];
     $financeTitle = $resolver->resolve($request('api/permissions/me'));
     $check(!in_array('account-manager', $financeTitle['roles'], true),
         'Finance employee inherited account-management from same position title');
 
+    // One resolver computes all functional and management matrix roles from
+    // the same signed/verified Employees directory, not separate page hacks.
+    $actorStub = ['id'=>511,'position'=>'Sales Manager','functional_roles'=>['sales-manager']];
+    $directSales = $resolver->resolve($request('api/permissions/me'));
+    $check(in_array('sales-manager', $directSales['roles'], true),
+        'Client Service Sales position did not receive sales-manager');
+    $check(!in_array('sales-head', $directSales['roles'], true),
+        'Sales job title unexpectedly granted a manager role');
+    foreach (['leads.view','requests.view','positions.view','attempts.view'] as $permission) {
+        $check(($directSales['permissions'][$permission]['scope'] ?? '') === 'own',
+            'Sales role matrix not applied to '.$permission);
+    }
+    $actorStub = ['id'=>510,'position'=>'Sales Manager','functional_roles'=>[]];
+    $financeSalesTitle = $resolver->resolve($request('api/permissions/me'));
+    $check(!in_array('sales-manager', $financeSalesTitle['roles'], true),
+        'Finance employee inherited functional Sales role by title');
+
+    // A normal Account Manager has own scope. The seeded synthetic matrix
+    // also contains an old all-scope grant to exercise the separate tester
+    // revocation scenario; narrow only reports for the leadership test.
+    \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','account-manager')->where('permission','reports.view')
+        ->update(['scope'=>'own']);
+    $matrixDb = \Illuminate\Support\Facades\DB::table('client_contour_permissions');
+    foreach ([
+        ['role'=>'sales-head','permission'=>'leads.view','scope'=>'team'],
+        ['role'=>'accounting-head','permission'=>'reports.view','scope'=>'team'],
+        ['role'=>'client-service-head','permission'=>'requests.view','scope'=>'all'],
+    ] as $grant) {
+        $matrixDb->insert($grant + ['allowed'=>true]);
+    }
+    $actorStub = ['id'=>512,'position'=>'Sales Manager','functional_roles'=>['sales-manager']];
+    $accessDepartmentIdsStub = [106];
+    $salesHeadMatrix = $resolver->resolve($request('api/permissions/me'));
+    $check(in_array('sales-head', $salesHeadMatrix['roles'], true)
+        && ($salesHeadMatrix['permissions']['leads.view']['scope'] ?? '') === 'team',
+        'Sales leader did not keep editable team scope');
+    $check(in_array(503, $salesHeadMatrix['team_employee_ids'], true),
+        'Sales leader did not receive team scope from Employees');
+    $actorStub = ['id'=>513,'position'=>'Account Manager','functional_roles'=>['account-manager']];
+    $accessDepartmentIdsStub = [102,103];
+    $accountHeadMatrix = $resolver->resolve($request('api/permissions/me'));
+    $check(in_array('accounting-head', $accountHeadMatrix['roles'], true)
+        && ($accountHeadMatrix['permissions']['reports.view']['scope'] ?? '') === 'team',
+        'Account leader did not keep editable team scope');
+    $actorStub = ['id'=>514,'position'=>'Client Service Head','functional_roles'=>[]];
+    $accessDepartmentIdsStub = [101,102,103,106,107];
+    $clientHeadMatrix = $resolver->resolve($request('api/permissions/me'));
+    $check(in_array('client-service-head', $clientHeadMatrix['roles'], true)
+        && ($clientHeadMatrix['permissions']['requests.view']['scope'] ?? '') === 'all',
+        'Client Service head did not keep independently editable all scope');
+    $accessDepartmentIdsStub = [];
+
+    $actorStub = ['id'=>511,'position'=>'Sales Manager','functional_roles'=>['sales-manager']];
     // JWT labels describe DIRECT organizational membership only; the verified
     // employee ID and Employees directory must recover ancestry in this mode.
     $oldJwtMode = getenv('IRLIX_AUTHZ_JWT_ENABLED');
@@ -218,6 +289,7 @@ namespace {
         'JWT client-service child cannot open Clients workspace');
     $check(!($jwtOperations['permissions']['reports.view']['allowed'] ?? false),
         'JWT client-service baseline leaked other business sections');
+    $actorStub = ['id'=>509,'position'=>'account-manager','functional_roles'=>['account-manager']];
     $jwtTitleRequest = $request('api/permissions/me');
     $jwtTitleRequest->attributes->set('identity', ['realm_roles'=>[
         'employee-id:509', 'client-service', 'service:clients', 'service:timesheets',
@@ -230,6 +302,16 @@ namespace {
         $check(($jwtTitle['permissions'][$permission]['allowed'] ?? false) === true,
             'JWT verified position denied '. $permission);
     }
+    $actorStub = ['id'=>511,'position'=>'Sales Manager','functional_roles'=>['sales-manager']];
+    $jwtSalesRequest = $request('api/permissions/me');
+    $jwtSalesRequest->attributes->set('identity', ['realm_roles'=>[
+        'employee-id:511','client-service','service:clients',
+    ]]);
+    $jwtSales = $resolver->resolve($jwtSalesRequest);
+    $check(in_array('sales-manager', $jwtSales['roles'], true)
+        && ($jwtSales['permissions']['leads.view']['scope'] ?? '') === 'own'
+        && ($jwtSales['permissions']['positions.view']['scope'] ?? '') === 'own',
+        'A signed JWT with no sales-manager label lost trusted Employees Sales projection');
     $jwtFinanceRequest = $request('api/permissions/me');
     $jwtFinanceRequest->attributes->set('identity', ['realm_roles'=>['employee-id:502','service:timesheets','accounting']]);
     $jwtFinance = $resolver->resolve($jwtFinanceRequest);
@@ -260,5 +342,71 @@ namespace {
     $check(\Illuminate\Support\Facades\DB::table('client_contour_permissions')
         ->where('role','account-manager')->where('permission','reports.view')->count() === 1,
         'Workspace restoration migration is not idempotent');
+    // The global Specialists calendar is no longer a hidden organizational
+    // exception: both its navigation and API use an editable matrix key.
+    $specialistsMigration = require dirname(__DIR__).'/database/migrations/2026_10_27_000003_seed_specialists_matrix_permission.php';
+    $specialistsMigration->up();
+    $specialistsMigration->up();
+    $check(\Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','client-service')->where('permission','specialists.view')->count() === 1,
+        'Global specialists baseline migration duplicated permission rows');
+    $actorStub = ['id'=>511,'position'=>'Sales Manager','functional_roles'=>['sales-manager']];
+    $salesRoster = $resolver->resolve($request('api/permissions/me'));
+    $check(($salesRoster['permissions']['specialists.view']['scope'] ?? '') === 'all',
+        'Sales member lacks specialists calendar after baseline migration');
+    $calendarController = new \App\Http\Controllers\ClientSpecialistsController();
+    $checkRoster = new \ReflectionMethod($calendarController, 'verifyMembership');
+    $rosterRequest = $request('api/specialists/filter-clients');
+    $rosterRequest->attributes->set('client_contour_access', $salesRoster);
+    $checkRoster->invoke($calendarController, $rosterRequest);
+    $check(true, 'Authorized Sales calendar was refused');
+
+    \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','client-service')->where('permission','specialists.view')
+        ->update(['allowed'=>false,'scope'=>'none']);
+    $specialistsMigration->up(); // Existing administrator changes survive.
+    $disabled = $resolver->resolve($request('api/permissions/me'));
+    $check(!($disabled['permissions']['specialists.view']['allowed'] ?? false),
+        'Editable specialist permission ignored an explicit deny');
+    $rosterRequest->attributes->set('client_contour_access', $disabled);
+    try {
+        $checkRoster->invoke($calendarController, $rosterRequest);
+        throw new \RuntimeException('Disabled specialists roster was unexpectedly accepted');
+    } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+        $check($exception->getStatusCode() === 403, 'Specialist API denied wrong status');
+    }
+    \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','client-service')->where('permission','specialists.view')
+        ->update(['allowed'=>true,'scope'=>'own']);
+    $rosterRequest->attributes->set('client_contour_access', $resolver->resolve($request('api/permissions/me')));
+    try {
+        $checkRoster->invoke($calendarController, $rosterRequest);
+        throw new \RuntimeException('Own-scope calendar leaked the global roster');
+    } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+        $check($exception->getStatusCode() === 403, 'Own-scope calendar denied wrong status');
+    }
+    // A historically disabled Account Manager members.view row prevented the
+    // specialist drawer from opening despite the client row being visible.
+    // The one-time repair keeps the matrix editable and preserves wider scope.
+    $matrix = \Illuminate\Support\Facades\DB::table('client_contour_permissions');
+    $matrix->where('role','account-manager')->where('permission','members.view')
+        ->update(['allowed'=>false,'scope'=>'none']);
+    $memberMigration = require dirname(__DIR__).'/database/migrations/2026_10_27_000004_restore_account_manager_member_card_view.php';
+    $memberMigration->up();
+    $member = \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','account-manager')->where('permission','members.view')->first();
+    $check((bool) $member->allowed && $member->scope === 'own',
+        'Account Manager canonical connection card cannot be opened');
+    $memberMigration->up();
+    $check(\Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','account-manager')->where('permission','members.view')->count() === 1,
+        'Member card baseline migration duplicated the permission');
+    $matrix->where('role','account-manager')->where('permission','members.view')
+        ->update(['allowed'=>true,'scope'=>'team']);
+    $memberMigration->up();
+    $teamMember = \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','account-manager')->where('permission','members.view')->first();
+    $check((bool) $teamMember->allowed && $teamMember->scope === 'team',
+        'Member card migration lost configured team scope');
     echo "Clients tester and department alias access smoke passed: {$checks} checks\n";
 }

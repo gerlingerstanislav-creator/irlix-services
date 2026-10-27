@@ -6,6 +6,7 @@ use App\Models\Department;
 use App\Models\Employee;
 use App\Models\EmployeeAccessRole;
 use App\Support\SpecialRoles;
+use App\Support\RoleLabels;
 
 final class EmployeeDirectoryService
 {
@@ -127,6 +128,7 @@ final class EmployeeDirectoryService
 
     public function clientsDirectory(object $actor): array
     {
+        $allDepartments = Department::query()->get(['id', 'name', 'alias', 'parent_id', 'manager_id', 'is_production']);
         $chain = $this->absenceApprovalContext((int) $actor->id)['department_chain'] ?? [];
         $accounting = collect($chain)->contains(static fn ($department): bool =>
             ($department['alias'] ?? '') === 'account-management');
@@ -137,6 +139,9 @@ final class EmployeeDirectoryService
                 'id' => (int) $actor->id,
                 'position' => $actor->position,
                 'department_id' => $actor->department_id === null ? null : (int) $actor->department_id,
+                // Authoritative server-side functional roles for Clients. The
+                // same resolver also assigns Keycloak roles in Employees.
+                'functional_roles' => RoleLabels::functionalClientRoles($actor, $allDepartments->all()),
             ],
             'employees' => Employee::query()->from('employees as e')
                 ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
@@ -146,8 +151,7 @@ final class EmployeeDirectoryService
                 ->orderBy('e.full_name')->get()->map(
                     static fn (Employee $row) => (object) $row->getRawOriginal()
                 ),
-            'departments' => Department::query()
-                ->get(['id', 'name', 'alias', 'parent_id', 'manager_id', 'is_production'])
+            'departments' => $allDepartments
                 ->map(static fn (Department $row) => (object) $row->getRawOriginal()),
         ];
     }
