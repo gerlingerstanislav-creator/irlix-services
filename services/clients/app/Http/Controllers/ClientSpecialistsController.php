@@ -13,9 +13,15 @@ final class ClientSpecialistsController extends Controller
         $access = (array) ($request->attributes->get('client_contour_access')
             ?? app(ClientContourAccess::class)->resolve($request));
         $actor = (int) ($access['employee']['id'] ?? 0);
-        abort_unless($actor > 0 && (($access['platform_admin'] ?? false)
-            || in_array($actor, array_map('intval', $access['client_service_employee_ids'] ?? []), true)),
-            403, 'Календарь доступен только клиентской службе и администраторам платформы.');
+        $admin = (bool) ($access['platform_admin'] ?? false);
+        // This is a company-wide roster, not a list scoped to owned clients.
+        // A narrower grant must never expose cross-team absence dates.
+        $rosterPermission = (array) ($access['permissions']['specialists.view'] ?? []);
+        abort_unless($actor > 0 && ($admin || (
+            in_array($actor, array_map('intval', $access['client_service_employee_ids'] ?? []), true)
+            && ($rosterPermission['allowed'] ?? false) === true
+            && ($rosterPermission['scope'] ?? 'none') === 'all'
+        )), 403, 'Недостаточно прав на общий календарь специалистов.');
     }
 
     public function clients(Request $request, ClientSpecialistsService $service)
