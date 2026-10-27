@@ -10,6 +10,7 @@ class ClientContourAccess
 {
     public const ROLE_LABELS = [
         'employee' => 'Сотрудник',
+        'client-service' => 'Сотрудник клиентской службы (базовые права)',
         'account-manager' => 'Аккаунт-менеджер',
         'accounting-head' => 'Руководитель направления аккаунтинга',
         'client-service-head' => 'Руководитель клиентской службы',
@@ -111,8 +112,15 @@ class ClientContourAccess
         $departmentAliases = $jwtMode
             ? $specialRoles
             : $chain->map(fn ($d) => (string) ($d['alias'] ?? ''))->all();
+        // Functional client roles are assigned by Employees and signed into
+        // Keycloak JWTs. Unlike arbitrary imported labels, these verified
+        // assignments are authoritative in JWT mode. Preserve the legacy
+        // membership-based derivation for existing accounts during rollout.
+        $jwtFunctionalRoles = $jwtMode
+            ? array_values(array_intersect($specialRoles, ['account-manager', 'sales-manager']))
+            : [];
         $roles = array_values(array_unique(array_merge(
-            ['employee'], self::importedMatrixLabels($specialRoles)
+            ['employee'], self::importedMatrixLabels($specialRoles), $jwtFunctionalRoles
         )));
         $managedProductionRoots = $departments
             ->filter(fn ($department) => (bool) ($department['is_production'] ?? false)
@@ -136,7 +144,11 @@ class ClientContourAccess
             ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $productionDepartmentIds, true))
             ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         $productionDirections = $departments->filter(fn ($department) => (bool) ($department['is_production'] ?? false))->values()->all();
-        $clientServiceRoots = $departments->filter(fn ($department) => ($department['alias'] ?? '') === 'client-service')
+        $clientServiceRoots = $departments->filter(fn ($department) =>
+            ($department['alias'] ?? '') === 'client-service'
+            || (($department['alias'] ?? '') === ''
+                && in_array(mb_strtolower(trim((string) ($department['name'] ?? ''))),
+                    ['client service', 'клиентская служба'], true)))
             ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         $clientServiceDepartmentIds = $clientServiceRoots;
         do {
@@ -147,7 +159,15 @@ class ClientContourAccess
                 if ($departmentId && in_array($parentId, $clientServiceDepartmentIds, true) && !in_array($departmentId, $clientServiceDepartmentIds, true)) $clientServiceDepartmentIds[] = $departmentId;
             }
         } while (count($clientServiceDepartmentIds) !== $previousCount);
-        $accountingRoots = $departments->filter(fn ($department) => ($department['alias'] ?? '') === 'account-management')
+        // Legacy organizations may call this department Accounting or
+        // Аккаунтинг, without the newer account-management alias. Restrict
+        // name-based recognition to the client-service tree: finance Accounting
+        // is a different, non-client role.
+        $accountingRoots = $departments->filter(fn ($department) =>
+            ($department['alias'] ?? '') === 'account-management'
+            || (in_array((int) ($department['parent_id'] ?? 0), $clientServiceDepartmentIds, true)
+                && in_array(mb_strtolower(trim((string) ($department['name'] ?? ''))),
+                    ['accounting', 'аккаунтинг'], true)))
             ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         $accountingDepartmentIds = $accountingRoots;
         do {
@@ -158,6 +178,21 @@ class ClientContourAccess
                 if ($departmentId && in_array($parentId, $accountingDepartmentIds, true) && !in_array($departmentId, $accountingDepartmentIds, true)) $accountingDepartmentIds[] = $departmentId;
             }
         } while (count($accountingDepartmentIds) !== $previousCount);
+        $salesRoots = $departments->filter(fn ($department) =>
+            ($department['alias'] ?? '') === 'sales'
+            || (in_array((int) ($department['parent_id'] ?? 0), $clientServiceDepartmentIds, true)
+                && in_array(mb_strtolower(trim((string) ($department['name'] ?? ''))),
+                    ['sales', 'продажи'], true)))
+            ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        $salesDepartmentIds = $salesRoots;
+        do {
+            $previousCount = count($salesDepartmentIds);
+            foreach ($departments as $department) {
+                $parentId = (int) ($department['parent_id'] ?? 0);
+                $departmentId = (int) ($department['id'] ?? 0);
+                if ($departmentId && in_array($parentId, $salesDepartmentIds, true) && !in_array($departmentId, $salesDepartmentIds, true)) $salesDepartmentIds[] = $departmentId;
+            }
+        } while (count($salesDepartmentIds) !== $previousCount);
         $accountEmployeeIds = $directoryEmployees
             ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $accountingDepartmentIds, true))
             ->pluck('id')->map(fn ($id) => (int) $id)->unique()->values()->all();
@@ -169,8 +204,18 @@ class ClientContourAccess
         $legacyDirectionIds = $departments->groupBy('name')
             ->filter(fn ($matches) => $matches->count() === 1)
             ->map(fn ($matches) => (int) $matches->first()['id'])->all();
-        $inAccounting = in_array('account-management', $departmentAliases, true);
-        $inSales = in_array('sales', $departmentAliases, true);
+        // Resolve a verified actor's current department through trusted
+        // Employees directory data. JWT labels remain direct-only, so they do
+        // not describe membership inherited from parent departments.
+        $actorDirectory = $directoryEmployees->first(fn ($person) =>
+            (int) ($person['id'] ?? 0) === (int) ($employee['id'] ?? 0));
+        $actorDepartmentId = (int) ($actorDirectory['department_id'] ?? 0);
+        $inAccounting = in_array('account-management', $departmentAliases, true)
+            || in_array('account-manager', $jwtFunctionalRoles, true)
+            || ($actorDepartmentId > 0 && in_array($actorDepartmentId, $accountingDepartmentIds, true));
+        $inSales = in_array('sales', $departmentAliases, true)
+            || in_array('sales-manager', $jwtFunctionalRoles, true)
+            || ($actorDepartmentId > 0 && in_array($actorDepartmentId, $salesDepartmentIds, true));
         $managedDepartmentAliases = $jwtMode
             ? array_values(array_map(fn ($role) => substr($role, 0, -5),
                 array_filter($specialRoles, fn ($role) => str_ends_with($role, '-head'))))
@@ -179,6 +224,13 @@ class ClientContourAccess
         $isAccountHead = in_array('account-management', $managedDepartmentAliases, true);
         $isSalesHead = in_array('sales', $managedDepartmentAliases, true);
         $isClientServiceManager = in_array('client-service', $managedDepartmentAliases, true);
+        // Every member of this subtree inherits the baseline client-service
+        // matrix role, not the client-service-head management role.
+        if (($actorDepartmentId > 0 && in_array($actorDepartmentId, $clientServiceDepartmentIds, true))
+            || in_array('client-service', $departmentAliases, true)
+            || $inAccounting || $inSales) {
+            $roles[] = 'client-service';
+        }
         if ($inAccounting) $roles[] = 'account-manager';
         if ($inSales) $roles[] = 'sales-manager';
         if ($isAccountHead) $roles[] = 'accounting-head';

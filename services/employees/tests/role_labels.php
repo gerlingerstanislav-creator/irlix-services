@@ -17,11 +17,26 @@ $roles = fn (int $id,int $department,array $special=[]) =>
 $check = fn ($actual,$expected) => $actual === $expected || throw new RuntimeException(
     'Expected '.json_encode($expected).' got '.json_encode($actual));
 $check($roles(101,2), ['accounting']);
-$check($roles(200,3), ['account-management','accounting','accounting-head','sales','sales-head']);
-$check($roles(200,3,['personnel-officer']), ['account-management','accounting','accounting-head','personnel-officer','sales','sales-head']);
+$check($roles(200,3), ['account-management','account-manager','accounting','accounting-head','sales','sales-head']);
+$check($roles(200,3,['personnel-officer']), ['account-management','account-manager','accounting','accounting-head','personnel-officer','sales','sales-head']);
 $check($roles(100,1), ['irlix','irlix-head']);
 $check($roles(101,2,['system-admin','system-admin']), ['accounting','system-admin']);
-$check($roles(0,4), ['sales']);
+$check($roles(0,4), ['sales','sales-manager']);
+// A Backend employee inherits configurable baseline permissions from
+// Development and Irlix, but NO parent manager/JWT role.
+$engineering = [
+    (object)['id'=>20,'name'=>'Irlix','alias'=>'irlix','parent_id'=>null,'manager_id'=>null],
+    (object)['id'=>21,'name'=>'Development','alias'=>'development','parent_id'=>20,'manager_id'=>901],
+    (object)['id'=>22,'name'=>'Backend','alias'=>'backend','parent_id'=>21,'manager_id'=>null],
+];
+$engineer = (object)['id'=>900,'department_id'=>22];
+$check(RoleLabels::resolve($engineer,$engineering), ['backend']);
+$check(RoleLabels::ancestorDepartmentRoles($engineer,$engineering), ['development','irlix']);
+$check(RoleLabels::ancestorDepartmentRoles((object)['department_id'=>21],$engineering), ['irlix']);
+$check(RoleLabels::ancestorDepartmentRoles((object)['department_id'=>999],$engineering), []);
+$engineering[0]->parent_id = 22;
+$check(RoleLabels::ancestorDepartmentRoles($engineer,$engineering), ['development','irlix']); // cycle-safe
+$engineering[0]->parent_id = null;
 $unsafe = [(object) ['id'=>5,'alias'=>'platform-admin','parent_id'=>null,'manager_id'=>501],
     (object) ['id'=>6,'alias'=>'accounting-head','parent_id'=>null,'manager_id'=>501],
     (object) ['id'=>7,'alias'=>'system-admin','parent_id'=>null,'manager_id'=>501]];
@@ -50,6 +65,48 @@ $check(KeycloakAuthorizationSync::managedNames(
 $check(KeycloakAuthorizationSync::grants(['roles'=>['irlix','irlix-head'],
     'services'=>['finance'=>false,'dashboard'=>true],'scope'=>'all']),
     ['irlix','irlix-head','scope:all','service:dashboard']);
+// A real account employee in a nested legacy Accounting department must get
+// Clients service admission; that name in Finance must never imply it.
+$clientTree = [
+    (object) ['id'=>11,'name'=>'Client Service','alias'=>null,'parent_id'=>null],
+    (object) ['id'=>12,'name'=>'ACCOUNTING','alias'=>'accounting','parent_id'=>11],
+    (object) ['id'=>13,'name'=>'Account delivery','alias'=>null,'parent_id'=>12],
+    (object) ['id'=>14,'name'=>'Finance','alias'=>'finance','parent_id'=>null],
+    (object) ['id'=>15,'name'=>'Accounting','alias'=>'accounting-finance','parent_id'=>14],
+    (object) ['id'=>16,'name'=>'Sales','alias'=>'sales','parent_id'=>11],
+];
+$check(RoleLabels::belongsToClientContour((object)['department_id'=>13], $clientTree), true);
+$check(RoleLabels::belongsToClientContour((object)['department_id'=>12], $clientTree), true);
+$check(RoleLabels::belongsToClientContour((object)['department_id'=>16], $clientTree), true);
+$check(RoleLabels::belongsToClientContour((object)['department_id'=>15], $clientTree), false);
+$check(RoleLabels::belongsToClientContour((object)['department_id'=>99], $clientTree), false);
+$check(RoleLabels::belongsToClientContour(null, $clientTree), false);
+// Membership must follow current parentage even when the direct JWT label
+// names only the leaf department.
+$clientTree[1]->parent_id = 14;
+$check(RoleLabels::belongsToClientContour((object)['department_id'=>13], $clientTree), false);
+$clientTree[1]->parent_id = 11;
+
+$check(RoleLabels::ancestorDepartmentRoles((object)['department_id'=>13], $clientTree), ['account-management']);
+$check(RoleLabels::ancestorDepartmentRoles((object)['department_id'=>15], $clientTree), []); // Finance never inherits as a base role
+$check(RoleLabels::functionalClientRoles((object)['department_id'=>13], $clientTree), ['account-manager']);
+$check(RoleLabels::resolve((object)['id'=>502,'department_id'=>13], $clientTree),
+    ['account-manager']);
+$check(RoleLabels::resolve((object)['id'=>503,'department_id'=>12], $clientTree),
+    ['account-manager']); // Legacy Accounting must NOT become Finance accounting
+$check(RoleLabels::resolve((object)['id'=>504,'department_id'=>16], $clientTree),
+    ['sales','sales-manager']);
+$check(RoleLabels::resolve((object)['id'=>505,'department_id'=>15], $clientTree),
+    ['accounting-finance']);
+$check(KeycloakAuthorizationSync::grants([
+    'employee_id'=>502,
+    'roles'=>RoleLabels::resolve((object)['id'=>502,'department_id'=>13],$clientTree),
+    'services'=>['clients'=>true,'timesheets'=>true,'finance'=>false],
+    'scope'=>'none',
+]), ['account-manager','employee-id:502','service:clients','service:timesheets']);
+$check(KeycloakAuthorizationSync::managedNames(
+    ['account-manager','sales-manager','account-management-head','unrelated'], [], []
+), ['account-manager','sales-manager','account-management-head']);
 // Realm role mapping writes should only contain the two stable required fields.
 // Keycloak GET RoleRepresentation may contain server-owned metadata.
 $check(KeycloakAuthorizationSync::mappingRole([

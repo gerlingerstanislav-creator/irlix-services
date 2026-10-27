@@ -64,7 +64,8 @@ final class KeycloakAuthorizationSync
     public static function managedNames(array $current, array $previous, array $departmentAliases): array
     {
         $known = array_fill_keys(array_merge(SpecialRoles::keys(),
-            ['finance', 'finance-director', 'manager', 'role-preview-operator']), true);
+            ['finance', 'finance-director', 'manager', 'role-preview-operator',
+                'account-manager', 'sales-manager', 'account-management-head']), true);
         foreach ($departmentAliases as $alias) {
             if (!is_string($alias) || !preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $alias)) continue;
             $known[$alias] = true;

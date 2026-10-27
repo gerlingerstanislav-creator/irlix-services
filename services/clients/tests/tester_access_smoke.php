@@ -35,18 +35,25 @@ namespace {
             \Illuminate\Support\Facades\DB::table('client_contour_permissions')->insert(compact('role', 'permission') + ['allowed' => true, 'scope' => 'all']);
         }
     }
+    foreach (['clients.view', 'contacts.view'] as $permission) {
+        \Illuminate\Support\Facades\DB::table('client_contour_permissions')->insert([
+            'role' => 'client-service', 'permission' => $permission,
+            'allowed' => true, 'scope' => 'own',
+        ]);
+    }
     $roles = [];
     $actorStub = ['id' => 1, 'position' => 'Account Manager'];
     $chainStub = [];
     $departmentsStub = [];
+    $directoryEmployeesStub = [];
     \Illuminate\Support\Facades\Http::preventStrayRequests();
-    \Illuminate\Support\Facades\Http::fake(function ($request) use (&$roles, &$actorStub, &$chainStub, &$departmentsStub) {
+    \Illuminate\Support\Facades\Http::fake(function ($request) use (&$roles, &$actorStub, &$chainStub, &$departmentsStub, &$directoryEmployeesStub) {
         $url = parse_url($request->url(), PHP_URL_PATH);
         $data = match ($url) {
             '/api/self' => $actorStub,
             '/api/access/me' => ['roles' => $roles, 'department_ids' => []],
             '/api/self/absence-approval-context' => ['department_chain' => $chainStub],
-            '/api/clients-directory' => ['departments' => $departmentsStub, 'employees' => []],
+            '/api/clients-directory' => ['departments' => $departmentsStub, 'employees' => $directoryEmployeesStub],
             default => throw new \RuntimeException('Unexpected dependency request'),
         };
         return \Illuminate\Support\Facades\Http::response(['data' => $data]);
@@ -125,6 +132,80 @@ namespace {
     $controllerCode = file_get_contents(dirname(__DIR__).'/app/Http/Controllers/ReportingPeriodsController.php');
     $check(str_contains($controllerCode, "'accounting-head', 'client-service-head'"), 'Rollback does not use the canonical contour head roles');
     $check(!str_contains($controllerCode, "str_contains(\$position, 'руководитель"), 'Rollback authorization still depends on a free-text job title');
+
+    // Old company structures have a Client Service -> Accounting -> team
+    // hierarchy and may still use the short accounting alias. Only accounting
+    // in the CLIENT subtree is an Account Manager, never Finance accounting.
+    $departmentsStub = [
+        ['id'=>101,'name'=>'Client Service','alias'=>'client-service','parent_id'=>null,'manager_id'=>null],
+        ['id'=>102,'name'=>'ACCOUNTING','alias'=>'accounting','parent_id'=>101,'manager_id'=>null],
+        ['id'=>103,'name'=>'Account delivery','alias'=>null,'parent_id'=>102,'manager_id'=>null],
+        ['id'=>104,'name'=>'Finance','alias'=>'finance','parent_id'=>null,'manager_id'=>null],
+        ['id'=>105,'name'=>'Accounting','alias'=>'accounting','parent_id'=>104,'manager_id'=>null],
+        ['id'=>106,'name'=>'Sales','alias'=>'sales','parent_id'=>101,'manager_id'=>null],
+        ['id'=>107,'name'=>'Client Operations','alias'=>'client-operations','parent_id'=>101,'manager_id'=>null],
+    ];
+    $directoryEmployeesStub = [
+        ['id'=>501,'department_id'=>103],
+        ['id'=>502,'department_id'=>105],
+        ['id'=>503,'department_id'=>106],
+        ['id'=>508,'department_id'=>107],
+    ];
+    $roles = [];
+    $chainStub = [];
+    $actorStub = ['id'=>501,'position'=>'Specialist'];
+    $nestedAccount = $resolver->resolve($request('api/permissions/me'));
+    $check(in_array('account-manager', $nestedAccount['roles'], true), 'Nested account employee lost Account Manager role');
+    $check(($nestedAccount['permissions']['clients.view']['scope'] ?? 'none') === 'all', 'Account Manager matrix permission missing');
+    $check(($nestedAccount['permissions']['timesheets.management.view']['allowed'] ?? false) === true, 'Account Manager Timesheets right missing');
+    $check(in_array(501, $nestedAccount['account_employee_ids'], true) && !in_array(502, $nestedAccount['account_employee_ids'], true), 'Finance employee mixed into account directory');
+    $actorStub = ['id'=>502,'position'=>'Finance specialist'];
+    $financeAccount = $resolver->resolve($request('api/permissions/me'));
+    $check(!in_array('account-manager', $financeAccount['roles'], true), 'Finance accounting inherited Clients role');
+    $actorStub = ['id'=>503,'position'=>'Sales specialist'];
+    $salesAccount = $resolver->resolve($request('api/permissions/me'));
+    $check(in_array('sales-manager', $salesAccount['roles'], true), 'Sales department lost Clients role');
+    $check(in_array('client-service', $salesAccount['roles'], true), 'Sales lost parent client-service baseline');
+    $actorStub = ['id'=>508,'position'=>'Operations'];
+    $clientOperations = $resolver->resolve($request('api/permissions/me'));
+    $check(in_array('client-service', $clientOperations['roles'], true), 'Client-service descendant lost base role');
+    $check(($clientOperations['permissions']['clients.view']['scope'] ?? '') === 'own', 'Client-service baseline must be own-scope');
+    $check(!($clientOperations['permissions']['clients.manage']['allowed'] ?? false), 'Client-service baseline granted management actions');
+
+    // JWT labels describe DIRECT organizational membership only; the verified
+    // employee ID and Employees directory must recover ancestry in this mode.
+    $oldJwtMode = getenv('IRLIX_AUTHZ_JWT_ENABLED');
+    putenv('IRLIX_AUTHZ_JWT_ENABLED=true');
+    $jwtRequest = $request('api/permissions/me');
+    $jwtRequest->attributes->set('identity', ['realm_roles'=>['employee-id:501','service:clients']]);
+    $jwtAccount = $resolver->resolve($jwtRequest);
+    $check(in_array('account-manager', $jwtAccount['roles'], true), 'JWT descendant Account Manager lost role');
+    $check(($jwtAccount['permissions']['timesheets.management.view']['allowed'] ?? false) === true, 'JWT descendant Timesheets permission missing');
+    $jwtFunctionalRequest = $request('api/permissions/me');
+    $jwtFunctionalRequest->attributes->set('identity', ['realm_roles'=>[
+        'employee-id:505', 'account-manager', 'service:clients', 'service:timesheets',
+    ]]);
+    $jwtFunctionalAccount = $resolver->resolve($jwtFunctionalRequest);
+    $check(in_array('account-manager', $jwtFunctionalAccount['roles'], true), 'Signed functional account-manager role was ignored');
+    $check(($jwtFunctionalAccount['permissions']['clients.view']['allowed'] ?? false) === true, 'Signed functional account-manager lost Clients access');
+    $check(($jwtFunctionalAccount['permissions']['timesheets.management.view']['allowed'] ?? false) === true, 'Signed functional account-manager lost Timesheets access');
+    $check(in_array('client-service', $jwtFunctionalAccount['roles'], true), 'Functional account-manager lost base client-service matrix role');
+    $check(!in_array('client-service-head', $jwtFunctionalAccount['roles'], true), 'Functional account-manager inherited manager role');
+    $jwtOperationsRequest = $request('api/permissions/me');
+    $jwtOperationsRequest->attributes->set('identity', ['realm_roles'=>[
+        'employee-id:508', 'client-operations', 'service:clients', 'service:timesheets',
+    ]]);
+    $jwtOperations = $resolver->resolve($jwtOperationsRequest);
+    $check(($jwtOperations['permissions']['clients.view']['scope'] ?? '') === 'own',
+        'JWT client-service child cannot open Clients workspace');
+    $check(!($jwtOperations['permissions']['reports.view']['allowed'] ?? false),
+        'JWT client-service baseline leaked other business sections');
+    $jwtFinanceRequest = $request('api/permissions/me');
+    $jwtFinanceRequest->attributes->set('identity', ['realm_roles'=>['employee-id:502','service:timesheets','accounting']]);
+    $jwtFinance = $resolver->resolve($jwtFinanceRequest);
+    $check(!in_array('account-manager', $jwtFinance['roles'], true), 'JWT finance accounting inherited account role');
+    if ($oldJwtMode === false) putenv('IRLIX_AUTHZ_JWT_ENABLED');
+    else putenv('IRLIX_AUTHZ_JWT_ENABLED='.$oldJwtMode);
 
     echo "Clients tester and department alias access smoke passed: {$checks} checks\n";
 }

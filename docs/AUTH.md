@@ -101,6 +101,51 @@ The Dashboard authorization overlay must be removed explicitly after successful 
 
 Change detection is based on the latest successful CI/deploy SHA, not only the immediate previous commit. This is required because `cancel-in-progress` can cancel intermediate pipelines during a multi-commit iteration. The final pipeline must deploy the accumulated diff so a cancelled earlier run cannot leave shared packages or dependent services on an older build.
 
+
+### Функциональные роли клиентского контура (27.10.2026)
+
+Keycloak публикует **прямую** организационную роль сотрудника (например,
+`account-management`), не все роли родителей по дереву `irlix → client-service →
+account-management`. Отдельно Employees вычисляет функциональную роль
+`account-manager` для аккаунтинга и его дочерних подразделений, `sales-manager`
+для Sales и его потомков. Они входят в подписанный JWT; `service:clients` и
+`service:timesheets` остаются отдельными, вычисляемыми Employees разрешениями на
+вход. Права на разделы и область данных определяет редактируемая матрица
+Clients/Timesheets, а не сам факт наличия функциональной роли.
+
+Старые подразделения с названием `Accounting` / `Аккаунтинг` распознаются
+только внутри клиентского контура; их сотрудники не получают финансовую роль
+`accounting`. При переводе между подразделениями воркер Keycloak отзывает
+устаревшие функциональные роли. Для уже заведённых учётных записей
+миграция от 27.10.2026 повторно ставит синхронизацию в очередь; новые роли
+появляются после успешной сверки, а текущую сессию нужно обновить для нового JWT.
+
+### Наследование базовых прав подразделений (27.10.2026)
+
+Организационные JWT-роли остаются **прямыми**: `backend` не получает
+JWT-роли `development` и `irlix` от родителей. Сервис Employees строит
+иерархию по `department_id → parent_id` и при расчёте эффективных
+разрешений учитывает явно настроенные правила родительских alias. Наследуются
+только базовые разрешения `employees.read`,
+`employees.application.create`, `organization.read`, `staff_positions.read`
+и допустимые входы в бизнес-сервисы. Явное отключение в прямой или
+родительской роли имеет приоритет над разрешением. Запрещено наследовать
+зарплатные/финансовые разрешения, назначение персонала, управление
+платформой, `*-head` и специальные роли. Scope сотрудника не расширяется
+на подразделения родителей; обычный сотрудник не получает права руководителя.
+
+Clients вычисляет базовую матричную роль `client-service` для каждого
+сотрудника дерева клиентской службы (включая PM, Sales и Accounting) по
+актуальному каталогу Employees, а не по должности. Её безопасные
+начальные права — `clients.view: own` и `contacts.view: own`; существующие
+записи настраиваемой матрицы не перезаписываются. Остальные права
+сотрудника определяются функциональными ролями Accounts/Sales и
+проверяются по permission + scope на сервере. Доступ к Timesheets
+остаётся отдельным сервисным грантом и собственной матрицей Clients.
+При изменении подразделения / матрицы Employees запускается очередная
+синхронизация Keycloak, поэтому новые права вступают в силу после
+сверки и обновления JWT.
+
 ## Next security steps
 
 Before production:

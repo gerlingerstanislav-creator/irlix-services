@@ -62,7 +62,7 @@ class EmployeesAccess
         return $this->withMatrix($this->result(
             $employee, $read, $salary, $privileged, $privileged || $accounting,
             $privileged, $scope, $roles, $ids
-        ));
+        ), RoleLabels::ancestorDepartmentRoles($employee, $departments));
     }
 
 
@@ -140,6 +140,10 @@ class EmployeesAccess
             $roles = [$scenario];
         }
 
+        // Preview reproduces the functional client roles Employees would
+        // publish for these scenarios without impersonating a real account.
+        if (in_array('account-management', $roles, true)) $roles[] = 'account-manager';
+        if (in_array('sales', $roles, true)) $roles[] = 'sales-manager';
         $roles = array_values(array_unique($roles));
         $scopedDepartments = array_values(array_unique(array_map('intval', $scopedDepartments)));
         $accounting = in_array('accounting', $roles, true);
@@ -159,7 +163,7 @@ class EmployeesAccess
         return $access;
     }
 
-    private function withMatrix(array $access): array
+    private function withMatrix(array $access, array $ancestorRoles = []): array
     {
         // A tester marker never contributes business or administrative grants.
         $roles = array_values(array_diff($access['roles'], [SpecialRoles::PlatformTester]));
@@ -187,9 +191,17 @@ class EmployeesAccess
             'employees.application.create','employees.hire','employees.permissions.manage',
             'employees.fot.view','employees.fot.plan','employees.fot.approve','employees.transfer',
         ])));
+        // Only safe baseline permissions and service admission can inherit
+        // organizational ancestors. Administrative/salary/finance permissions,
+        // manager roles and privileged service access never inherit implicitly.
+        $inheritable = ['employees.read', 'employees.application.create',
+            'organization.read', 'staff_positions.read'];
+        $ancestorRoles = array_values(array_diff($ancestorRoles, $roles));
         $overrides = [];
         if (Schema::hasTable('employee_permission_rules')) {
-            foreach (EmployeePermissionRule::query()->whereIn('role',$roles)->get() as $rule) {
+            foreach (EmployeePermissionRule::query()->whereIn('role', array_values(array_unique([
+                ...$roles, ...$ancestorRoles,
+            ])))->get() as $rule) {
                 $overrides[$rule->role][$rule->permission] = (bool) $rule->enabled;
             }
         }
@@ -218,6 +230,15 @@ class EmployeesAccess
                 }
                 if ($roleGrant) $granted = true;
             }
+            if (in_array($permission, $inheritable, true)) {
+                $denied = false;
+                foreach (array_values(array_unique([...$roles, ...$ancestorRoles])) as $role) {
+                    if (!array_key_exists($permission, $overrides[$role] ?? [])) continue;
+                    if ($overrides[$role][$permission]) $granted = true;
+                    else $denied = true;
+                }
+                $granted = $granted && !$denied;
+            }
             $access['permissions'][$permission] = $granted;
         }
         $access['permissions']['employees.permissions.manage'] = false;
@@ -230,10 +251,13 @@ class EmployeesAccess
             $rule = 'services.'.$service;
             $granted = (bool) $default;
             $denied = false;
-            foreach ($roles as $role) {
+            foreach (array_values(array_unique([...$roles, ...$ancestorRoles])) as $role) {
                 if (!array_key_exists($rule, $overrides[$role] ?? [])) continue;
                 if ($overrides[$role][$rule] === false) $denied = true;
-                else $granted = true;
+                else if (in_array($role, $roles, true) || in_array($service, [
+                    'clients', 'timesheets', 'vacations', 'employees',
+                    'specialists', 'recruitment', 'equipment',
+                ], true)) $granted = true;
             }
             $access['services'][$service] = $granted && !$denied;
         }
@@ -281,6 +305,12 @@ class EmployeesAccess
         // 'available' UI flag. Existing domain permission matrices remain the
         // authority for finer grained actions within an admitted service.
         $inClientTeams = count(array_intersect(['account-management', 'sales', 'client-service'], $normalizedRoles)) > 0;
+        // Actual Employees memberships include descendants even though JWT
+        // organizational labels intentionally describe direct membership only.
+        // Never apply the actor's real department to a role-preview scenario.
+        if (!$inClientTeams && $employee !== null && $previewProductionManager === null) {
+            $inClientTeams = RoleLabels::belongsToClientContour($employee, $this->departments());
+        }
         $isProductionManager = $previewProductionManager ?? ($employee && Department::query()
             ->where('manager_id', $employee->id)->where('is_production', true)->exists());
         $canClients = $employee !== null
