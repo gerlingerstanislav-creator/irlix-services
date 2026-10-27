@@ -281,6 +281,12 @@ class EmployeesAccess
         // 'available' UI flag. Existing domain permission matrices remain the
         // authority for finer grained actions within an admitted service.
         $inClientTeams = count(array_intersect(['account-management', 'sales', 'client-service'], $normalizedRoles)) > 0;
+        // Actual Employees memberships include descendants even though JWT
+        // organizational labels intentionally describe direct membership only.
+        // Never apply the actor's real department to a role-preview scenario.
+        if (!$inClientTeams && $employee !== null && $previewProductionManager === null) {
+            $inClientTeams = RoleLabels::belongsToClientContour($employee, $this->departments());
+        }
         $isProductionManager = $previewProductionManager ?? ($employee && Department::query()
             ->where('manager_id', $employee->id)->where('is_production', true)->exists());
         $canClients = $employee !== null
