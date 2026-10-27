@@ -424,7 +424,7 @@ watch(chosenContactId, () => {
             <template v-else>
               <strong><span v-if="method.is_preferred" class="preferred-indicator">✓</span>{{ method.type }}</strong>
               <span class="method-value">{{ method.contact }}<button type="button" class="copy-method" title="Скопировать" aria-label="Скопировать способ связи" @click="copyMethod(method.contact)">⧉</button></span>
-              <div v-if="!isLink" class="row-actions">
+              <div v-if="!isLink && canManage" class="row-actions">
                 <button type="button" class="icon-action preferred" :class="{ active: method.is_preferred }" :title="method.is_preferred?'Убрать предпочтительный':'Сделать предпочтительным'" @click="togglePreferred(method)">✓</button>
                 <button type="button" class="icon-action state" :class="{ active: method.is_active }" :title="method.is_active?'Сделать неактуальным':'Сделать актуальным'" @click="toggleMethod(method)">{{method.is_active?'●':'○'}}</button>
                 <button type="button" class="icon-action" title="Редактировать" @click="method.editing=true">✎</button>
@@ -474,7 +474,7 @@ watch(chosenContactId, () => {
             </template>
             <template v-else>
               <span>{{ relation.position || '—' }}</span>
-              <div v-if="!isLink" class="row-actions">
+              <div v-if="!isLink && canManage" class="row-actions">
                 <button type="button" class="icon-action state" :class="{ active: relation.active }" :title="relation.active?'Сделать неактуальным':'Сделать актуальным'" @click="toggleRelation(relation)">{{relation.active?'●':'○'}}</button>
                 <button type="button" class="icon-action" title="Редактировать" @click="relation.editing=true">✎</button>
                 <button type="button" class="icon-action danger" title="Удалить" @click="deleteRelation(relation)">⌫</button>
