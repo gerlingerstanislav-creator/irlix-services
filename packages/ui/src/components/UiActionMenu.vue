@@ -43,7 +43,7 @@ watch(() => props.items.length, count => { if (!count) close(); });
 
 <template>
   <button ref="trigger" type="button" class="ui-action-menu__trigger" :aria-label="ariaLabel" aria-haspopup="menu" :aria-expanded="open" :aria-controls="id + '-menu'" @click="open ? close() : show()" @keydown.down.prevent="show" @keydown.up.prevent="show">
-    <span aria-hidden="true">⋯</span>
+    <span aria-hidden="true">⋮</span>
   </button>
   <Teleport to="body">
     <div v-if="open" :id="id + '-menu'" ref="menu" class="ui-action-menu__panel irlix-ui" :style="style" role="menu" :aria-label="ariaLabel" @keydown="navigate">
@@ -54,7 +54,7 @@ watch(() => props.items.length, count => { if (!count) close(); });
 
 <style>
 .ui-action-menu__trigger { display:inline-grid; place-items:center; width:32px; height:32px; padding:0; border:0; border-radius:var(--irlix-radius-sm); background:transparent; color:var(--irlix-color-text); cursor:pointer; }
-.ui-action-menu__trigger > span { font-size:25px; line-height:1; transform:translateY(-3px); }
+.ui-action-menu__trigger > span { font-size:24px; line-height:1; }
 .ui-action-menu__trigger:hover, .ui-action-menu__trigger[aria-expanded="true"] { background:var(--irlix-color-surface-muted); }
 .ui-action-menu__trigger:focus-visible { outline:2px solid var(--irlix-color-primary); outline-offset:2px; }
 .ui-action-menu__panel { z-index:var(--irlix-popover-z-index); overflow:auto; padding:5px; border:1px solid var(--irlix-color-border); border-radius:var(--irlix-control-radius); background:var(--irlix-color-surface); box-shadow:var(--irlix-popover-shadow); }

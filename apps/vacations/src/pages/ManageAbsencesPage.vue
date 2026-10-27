@@ -73,7 +73,7 @@ watch(()=>props.year,()=>{activeMonth.value=currentMonth;load();loadProductionCa
     <div class="registry-meta"><span>Найдено: <strong>{{ filteredItems.length }}</strong></span><span v-if="activeMonth">Быстрый фильтр: <strong>{{ String(activeMonth).padStart(2,'0') }}.{{ yearValue }}</strong></span></div>
     <UiLoader v-if="loading" page label="Загрузка реестра отсутствий" />
     <div v-else-if="!filteredItems.length" class="empty"><strong>Ничего не найдено</strong><span>Измените фильтры или выберите другой месяц.</span></div>
-    <AbsenceTable v-else :items="filteredItems" :show-documents="false" :hidden-actions="['view','history','view_attachments']" show-employee show-progress @action="emit('action',$event)"/>
+    <AbsenceTable v-else :items="filteredItems" :show-documents="false" :hidden-actions="['view','history','view_attachments']" show-employee show-progress center-columns @action="emit('action',$event)"/>
   </UiPanel>
   <AbsenceCreateModal :open="showCreate" :employees="employees" for-employee title="Создать отсутствие сотруднику" eyebrow="НОВОЕ ОТСУТСТВИЕ" @close="showCreate=false" @changed="created"/>
 </template>
