@@ -224,6 +224,12 @@ namespace {
     $check(!in_array('sales-manager', $financeSalesTitle['roles'], true),
         'Finance employee inherited functional Sales role by title');
 
+    // A normal Account Manager has own scope. The seeded synthetic matrix
+    // also contains an old all-scope grant to exercise the separate tester
+    // revocation scenario; narrow only reports for the leadership test.
+    \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','account-manager')->where('permission','reports.view')
+        ->update(['scope'=>'own']);
     $matrixDb = \Illuminate\Support\Facades\DB::table('client_contour_permissions');
     foreach ([
         ['role'=>'sales-head','permission'=>'leads.view','scope'=>'team'],
