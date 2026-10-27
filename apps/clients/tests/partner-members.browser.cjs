@@ -339,12 +339,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.screenshot({path:screenshotDir+'/clients-partner-member.png',fullPage:true});
 
   membershipAccess='members-manage';
-  await page.reload();
-  await page.getByRole('navigation',{name:'Навигация сервиса клиентов'}).getByRole('button',{name:'Подключения',exact:true}).click();
+  await page.goto(base+'/clients/members/');
   await page.getByRole('button',{name:'＋ Подключить специалиста',exact:true}).waitFor();
   membershipAccess='members-read';
   await page.reload();
-  await page.getByRole('navigation',{name:'Навигация сервиса клиентов'}).getByRole('button',{name:'Подключения',exact:true}).click();
+  assert.equal(new URL(page.url()).pathname,'/clients/members/','Read-only member registry remains available through historical route');
   const readonlyMember=page.locator('.cm-registry tr[role="button"]').filter({hasText:'Synthetic Partner'});
   await readonlyMember.waitFor();
   assert.equal(await page.getByRole('button',{name:'＋ Подключить специалиста',exact:true}).count(),0);
