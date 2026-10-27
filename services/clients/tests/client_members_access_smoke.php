@@ -89,7 +89,7 @@ $sample = [
 ];
 $resolver->scope='own';$resolver->membersView=false;
 $hidden = $guard->handle($overviewRequest,fn() => response()->json(['data'=>$sample]))->getData(true);
-clientCheck(count($hidden['data']['clients'])===2,'Client overview test fixture disappeared');
+clientCheck(count($hidden['data']['clients'])===1,'Own-scoped Clients list included unrelated client');
 foreach($hidden['data']['clients'] as $client){
     clientCheck($client['client_members']===[] && $client['projects'][0]['members']===[],
         'Client overview leaked specialist commercial terms to a role without members.view');
@@ -98,8 +98,8 @@ $resolver->membersView=true;
 $own = $guard->handle($overviewRequest,fn() => response()->json(['data'=>$sample]))->getData(true);
 clientCheck(count($own['data']['clients'][0]['client_members'])===1,
     'Account Manager with members.view lost specialist card data');
-clientCheck($own['data']['clients'][1]['client_members']===[],
-    "Own-scope Account Manager received unrelated client's specialist terms");
+clientCheck(count($own['data']['clients'])===1,
+    'Own-scoped Account Manager received unrelated client card');
 $resolver->scope='team';
 $team = $guard->handle($overviewRequest,fn() => response()->json(['data'=>$sample]))->getData(true);
 clientCheck(count($team['data']['clients'][1]['client_members'])===1,
