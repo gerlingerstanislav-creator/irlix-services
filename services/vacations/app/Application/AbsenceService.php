@@ -332,7 +332,7 @@ final class AbsenceService
                 ->orderBy('sequence')
                 ->first();
 
-            $before = $this->get((int) $approval->absence_id);
+            $before = $absence;
             if (!$next) {
                 Absence::query()->where('id', $approval->absence_id)->update([
                     'status' => AbsenceStatus::Confirmed->value,
