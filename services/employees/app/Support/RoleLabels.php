@@ -83,6 +83,12 @@ final class RoleLabels
         while ($id > 0 && isset($byId[$id]) && !isset($visited[$id])) {
             $visited[$id] = true;
             $alias = (string) ($byId[$id]->alias ?? '');
+            // Old Client Service / Accounting aliases must not inherit the
+            // Finance role matrix just because they share the word Accounting.
+            if ($alias === 'accounting' && in_array('account-manager',
+                self::functionalClientRoles((object) ['department_id' => $id], $departments), true)) {
+                $alias = 'account-management';
+            }
             if (self::valid($alias)) $roles[] = $alias;
             $id = (int) ($byId[$id]->parent_id ?? 0);
         }
