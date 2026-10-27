@@ -88,7 +88,7 @@ $check(RoleLabels::belongsToClientContour((object)['department_id'=>13], $client
 $clientTree[1]->parent_id = 11;
 
 $check(RoleLabels::ancestorDepartmentRoles((object)['department_id'=>13], $clientTree), ['account-management']);
-$check(RoleLabels::ancestorDepartmentRoles((object)['department_id'=>15], $clientTree), ['finance']);
+$check(RoleLabels::ancestorDepartmentRoles((object)['department_id'=>15], $clientTree), []); // Finance never inherits as a base role
 $check(RoleLabels::functionalClientRoles((object)['department_id'=>13], $clientTree), ['account-manager']);
 $check(RoleLabels::resolve((object)['id'=>502,'department_id'=>13], $clientTree),
     ['account-manager']);
