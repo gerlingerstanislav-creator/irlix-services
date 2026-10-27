@@ -27,7 +27,8 @@ final class AbsenceStatusProjection
     public static function many(array $rows, string $idField = 'id'): array
     {
         $ids = array_values(array_unique(array_filter(array_map(
-            static fn (array $row): int => (int) ($row[$idField] ?? 0), $rows
+            static fn (array $row): int => ($row['status'] ?? null) === 'in_review'
+                ? (int) ($row[$idField] ?? 0) : 0, $rows
         ))));
         $active = [];
         if ($ids) {
