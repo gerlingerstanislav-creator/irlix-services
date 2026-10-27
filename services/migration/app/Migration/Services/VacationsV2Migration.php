@@ -32,8 +32,9 @@ class VacationsV2Migration extends SchemaMigration
 
     protected function import(): void
     {
-        // Work only with the actual historic approval evidence. A legacy
-        // "on_approval" with no unfinished assigned step is a conflict.
+        // Select only a genuinely unfinished historical approval group.
+        // An old in-review status without such a group must still import as
+        // in_review (without fabricated tasks), with a reconciliation warning.
         $this->pendingLegacySequence = [];
         $this->legacyLifecycle = [];
         foreach ($this->source['vacations'] ?? [] as $vacation) {
@@ -54,26 +55,35 @@ class VacationsV2Migration extends SchemaMigration
             $this->need($to, 'Absence end is required');
             $type = $this->enum($row['type'], config('migration.vacation_types'), 'type');
             $status = $this->enum($row['status'], config('migration.vacation_statuses'), 'status');
-            if ($status === 'in_review') {
-                $this->need(isset($this->pendingLegacySequence[(string) $id]),
-                    'LEGACY_VACATION_APPROVAL_UNRESOLVED: on_approval without a pending assigned approver');
-            }
+            // Historic "on_approval" can have no assigned approvers, or every
+            // recorded approver already approved while source status was never
+            // advanced. Neither case proves a terminal outcome.
+            $unresolvedStage = $status === 'in_review'
+                && !isset($this->pendingLegacySequence[(string) $id]);
             $this->number($row['working_hours'], 32767);
             $absence = $this->writeRelated('vacations', $id, 'absences', [
                 'employee_id' => $employee, 'type' => $type, 'starts_on' => $from, 'ends_on' => $to,
                 'calendar_days' => (new \DateTimeImmutable($from))->diff(new \DateTimeImmutable($to))->days + 1,
                 'status' => $status, 'created_by_subject' => 'legacy-migration',
             ], $row);
+            if ($unresolvedStage) {
+                $this->warning('vacations', $id, 'LEGACY_APPROVAL_STAGE_RECONCILIATION_REQUIRED',
+                    'Исходный отпуск находится на согласовании, но активный этап невозможно установить по назначенным участникам. Заявка перенесена без выдуманных согласований; требуется сверка.',
+                    ['legacy_vacation_id' => $id, 'legacy_status' => $row['status'], 'target_absence_id' => $absence,
+                        'review_stage_unresolved' => true]);
+            }
             if (!$this->dryRun && !DB::connection('target_vacations')->table('absence_audit_log')->where('absence_id', $absence)->where('event', 'legacy_migrated')->exists()) {
                 DB::connection('target_vacations')->table('absence_audit_log')->insert([
                     'absence_id' => $absence, 'event' => 'legacy_migrated', 'actor_subject' => 'legacy-migration',
-                    'after' => json_encode(['legacy_vacation_id' => $id, 'status' => $row['status'], 'working_hours' => $row['working_hours']]),
+                    'after' => json_encode(['legacy_vacation_id' => $id, 'status' => $row['status'],
+                        'working_hours' => $row['working_hours'], 'review_stage_unresolved' => $unresolvedStage]),
                     'created_at' => $row['created_at'] ?? now(),
                 ]);
                 DB::connection('target_vacations')->table('absence_status_history')->insert([
                     'absence_id' => $absence, 'to_status' => $status, 'actor_subject' => 'legacy-migration',
                     'reason' => 'Imported stored legacy state; transition timestamps are unavailable',
-                    'context' => json_encode(['legacy_vacation_id' => $id, 'reconstructed' => false]), 'created_at' => now(),
+                    'context' => json_encode(['legacy_vacation_id' => $id, 'reconstructed' => false,
+                        'review_stage_unresolved' => $unresolvedStage]), 'created_at' => now(),
                 ]);
             }
         });
