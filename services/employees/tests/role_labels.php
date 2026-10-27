@@ -17,11 +17,11 @@ $roles = fn (int $id,int $department,array $special=[]) =>
 $check = fn ($actual,$expected) => $actual === $expected || throw new RuntimeException(
     'Expected '.json_encode($expected).' got '.json_encode($actual));
 $check($roles(101,2), ['accounting']);
-$check($roles(200,3), ['account-management','accounting','accounting-head','sales','sales-head']);
-$check($roles(200,3,['personnel-officer']), ['account-management','accounting','accounting-head','personnel-officer','sales','sales-head']);
+$check($roles(200,3), ['account-management','account-manager','accounting','accounting-head','sales','sales-head']);
+$check($roles(200,3,['personnel-officer']), ['account-management','account-manager','accounting','accounting-head','personnel-officer','sales','sales-head']);
 $check($roles(100,1), ['irlix','irlix-head']);
 $check($roles(101,2,['system-admin','system-admin']), ['accounting','system-admin']);
-$check($roles(0,4), ['sales']);
+$check($roles(0,4), ['sales','sales-manager']);
 $unsafe = [(object) ['id'=>5,'alias'=>'platform-admin','parent_id'=>null,'manager_id'=>501],
     (object) ['id'=>6,'alias'=>'accounting-head','parent_id'=>null,'manager_id'=>501],
     (object) ['id'=>7,'alias'=>'system-admin','parent_id'=>null,'manager_id'=>501]];
@@ -72,6 +72,24 @@ $clientTree[1]->parent_id = 14;
 $check(RoleLabels::belongsToClientContour((object)['department_id'=>13], $clientTree), false);
 $clientTree[1]->parent_id = 11;
 
+$check(RoleLabels::functionalClientRoles((object)['department_id'=>13], $clientTree), ['account-manager']);
+$check(RoleLabels::resolve((object)['id'=>502,'department_id'=>13], $clientTree),
+    ['account-manager']);
+$check(RoleLabels::resolve((object)['id'=>503,'department_id'=>12], $clientTree),
+    ['account-manager']); // Legacy Accounting must NOT become Finance accounting
+$check(RoleLabels::resolve((object)['id'=>504,'department_id'=>16], $clientTree),
+    ['sales','sales-manager']);
+$check(RoleLabels::resolve((object)['id'=>505,'department_id'=>15], $clientTree),
+    ['accounting-finance']);
+$check(KeycloakAuthorizationSync::grants([
+    'employee_id'=>502,
+    'roles'=>RoleLabels::resolve((object)['id'=>502,'department_id'=>13],$clientTree),
+    'services'=>['clients'=>true,'timesheets'=>true,'finance'=>false],
+    'scope'=>'none',
+]), ['account-manager','employee-id:502','service:clients','service:timesheets']);
+$check(KeycloakAuthorizationSync::managedNames(
+    ['account-manager','sales-manager','account-management-head','unrelated'], [], []
+), ['account-manager','sales-manager','account-management-head']);
 // Realm role mapping writes should only contain the two stable required fields.
 // Keycloak GET RoleRepresentation may contain server-owned metadata.
 $check(KeycloakAuthorizationSync::mappingRole([
