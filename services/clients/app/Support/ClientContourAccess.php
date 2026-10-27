@@ -26,6 +26,7 @@ class ClientContourAccess
         'clients.view' => 'Клиенты: просмотр страницы', 'clients.manage' => 'Клиенты: изменение',
         'contacts.view' => 'Контактные лица: просмотр', 'contacts.manage' => 'Контактные лица: изменение',
         'members.view' => 'Участники проектов: просмотр', 'members.manage' => 'Участники проектов: изменение',
+        'specialists.view' => 'Специалисты: общий календарь (вся компания)',
         'requests.view' => 'Запросы: просмотр', 'requests.manage' => 'Запросы: изменение',
         'positions.view' => 'Позиции: просмотр', 'positions.manage' => 'Позиции: изменение',
         'attempts.view' => 'Попытки: просмотр', 'attempts.manage' => 'Попытки: изменение',
