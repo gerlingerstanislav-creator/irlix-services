@@ -1,0 +1,16 @@
+# Optional, isolated pilot only. NOT included in infra/ci/services.json or production overlays.
+# Start only after provisioning a separate mounted data device and configuring secrets.
+services:
+  storage-s3-pilot:
+    image: ${STORAGE_S3_IMAGE:?Set a reviewed and pinned SeaweedFS image digest}
+    restart: unless-stopped
+    environment:
+      AWS_ACCESS_KEY_ID: ${STORAGE_S3_ACCESS_KEY:?Set a non-default S3 access key}
+      AWS_SECRET_ACCESS_KEY: ${STORAGE_S3_SECRET_KEY:?Set a non-default S3 secret key}
+      S3_BUCKET: ${STORAGE_S3_BUCKET:-irlix-storage-pilot}
+      WEED_ADMIN_PASSWORD: ${STORAGE_ADMIN_PASSWORD:?Set an administration password}
+    volumes:
+      - ${STORAGE_S3_DATA_DIR:?Set an ABSOLUTE path to a separate dedicated mounted filesystem}:/data
+    ports:
+      - "127.0.0.1:8333:8333"
+    # Deliberately no public Filer, Master or Admin ports.
