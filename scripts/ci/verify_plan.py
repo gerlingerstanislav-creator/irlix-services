@@ -118,6 +118,9 @@ def verify_storage_pilot(host):
     assert origin in {"200", "302"}, f"Filestash origin unhealthy: {origin}"
     s3 = subprocess.check_output([*args, "http://127.0.0.1:8113/"], text=True).strip()
     assert s3 in {"400", "401", "403"}, f"Unauthenticated S3 access was accepted or unavailable: {s3}"
+    sudo = [] if __import__("os").geteuid() == 0 else ["sudo", "-n"]
+    subprocess.run([*sudo, "python3", str(ROOT / "scripts/storage/verify_s3_pilot.py"), str(ROOT / ".env")],
+                   check=True, cwd=ROOT)
     print("[verify] Storage pilot: protected Filestash + private signed-only S3 OK", flush=True)
 
 
