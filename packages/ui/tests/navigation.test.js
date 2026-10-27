@@ -194,3 +194,35 @@ test('embedded System Migration keeps legacy links and query/hash on its own rou
   assert.match(main, /const restoredTarget = restoredPath \+ window\.location\.search \+ window\.location\.hash/);
   assert.match(main, /router\.replace\(restoredTarget\)/);
 });
+
+
+test('Timesheets launcher resolves only after effective section permissions; explicit deep links remain protected', async () => {
+  const { routes } = await import('../../../apps/timesheets/src/routes.js');
+  const { chooseTimesheetsLanding, resolveSectionAccess } = await import('../../../apps/timesheets/src/section-access.js');
+  const entry = routes.find(route => route.path === '/');
+  assert.equal(entry.name, 'entry');
+  assert.equal(entry.meta.section, 'entry');
+  assert.equal(entry.beforeEnter({ query:{month:'2026-10'}, hash:'' }), true);
+  assert.deepEqual(entry.beforeEnter({ query:{section:'partners',month:'2026-10',client_id:'42'},hash:'#staff' }),
+    {name:'management',query:{month:'2026-10',client_id:'42'},hash:'#staff'});
+  assert.deepEqual(entry.beforeEnter({ query:{section:'mine'},hash:'' }),
+    {name:'mine',query:{},hash:''});
+  const manager = {
+    'timesheets.management.view':{allowed:true,scope:'own'},
+    'timesheets.mine.view':{allowed:false,scope:'none'},
+  };
+  const employee = {'timesheets.mine.view':{allowed:true,scope:'own'}};
+  const both = {...employee,...manager};
+  assert.equal(chooseTimesheetsLanding(manager),'management');
+  assert.equal(chooseTimesheetsLanding(employee),'mine');
+  assert.equal(chooseTimesheetsLanding(both),'mine');
+  assert.equal(chooseTimesheetsLanding({'timesheets.analytics.view':{allowed:true,scope:'team'}}),'analytics');
+  assert.equal(chooseTimesheetsLanding({'timesheets.audit.view':{allowed:true,scope:'team'}}),'audit');
+  assert.equal(chooseTimesheetsLanding({'timesheets.management.view':{allowed:false,scope:'own'}}),null);
+  assert.equal(resolveSectionAccess('mine','ready',false),'forbidden'); // direct /mine/ stays 403
+  const app = readFileSync(new URL('../../../apps/timesheets/src/App.vue',import.meta.url),'utf8');
+  assert.match(app,/route\.name === 'entry'/);
+  assert.match(app,/router\.replace\(\{ name: entryDestination\.value, query: \{ \.\.\.route\.query \}, hash: route\.hash \}\)/);
+  const catalog = serviceGroups.flatMap(group => group.items).find(item=>item.key==='timesheets');
+  assert.equal(catalog.href,'/timesheets/');
+});
