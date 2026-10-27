@@ -34,6 +34,13 @@ services:
     environment:
       CONFIG_SECRET: ${STORAGE_FILESTASH_CONFIG_SECRET:?Filestash encryption key missing}
       ADMIN_PASSWORD: ${STORAGE_FILESTASH_ADMIN_HASH:?Filestash admin password hash missing}
+      # The only middleware config values persisted to disk are nonsecret
+      # passthrough strategy + endpoint. S3 credentials are read by AWS SDK
+      # server-side from environment, never from browser parameters.
+      CONFIG_ENCRYPT: "false"
+      AWS_ACCESS_KEY_ID: ${STORAGE_S3_ACCESS_KEY:?Storage S3 access key missing}
+      AWS_SECRET_ACCESS_KEY: ${STORAGE_S3_SECRET_KEY:?Storage S3 secret key missing}
+      AWS_DEFAULT_REGION: us-east-1
     volumes:
       - storage_filestash_state:/app/data/state
     ports:

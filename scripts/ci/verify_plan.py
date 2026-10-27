@@ -123,7 +123,12 @@ def verify_storage_pilot(host):
     sudo = [] if __import__("os").geteuid() == 0 else ["sudo", "-n"]
     subprocess.run([*sudo, "python3", str(ROOT / "scripts/storage/verify_s3_pilot.py"), str(ROOT / ".env")],
                    check=True, cwd=ROOT)
-    print("[verify] Storage pilot: protected Filestash + private signed-only S3 OK", flush=True)
+    # The S3 container can be healthy while Filestash /login renders its
+    # generic internal error because zero backends are configured.
+    subprocess.run([*sudo, "python3", str(ROOT / "scripts/storage/ensure-filestash-pilot.py"),
+                    "--env-file", str(ROOT / ".env"), "--check"],
+                   check=True, cwd=ROOT)
+    print("[verify] Storage pilot: SSO, signed S3 and configured Filestash backend OK", flush=True)
 
 
 
