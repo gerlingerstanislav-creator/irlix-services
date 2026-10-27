@@ -68,6 +68,27 @@ final class RoleLabels
         return false;
     }
 
+    /**
+     * Organizational ancestors provide BASE permission rules, not extra JWT
+     * roles and never manager or special-role privileges.
+     */
+    public static function ancestorDepartmentRoles(?object $employee, array $departments): array
+    {
+        $byId = [];
+        foreach ($departments as $department) $byId[(int) $department->id] = $department;
+        $current = (int) ($employee->department_id ?? 0);
+        $id = (int) ($byId[$current]->parent_id ?? 0);
+        $roles = [];
+        $visited = [$current => true];
+        while ($id > 0 && isset($byId[$id]) && !isset($visited[$id])) {
+            $visited[$id] = true;
+            $alias = (string) ($byId[$id]->alias ?? '');
+            if (self::valid($alias)) $roles[] = $alias;
+            $id = (int) ($byId[$id]->parent_id ?? 0);
+        }
+        return array_values(array_unique($roles));
+    }
+
     /** Derive matrix roles without inheriting every organizational ancestor. */
     public static function functionalClientRoles(?object $employee, array $departments): array
     {
