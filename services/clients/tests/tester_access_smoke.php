@@ -27,7 +27,7 @@ namespace {
     });
     $schema = \Illuminate\Support\Facades\DB::connection()->getSchemaBuilder();
     $schema->create('client_contour_permissions', function ($t) {
-        $t->id(); $t->string('role'); $t->string('permission'); $t->boolean('allowed'); $t->string('scope');
+        $t->id(); $t->string('role'); $t->string('permission'); $t->boolean('allowed'); $t->string('scope'); $t->timestamps();
     });
     // Old tester permission grants must remain ineffective after privilege removal.
     foreach (['platform-tester', 'account-manager'] as $role) {
@@ -150,6 +150,8 @@ namespace {
         ['id'=>502,'department_id'=>105],
         ['id'=>503,'department_id'=>106],
         ['id'=>508,'department_id'=>107],
+        ['id'=>509,'department_id'=>101,'position'=>'account-manager'],
+        ['id'=>510,'department_id'=>105,'position'=>'account-manager'],
     ];
     $roles = [];
     $chainStub = [];
@@ -171,6 +173,22 @@ namespace {
     $check(in_array('client-service', $clientOperations['roles'], true), 'Client-service descendant lost base role');
     $check(($clientOperations['permissions']['clients.view']['scope'] ?? '') === 'own', 'Client-service baseline must be own-scope');
     $check(!($clientOperations['permissions']['clients.manage']['allowed'] ?? false), 'Client-service baseline granted management actions');
+
+    // Real organizational clients can appoint Account Managers directly in
+    // Client Service; account-management is not necessarily their department.
+    $actorStub = ['id'=>509,'position'=>'account-manager'];
+    $positionAccount = $resolver->resolve($request('api/permissions/me'));
+    $check(in_array('account-manager', $positionAccount['roles'], true),
+        'Verified Account Manager position did not yield functional client role');
+    foreach (['reports.view', 'cashflow.view', 'requests.view', 'positions.view',
+              'attempts.view', 'timesheets.management.view', 'timesheets.management.manage'] as $permission) {
+        $check(($positionAccount['permissions'][$permission]['allowed'] ?? false) === true,
+            'Account Manager denied '. $permission);
+    }
+    $actorStub = ['id'=>510,'position'=>'account-manager'];
+    $financeTitle = $resolver->resolve($request('api/permissions/me'));
+    $check(!in_array('account-manager', $financeTitle['roles'], true),
+        'Finance employee inherited account-management from same position title');
 
     // JWT labels describe DIRECT organizational membership only; the verified
     // employee ID and Employees directory must recover ancestry in this mode.
@@ -200,6 +218,18 @@ namespace {
         'JWT client-service child cannot open Clients workspace');
     $check(!($jwtOperations['permissions']['reports.view']['allowed'] ?? false),
         'JWT client-service baseline leaked other business sections');
+    $jwtTitleRequest = $request('api/permissions/me');
+    $jwtTitleRequest->attributes->set('identity', ['realm_roles'=>[
+        'employee-id:509', 'client-service', 'service:clients', 'service:timesheets',
+    ]]);
+    $jwtTitle = $resolver->resolve($jwtTitleRequest);
+    $check(in_array('account-manager', $jwtTitle['roles'], true),
+        'JWT verified position lost Account Manager rights pending Keycloak reconciliation');
+    foreach (['reports.view','cashflow.view','requests.view','positions.view',
+              'attempts.view','timesheets.management.view'] as $permission) {
+        $check(($jwtTitle['permissions'][$permission]['allowed'] ?? false) === true,
+            'JWT verified position denied '. $permission);
+    }
     $jwtFinanceRequest = $request('api/permissions/me');
     $jwtFinanceRequest->attributes->set('identity', ['realm_roles'=>['employee-id:502','service:timesheets','accounting']]);
     $jwtFinance = $resolver->resolve($jwtFinanceRequest);
@@ -207,5 +237,28 @@ namespace {
     if ($oldJwtMode === false) putenv('IRLIX_AUTHZ_JWT_ENABLED');
     else putenv('IRLIX_AUTHZ_JWT_ENABLED='.$oldJwtMode);
 
+    // Production matrices can contain old or manually disabled entries.
+    // Repair only the owner-approved Account Manager workspaces with own
+    // default scope, and preserve already wider customized scopes.
+    \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role', 'account-manager')->where('permission', 'reports.view')
+        ->update(['allowed'=>false, 'scope'=>'none']);
+    \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role', 'account-manager')->where('permission', 'cashflow.view')
+        ->update(['allowed'=>false, 'scope'=>'team']);
+    $migration = require dirname(__DIR__).'/database/migrations/2026_10_27_000002_restore_account_manager_workspace_permissions.php';
+    $migration->up();
+    $report = \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','account-manager')->where('permission','reports.view')->first();
+    $cashflow = \Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','account-manager')->where('permission','cashflow.view')->first();
+    $check((bool) $report->allowed && $report->scope === 'own',
+        'Account Manager reports disabled in persisted matrix');
+    $check((bool) $cashflow->allowed && $cashflow->scope === 'team',
+        'Client matrix repair expanded or downgraded a configured scope');
+    $migration->up();
+    $check(\Illuminate\Support\Facades\DB::table('client_contour_permissions')
+        ->where('role','account-manager')->where('permission','reports.view')->count() === 1,
+        'Workspace restoration migration is not idempotent');
     echo "Clients tester and department alias access smoke passed: {$checks} checks\n";
 }

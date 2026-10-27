@@ -89,6 +89,13 @@ $clientTree[1]->parent_id = 11;
 
 $check(RoleLabels::ancestorDepartmentRoles((object)['department_id'=>13], $clientTree), ['account-management']);
 $check(RoleLabels::ancestorDepartmentRoles((object)['department_id'=>15], $clientTree), []); // Finance never inherits as a base role
+$clientRootPosition = (object)['id'=>507,'department_id'=>11,'position'=>'Account Manager'];
+$check(RoleLabels::resolve($clientRootPosition,$clientTree), ['account-manager']);
+$check(RoleLabels::resolve((object)['id'=>508,'department_id'=>11,'position'=>'АККАУНТ-МЕНЕДЖЕР'],$clientTree), ['account-manager']);
+$check(RoleLabels::resolve((object)['id'=>509,'department_id'=>11,'position'=>'account_manager'],$clientTree), ['account-manager']);
+$check(RoleLabels::resolve((object)['id'=>510,'department_id'=>15,'position'=>'Account Manager'],$clientTree), ['accounting-finance']);
+$check(RoleLabels::resolve((object)['id'=>511,'department_id'=>11,'position'=>'Sales Manager'],$clientTree), []);
+$check(RoleLabels::resolve((object)['id'=>512,'department_id'=>11,'position'=>'Senior Account Manager'],$clientTree), []);
 $check(RoleLabels::functionalClientRoles((object)['department_id'=>13], $clientTree), ['account-manager']);
 $check(RoleLabels::resolve((object)['id'=>502,'department_id'=>13], $clientTree),
     ['account-manager']);

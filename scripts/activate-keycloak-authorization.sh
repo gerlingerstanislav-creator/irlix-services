@@ -107,4 +107,29 @@ if [ -f infra/authz-rollout.enabled ]; then
     upsert_env IRLIX_AUTHZ_ROLLOUT_DONE true
     echo "Keycloak authorization rollout active: all protected service backends have JWT gate and synced role grants. Await production smoke."
   fi
+
+  # A completed initial rollout is not proof that later role-policy changes
+  # reached existing Keycloak users. Employees migrations enqueue a new
+  # versioned snapshot; wait for that queue to finish before reporting
+  # production authorization as verified. Only aggregate diagnostics are
+  # printed on failure; no user identities or realm credentials leave the VM.
+  rollout_done=$($SUDO sh -c "grep '^IRLIX_AUTHZ_ROLLOUT_DONE=' .env 2>/dev/null | tail -n1 | cut -d= -f2-" || true)
+  if [ "$rollout_done" = true ]; then
+    attempt=0
+    sync_ready=false
+    while [ "$attempt" -lt 120 ]; do
+      state=$($SUDO sh -c "$COMPOSE exec -T employees php bin/authz-status.php < /dev/null" 2>/dev/null || true)
+      if printf '%s' "$state" | grep -q '"ready":true'; then
+        sync_ready=true
+        break
+      fi
+      attempt=$((attempt+1))
+      sleep 2
+    done
+    if [ "$sync_ready" != true ]; then
+      echo "Keycloak reconciliation still incomplete after Employees migration. Totals only: $state" >&2
+      exit 1
+    fi
+    echo "Keycloak authorization: all linked accounts synchronized and verified."
+  fi
 fi

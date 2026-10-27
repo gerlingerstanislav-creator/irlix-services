@@ -210,9 +210,20 @@ class ClientContourAccess
         $actorDirectory = $directoryEmployees->first(fn ($person) =>
             (int) ($person['id'] ?? 0) === (int) ($employee['id'] ?? 0));
         $actorDepartmentId = (int) ($actorDirectory['department_id'] ?? 0);
+        $actorPosition = mb_strtolower(trim(preg_replace('/\\s+/u', ' ',
+            str_replace(['_', '–', '—'], ['-', '-', '-'], (string) ($actorDirectory['position'] ?? '')))));
+        // Employees is authoritative for the verified actor's position. A
+        // position-based Account Manager may sit directly in Client Service,
+        // so do not require the leaf department to be called Account Management.
+        // The role is never inferred for Finance/outside this contour.
+        $inClientContour = $actorDepartmentId > 0 && in_array($actorDepartmentId, $clientServiceDepartmentIds, true);
+        $accountPosition = $inClientContour && in_array($actorPosition, [
+            'account-manager', 'account manager', 'аккаунт-менеджер', 'аккаунт менеджер',
+        ], true);
         $inAccounting = in_array('account-management', $departmentAliases, true)
             || in_array('account-manager', $jwtFunctionalRoles, true)
-            || ($actorDepartmentId > 0 && in_array($actorDepartmentId, $accountingDepartmentIds, true));
+            || ($actorDepartmentId > 0 && in_array($actorDepartmentId, $accountingDepartmentIds, true))
+            || $accountPosition;
         $inSales = in_array('sales', $departmentAliases, true)
             || in_array('sales-manager', $jwtFunctionalRoles, true)
             || ($actorDepartmentId > 0 && in_array($actorDepartmentId, $salesDepartmentIds, true));
