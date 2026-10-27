@@ -255,6 +255,18 @@ elif [ -n "$DEPLOY_SERVICES" ]; then
   compose_up_or_diagnose $DEPLOY_SERVICES
 fi
 
+# The isolated Filestash pilot ships without a configured backend by default;
+# this creates a user-visible /login internal error despite green S3 checks.
+# Configure the named Filestash state volume idempotently only when Storage is
+# released. It preserves existing settings and fails closed on custom backends.
+storage_pilot_requested="$FULL"
+for service in $DEPLOY_SERVICES; do
+  case "$service" in storage-s3|storage-web) storage_pilot_requested=true ;; esac
+done
+if [ "$storage_pilot_requested" = true ]; then
+  $SUDO python3 scripts/storage/ensure-filestash-pilot.py --env-file /opt/irlix-services/.env
+fi
+
 # CV's persisted provider (not .env) decides whether a local model needs RAM.
 # The host-only timer keeps this reconciled when an admin changes providers in
 # the UI; apply it immediately on every release so GigaChat never leaves an
