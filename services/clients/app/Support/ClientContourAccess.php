@@ -10,6 +10,7 @@ class ClientContourAccess
 {
     public const ROLE_LABELS = [
         'employee' => 'Сотрудник',
+        'client-service' => 'Сотрудник клиентской службы (базовые права)',
         'account-manager' => 'Аккаунт-менеджер',
         'accounting-head' => 'Руководитель направления аккаунтинга',
         'client-service-head' => 'Руководитель клиентской службы',
@@ -223,6 +224,13 @@ class ClientContourAccess
         $isAccountHead = in_array('account-management', $managedDepartmentAliases, true);
         $isSalesHead = in_array('sales', $managedDepartmentAliases, true);
         $isClientServiceManager = in_array('client-service', $managedDepartmentAliases, true);
+        // Every member of this subtree inherits the baseline client-service
+        // matrix role, not the client-service-head management role.
+        if (($actorDepartmentId > 0 && in_array($actorDepartmentId, $clientServiceDepartmentIds, true))
+            || in_array('client-service', $departmentAliases, true)
+            || $inAccounting || $inSales) {
+            $roles[] = 'client-service';
+        }
         if ($inAccounting) $roles[] = 'account-manager';
         if ($inSales) $roles[] = 'sales-manager';
         if ($isAccountHead) $roles[] = 'accounting-head';
