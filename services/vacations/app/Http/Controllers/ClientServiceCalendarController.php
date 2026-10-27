@@ -70,6 +70,27 @@ final class ClientServiceCalendarController extends Controller
         return response()->json(['data' => $levels]);
     }
 
+    private function checkClientsSpecialistsPermission(Request $request, int $employeeId): void
+    {
+        $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
+        abort_unless(is_string($token) && $token !== '', 403);
+        $base = rtrim((string) env('CLIENTS_URL', 'http://clients:8000/api'), '/');
+        try {
+            $response = Http::withToken($token)->acceptJson()
+                ->timeout(5)->get($base.'/permissions/me');
+        } catch (\Throwable) {
+            abort(503, 'Сервис разрешений Clients недоступен.');
+        }
+        abort_unless($response->successful(), $response->status() === 403 ? 403 : 503);
+        $access = (array) $response->json('data', []);
+        $permission = (array) ($access['permissions']['specialists.view'] ?? []);
+        abort_unless((int) ($access['employee']['id'] ?? 0) === $employeeId
+            && (($access['platform_admin'] ?? false) === true
+                || (($permission['allowed'] ?? false) === true
+                    && ($permission['scope'] ?? 'none') === 'all')),
+            403, 'Недостаточно прав на общий календарь специалистов.');
+    }
+
     private function authorizedDirectory(Request $request, EmployeesDirectory $directory, bool $requireSpecialistsPermission = false): array
     {
         $identity = (array) $request->attributes->get('identity', []);
