@@ -41,19 +41,31 @@ namespace {
             'allowed' => true, 'scope' => 'own',
         ]);
     }
+    $db = \Illuminate\Support\Facades\DB::table('client_contour_permissions');
+    foreach (['leads.view','requests.view','positions.view','attempts.view'] as $permission) {
+        $db->insert(['role'=>'sales-manager','permission'=>$permission,'allowed'=>true,'scope'=>'own']);
+    }
     $roles = [];
     $actorStub = ['id' => 1, 'position' => 'Account Manager'];
     $chainStub = [];
     $departmentsStub = [];
     $directoryEmployeesStub = [];
+    $accessDepartmentIdsStub = [];
     \Illuminate\Support\Facades\Http::preventStrayRequests();
-    \Illuminate\Support\Facades\Http::fake(function ($request) use (&$roles, &$actorStub, &$chainStub, &$departmentsStub, &$directoryEmployeesStub) {
+    \Illuminate\Support\Facades\Http::fake(function ($request) use (&$roles, &$actorStub, &$chainStub, &$departmentsStub, &$directoryEmployeesStub, &$accessDepartmentIdsStub) {
         $url = parse_url($request->url(), PHP_URL_PATH);
         $data = match ($url) {
             '/api/self' => $actorStub,
-            '/api/access/me' => ['roles' => $roles, 'department_ids' => []],
+            '/api/access/me' => ['roles' => $roles, 'department_ids' => $accessDepartmentIdsStub],
             '/api/self/absence-approval-context' => ['department_chain' => $chainStub],
-            '/api/clients-directory' => ['departments' => $departmentsStub, 'employees' => $directoryEmployeesStub],
+            '/api/clients-directory' => [
+                'departments' => $departmentsStub, 'employees' => $directoryEmployeesStub,
+                'actor' => [
+                    'id' => $actorStub['id'],
+                    'department_id' => collect($directoryEmployeesStub)->first(fn ($row) => $row['id'] === $actorStub['id'])['department_id'] ?? null,
+                    'functional_roles' => $actorStub['functional_roles'] ?? [],
+                ],
+            ],
             default => throw new \RuntimeException('Unexpected dependency request'),
         };
         return \Illuminate\Support\Facades\Http::response(['data' => $data]);
