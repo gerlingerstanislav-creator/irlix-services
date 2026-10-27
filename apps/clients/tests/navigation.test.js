@@ -32,6 +32,7 @@ test('Clients routes use documented URLs and preserve legacy query and hash', as
  const named = Object.fromEntries(routes.filter(r=>r.name).map(r=>[r.name,r]));
  assert.equal(named.clients.path, '/clients/');
  assert.equal(named.specialists.path, '/specialists/');
+ assert.equal(named.members.path, '/members/', 'Historical connections URL stays accessible without a menu entry');
  assert.equal(named.reports.path, '/reporting-periods/');
  assert.equal(named['attempt-funnel'].path, '/attempt-funnel/');
  assert.equal(named['attempt-funnel'].meta.section, 'attempts');
