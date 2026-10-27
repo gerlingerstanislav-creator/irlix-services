@@ -140,6 +140,10 @@ class EmployeesAccess
             $roles = [$scenario];
         }
 
+        // Preview reproduces the functional client roles Employees would
+        // publish for these scenarios without impersonating a real account.
+        if (in_array('account-management', $roles, true)) $roles[] = 'account-manager';
+        if (in_array('sales', $roles, true)) $roles[] = 'sales-manager';
         $roles = array_values(array_unique($roles));
         $scopedDepartments = array_values(array_unique(array_map('intval', $scopedDepartments)));
         $accounting = in_array('accounting', $roles, true);
