@@ -94,7 +94,7 @@ const iconPath=(task)=>{
 </script>
 
 <template>
-  <div class="table-wrap vacations-table-wrap" :style="badgeStyles">
+  <div class="table-wrap vacations-table-wrap" :class="{ 'vacations-table-wrap--centered': centerColumns }" :style="badgeStyles">
     <div v-if="centerColumns" class="vacations-badge-rulers" aria-hidden="true">
       <div ref="typeRuler" class="vacations-badge-ruler">
         <span v-for="label in visibleTypeLabels" :key="label">{{ label }}</span>
