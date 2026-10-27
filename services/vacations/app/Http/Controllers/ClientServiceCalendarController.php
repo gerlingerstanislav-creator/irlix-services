@@ -134,8 +134,12 @@ final class ClientServiceCalendarController extends Controller
         // The signed Keycloak bearer has been verified by KeycloakBearer.
         // A role preview, when present, is verified by Employees before replacement.
         $platformAdmin = in_array('platform-admin', $roles, true);
-        abort_unless($inService || $platformAdmin, 403,
-            'Календарь доступен только клиентской службе и администраторам платформы.');
+        if ($requireSpecialistsPermission) {
+            $this->checkClientsSpecialistsPermission($request, $actorId);
+        } else {
+            abort_unless($inService || $platformAdmin, 403,
+                'Календарь доступен только клиентской службе и администраторам платформы.');
+        }
 
         return [$activeIds, $employees, $departments];
     }
