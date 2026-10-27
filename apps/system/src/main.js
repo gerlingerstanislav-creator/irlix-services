@@ -29,7 +29,7 @@ return ()=>loading.value?h('main',{class:'system-status',role:'status'},'Про�
 :(error.value||!authorized.value||!section.value)?h('main',{class:'system-status',role:'alert'},[
 h('h1', error.value ? '503 — Сервис временно недоступен' : (!section.value && authorized.value ? '404 — Страница не найдена' : '403 — Доступ запрещён')),h('p',error.value||(!section.value && authorized.value ? 'Такой страницы в сервисе нет.' : 'Доступ разрешён только администратору платформы.')),h('a',{href:'/'},'Вернуться на дашборд')])
 :h(UiAppShell,{service:'system',serviceName:'Система',section:section.value,items:sections,breadcrumbs:breadcrumbs.value,
-  currentUser:auth.user,reportSubmit:auth.fetch,platformAdmin:true,serviceAccess:access.value,'onUpdate:section':navigate,onLogout:()=>auth.logout()},
+  currentUser:auth.user,reportSubmit:(url, options) => auth.fetch(url, options),platformAdmin:true,serviceAccess:access.value,'onUpdate:section':navigate,onLogout:()=>auth.logout()},
 {default:()=>h('main',{class:'system-workspace'},section.value==='resources'?h(ResourceMonitor,{auth}):section.value==='service-map'?h(ServiceMap):section.value==='reports'?h(BugReportsPage,{auth}):h(MigrationConsole,{auth,embedded:true}))});
 }});
 app.use(router);
