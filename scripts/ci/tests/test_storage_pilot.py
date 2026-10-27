@@ -20,7 +20,7 @@ class StoragePilotGuardrails(unittest.TestCase):
         self.assertIn("STORAGE_S3_SECRET_KEY:?", compose)
         self.assertIn("STORAGE_ADMIN_PASSWORD:?", compose)
         self.assertIn("127.0.0.1:8333:8333", compose)
-        self.assertNotRegex(compose, r'(?m)^\s*-\s*["\\\']?(?:0\.0\.0\.0:)?(?:8888|9333|23646):')
+        self.assertNotRegex(compose, r"(?m)^\s*-\s*.*(?:8888|9333|23646):(?:8888|9333|23646)")
         self.assertNotIn("privileged: true", compose)
         self.assertNotIn("network_mode: host", compose)
 
