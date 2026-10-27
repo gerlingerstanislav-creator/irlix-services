@@ -24,18 +24,18 @@ test('my vacations and management use exactly the same tracks except employee', 
 test('the period alone takes extra table width; badge tracks keep their own sizes', () => {
   const columns = absenceRegistryColumns(sharedOptions);
   assert.equal(columns.filter(width => width === 'auto').length, 1);
-  assert.equal(columns[2], '110px');
-  assert.equal(columns[3], '190px');
-  assert.equal(columns[4], '162px');
+  assert.equal(columns[1], '110px');
+  assert.equal(columns[2], '190px');
+  assert.equal(columns[3], '162px');
   assert.equal(Number.parseInt(absenceRegistryMinWidth(columns),10), PERIOD_MIN_WIDTH + 110 + 190 + 162 + 112 + 48);
 });
 
 test('long text can expand a badge track without stretching a neighboring track', () => {
   const before = absenceRegistryColumns(sharedOptions);
   const after = absenceRegistryColumns({...sharedOptions,statusBadgeWidth:260});
-  assert.deepEqual(after.slice(0,4), before.slice(0,4));
-  assert.equal(after[4], '278px');
-  assert.deepEqual(after.slice(5), before.slice(5));
+  assert.deepEqual(after.slice(0,3), before.slice(0,3));
+  assert.equal(after[3], '278px');
+  assert.deepEqual(after.slice(4), before.slice(4));
 });
 
 test('optional columns are consistently toggled for other registry views', () => {
