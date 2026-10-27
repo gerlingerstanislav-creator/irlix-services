@@ -185,8 +185,9 @@ try {
     db('vacations')->table('absence_approvals')->where('sequence',2)->update(['status'=>'pending']);
     $vacations->fixture['vacations'][0]['status']='on_approval';
     $vacations->fixture['approvers'][1]['is_approved']=true;
-    verify(runImport($vacations,true)['conflicts']>=1,
-        'Review with no unresolved approver must be a conflict, not an invented stage');
+    $withoutCurrentStage = runImport($vacations,true);
+    verify($withoutCurrentStage['conflicts']===0 && $withoutCurrentStage['warnings']===1,
+        'Review with every recorded approver approved is importable with one reconciliation warning');
     $vacations->fixture['approvers'][1]['is_approved']=false;
     $vacations->fixture['approvers']=[];$vacations->fixture['attachments']=[];
     config(['migration.vacation_documents_enabled'=>false]);
@@ -224,6 +225,43 @@ try {
     $error=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$lastRun['id'])->where('entity_type','users')->first();
     verify(str_contains($error->message,'3 сотрудников') && str_contains($error->message,'ID: 1, 2, 3'), 'Ambiguous login lists target IDs');
     db('employees')->table('employees')->whereIn('id',[2,3])->delete();
+
+    // Three separate legacy in-review records, two without any assigned
+    // approver and one with an already fully approved chain. No invented
+    // terminal decision or fake pending approval may appear.
+    $vacations->fixture['vacations'] = array_map(static fn ($id) => [
+        'id' => $id, 'user_id' => 4, 'type' => 'paid',
+        'status' => 'on_approval', 'from' => '2025-02-01',
+        'to' => '2025-02-04', 'working_hours' => 8,
+    ], [901, 902, 903]);
+    $vacations->fixture['approvers'] = [
+        ['id'=>912,'vacation_id'=>901,'employee_id'=>'synthetic-employee-uuid',
+            'order'=>1,'is_approved'=>true],
+    ];
+    $dry = runImport($vacations,true);
+    verify($dry['conflicts']===0 && $dry['warnings']===3,
+        'Dry run must report three ambiguous historical review stages as warnings, not failed absences');
+    $actual = runImport($vacations,false);
+    verify($actual['conflicts']===0 && $actual['warnings']===3,
+        'All ambiguous historical vacations must be preserved without invented workflow actions');
+    $maps = \Illuminate\Support\Facades\DB::table('migration_mappings')
+        ->where('service','vacations')->where('entity_type','vacations')
+        ->whereIn('legacy_id',['901','902','903'])->get();
+    verify($maps->count()===3, 'Each legacy absence must have exactly one stable mapping');
+    $importedIds = $maps->pluck('target_id')->all();
+    verify(db('vacations')->table('absences')->whereIn('id',$importedIds)
+        ->where('status','in_review')->count()===3, 'Unknown stage must keep non-terminal lifecycle');
+    verify(db('vacations')->table('absence_approvals')->whereIn('absence_id',$importedIds)
+        ->where('status','pending')->count()===0, 'Missing active approvers must never be fabricated');
+    verify(db('vacations')->table('absence_approvals')->whereIn('absence_id',$importedIds)
+        ->where('status','approved')->count()===1, 'Actual approved history must be retained');
+    verify(db('vacations')->table('absence_audit_log')->whereIn('absence_id',$importedIds)
+        ->where('event','legacy_migrated')->count()===3, 'Each imported absence must have an audit event');
+    verify(runImport($vacations,false)['conflicts']===0, 'Repeated incomplete review import must be safe');
+    verify(db('vacations')->table('absence_audit_log')->whereIn('absence_id',$importedIds)
+        ->where('event','legacy_migrated')->count()===3, 'Repeated import must not duplicate audit events');
+    verify(db('vacations')->table('absence_approvals')->whereIn('absence_id',$importedIds)->count()===1,
+        'Repeated import must not duplicate historical approvers');
 
     echo "Vacations v2 schema import smoke passed.\n";
 } catch (Throwable $e) { $failure=$e; }
