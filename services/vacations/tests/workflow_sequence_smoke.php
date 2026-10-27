@@ -18,15 +18,22 @@ DB::table('absences')->insert(['id'=>1,'employee_id'=>10,'type'=>'paid_vacation'
 foreach ([[1,1,'approved'],[2,2,'waiting'],[3,2,'waiting'],[4,3,'waiting']] as [$id,$sequence,$status]) DB::table('absence_approvals')->insert(['id'=>$id,'absence_id'=>1,'sequence'=>$sequence,'stage'=>'employee_review','status'=>$status,'approver_employee_id'=>20+$id]);
 $service = new App\Application\AbsenceService(new App\Domain\Absence\AbsenceDayCalculator(),new App\Domain\Absence\AbsenceWorkflow());
 $service->submitOwn(1,10,'synthetic-owner',[]);
+checkSequence(DB::table('absences')->find(1)->status==='in_review',
+    'Only lifecycle is persisted, never employee_review');
+checkSequence($service->get(1)['status']==='employee_review' && $service->get(1)['lifecycle_status']==='in_review',
+    'UI status is derived from the active approval stage');
 checkSequence(DB::table('absence_approvals')->where('status','pending')->count()===2,'Only first unresolved sequence becomes pending');
 $service->approve(2,22,'synthetic-approver',fn()=>true);
 checkSequence((int) DB::table('absence_approvals')->find(2)->acted_by_employee_id===22,'Actual approving employee must be recorded');
 checkSequence(DB::table('absence_approvals')->find(4)->status==='waiting','Parallel group must finish before next sequence');
 $service->approve(3,23,'synthetic-approver',fn()=>true);
+checkSequence(DB::table('absences')->find(1)->status==='in_review' && $service->get(1)['status']==='employee_review',
+    'Repeated groups share a computed display stage without duplicating stored status');
 checkSequence(DB::table('absence_approvals')->find(4)->status==='pending','Repeated employee stage advances by sequence');
 $service->approve(4,24,'synthetic-approver',fn()=>true);
 checkSequence(DB::table('absences')->find(1)->status==='confirmed','Last sequence confirms absence');
-DB::table('absences')->where('id',1)->update(['status'=>'employee_review']);
+DB::table('absences')->where('id',1)->update(['status'=>'in_review']);
+DB::table('absence_approvals')->where('id',4)->update(['status'=>'pending']);
 $service->returnToPlanned(1,99,'synthetic-admin');
 checkSequence(DB::table('absence_approvals')->count()===4 && DB::table('absence_approvals')->where('status','waiting')->count()===4,'Return retains assigned chain and clears decisions');
 checkSequence(DB::table('absence_approvals')->whereNotNull('acted_by_employee_id')->count()===0,'Returned approval cycle clears actual actor');
