@@ -99,6 +99,24 @@ const start = async () => {
       return;
     }
 
+    // Storage S3/Filestash is a strictly-admin isolated pilot.
+    // Filestash requires a dedicated root origin, so SSO issues a host-wide
+    // short-lived HttpOnly cookie and redirects to this same host on port 8110.
+    if (new URLSearchParams(window.location.search).get('storage') === '1') {
+      startup.stage?.('storage-access-check');
+      const response = await auth.fetch('/api/employees/storage-pilot/session', {
+        method:'POST',headers:{Accept:'application/json'},credentials:'same-origin',cache:'no-store',
+      });
+      if (!response.ok) {
+        loading.hidden = false; loading.style.display = 'grid';
+        renderNavigationError(loading, response.status === 403 ? 403 : 503);
+        startup.done?.();
+        return;
+      }
+      window.location.replace(`${window.location.protocol}//${window.location.hostname}:8110/`);
+      return;
+    }
+
     // Unknown paths must never be interpreted as the Dashboard homepage.
     if (router.resolve(window.location.pathname).name === 'not-found') {
       const shell = document.getElementById('portal-shell');

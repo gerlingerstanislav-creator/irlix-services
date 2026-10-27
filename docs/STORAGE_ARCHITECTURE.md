@@ -60,3 +60,11 @@ Included `docker-compose.storage.pilot.yml` is **not part of the main CI/service
 ## Acceptance evidence
 
 Pilot infra syntax (not Docker-tested in this environment) and safe command contracts can be checked statically by `python3 -m unittest scripts/ci/tests/test_storage_pilot.py`. Test real S3 and Docker on an isolated host before any connection to app data. Label all unexecuted checks **NOT TESTED**.
+
+## 27.10.2026 — pilot deployment overlay
+
+In addition to the optional dedicated-host pilot file, the release introduces `docker-compose.storage.yml` with a SeaweedFS S3 origin and a Filestash browser test surface. During pilot it uses an isolated `/srv/irlix-storage-pilot` directory with a strict preflight: >=8 GiB free before activation. The main 45-GiB VM root is a **temporary synthetic-only test location**; this is not approved for business documents. Persistent Filestash state uses `storage_filestash_state` volume. The S3 port is host-loopback-only; the file manager is protected by an Employees platform-admin SSO gate on port 8110. Path `/storage/` sends the user through the Dashboard OIDC flow. Open inbound port 8110 inside the corporate VPN if remote browser access is desired; do not publish this port to the Internet.
+
+The server deploy script provisions long random credentials and a bcrypt Filestash administration secret into the root-only server .env. The initial Filestash admin password is available only to a privileged host operator under `STORAGE_FILESTASH_ADMIN_INITIAL_PASSWORD`; never copy it into public code/logs. Filestash's actual S3 backend preset still needs to be configured from its protected admin UI before file operations are usable. Do not mistake a healthy HTML page or anonymous 302 for full S3 integration.
+
+The S3/Filestash images are built as pinned CI-input GHCR wrappers; Filestash base `latest` is not pinned upstream yet, so a locked digest must be selected after functional verification. Neither backend is connected to existing service attachments; no cloud backup runs. Do not store confidential material in this pilot. The release requires an actual Docker and browser check for upload/download/checksum and permission revocation before declaring completion.

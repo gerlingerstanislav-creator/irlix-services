@@ -106,6 +106,21 @@ def verify_brandbook(host):
         )
     print("[verify] brandbook: anonymous SSO redirect 302; origin SPA, deep links and SVG 200", flush=True)
 
+def verify_storage_pilot(host):
+    """Ensure the private Filestash origin is live and anonymous traffic cannot bypass Employees."""
+    args = ["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}",
+            "-H", f"Host: {host}", "--connect-timeout", "2", "--max-time", "10"]
+    frontend = subprocess.check_output([*args, "http://127.0.0.1:8110/"], text=True).strip()
+    assert frontend == "302", f"storage SSO anonymous entry expected 302; got {frontend}"
+    gate = subprocess.check_output([*args, "http://127.0.0.1:8110/_storage_pilot_gate"], text=True).strip()
+    assert gate == "404", f"internal storage gate exposed: {gate}"
+    origin = subprocess.check_output([*args, "http://127.0.0.1:8111/"], text=True).strip()
+    assert origin in {"200", "302"}, f"Filestash origin unhealthy: {origin}"
+    s3 = subprocess.check_output([*args, "http://127.0.0.1:8113/"], text=True).strip()
+    assert s3 in {"400", "401", "403"}, f"Unauthenticated S3 access was accepted or unavailable: {s3}"
+    print("[verify] Storage pilot: protected Filestash + private signed-only S3 OK", flush=True)
+
+
 def main():
     plan = json.loads((ROOT / ".ci/deploy-plan.json").read_text())
     data = registry()
@@ -130,6 +145,8 @@ def main():
     # or script-only plans where no application container is selected.
     verify_brandbook(host)
     verify_design_system(host)
+    if selected.intersection({'storage-s3','storage-web'}):
+        verify_storage_pilot(host)
     for c in data["components"]:
         if not selected.intersection([c["service"], *c.get("aliases", [])]):
             continue
