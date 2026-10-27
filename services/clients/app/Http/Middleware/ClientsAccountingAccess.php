@@ -401,7 +401,23 @@ class ClientsAccountingAccess
         } elseif ($path === 'api/cash-flow') {
             $payload['data']['rows'] = array_values(array_filter($payload['data']['rows'] ?? [], fn ($row) => $ownsAccount((int)($row['client_id'] ?? DB::table('client_members')->where('id',$row['client_member_id']??0)->value('client_id')))));
         } elseif (preg_match('#^api/clients/(\d+)/card$#', $path, $cardMatch)) {
-            if (isset($payload['data']['client'])) $payload['data']['client']['can_manage'] = $ownsClientManage((int) $cardMatch[1]);
+            $cardClientId = (int) $cardMatch[1];
+            if (isset($payload['data']['client'])) $payload['data']['client']['can_manage'] = $ownsClientManage($cardClientId);
+            // The parent Client card's own visibility must not implicitly
+            // disclose contacts or reporting records with separately configured
+            // narrower permissions (or create tabs which then fail 403).
+            $canReadCardSection = function (string $key) use ($access, $cardClientId, $employeeIdsForPermission, $idsForEmployees): bool {
+                if (!$this->accessResolver->allows($access, $key)) return false;
+                $ids = $employeeIdsForPermission($key);
+                if ($ids === null) return true;
+                if (!$ids) return false;
+                if (in_array($cardClientId, $idsForEmployees($ids), true)) return true;
+                return DB::table('client_account_delegations')->where('client_id', $cardClientId)
+                    ->whereIn('to_employee_id', $ids)->whereNull('revoked_at')
+                    ->whereDate('starts_at', '<=', today())->whereDate('ends_at', '>=', today())->exists();
+            };
+            if (!$canReadCardSection('reports.view')) $payload['data']['reporting_periods'] = [];
+            if (!$canReadCardSection('contacts.view')) $payload['data']['contacts'] = [];
         } elseif (preg_match('#^api/contacts/\d+$#', $path)) {
             $payload['data']['client_relations'] = array_values(array_filter($payload['data']['client_relations'] ?? [], fn ($relation) => $ownsAccount((int) ($relation['client_id'] ?? 0))));
         }
