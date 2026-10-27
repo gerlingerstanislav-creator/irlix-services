@@ -18,6 +18,7 @@ COPY app/Support/RoleLabels.php /app/app/Support/RoleLabels.php
 COPY app/Support/KeycloakAuthorizationSync.php /app/app/Support/KeycloakAuthorizationSync.php
 COPY app/Support/SpecialRoles.php /app/app/Support/SpecialRoles.php
 COPY app/Support/BrandbookGate.php /app/app/Support/BrandbookGate.php
+COPY app/Support/StoragePilotGate.php /app/app/Support/StoragePilotGate.php
 COPY app/Support/EmployeeOnboardingService.php /app/app/Support/EmployeeOnboardingService.php
 COPY app/Support/StaffPositionImporter.php /app/app/Support/StaffPositionImporter.php
 COPY routes/api.php /app/routes/api.php
@@ -46,6 +47,7 @@ COPY tests/position_lifecycle.php /app/tests/position_lifecycle.php
 COPY tests/equipment_directory.php /app/tests/equipment_directory.php
 COPY tests/vacations_historical_directory.php /app/tests/vacations_historical_directory.php
 COPY tests/platform_roles.php /app/tests/platform_roles.php
+COPY tests/storage_pilot_session_runtime.php /app/tests/storage_pilot_session_runtime.php
 COPY tests/eloquent_architecture.php /app/tests/eloquent_architecture.php
 COPY tests/eloquent_services.php /app/tests/eloquent_services.php
 COPY tests/layered_workflows.php /app/tests/layered_workflows.php
@@ -71,6 +73,8 @@ RUN find /app/app/Models /app/app/Services /app/app/Http/Controllers -name '*.ph
     && php -l /app/app/Support/RoleLabels.php \
     && php -l /app/app/Support/KeycloakAuthorizationSync.php \
     && php -l /app/app/Support/SpecialRoles.php \
+    && php -l /app/app/Support/StoragePilotGate.php \
+    && php -l /app/tests/storage_pilot_session_runtime.php \
     && php -l /app/app/Support/EmployeeOnboardingService.php \
     && php -l /app/app/Support/StaffPositionImporter.php \
     && php -l /app/bin/publish-events.php \
