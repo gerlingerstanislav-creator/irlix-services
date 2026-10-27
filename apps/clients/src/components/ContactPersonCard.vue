@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { UiButton, UiDrawer, UiSearchSelect } from '@irlix/ui';
 
 const props = defineProps({
@@ -8,6 +8,8 @@ const props = defineProps({
   clients: { type: Array, default: () => [] },
   initialClientId: { type: Number, default: null },
   initialPartnerId: { type: Number, default: null },
+  linkClientId: { type: Number, default: null },
+  linkPartnerId: { type: Number, default: null },
   zIndex: { type: Number, default: 1000 },
 });
 const emit = defineEmits(['close', 'changed', 'created']);
@@ -19,13 +21,60 @@ const nameEditing = ref(false);
 const nameDraft = ref('');
 const addMethodOpen = ref(false);
 const addRelationOpen = ref(false);
+const chosenContactId = ref('');
+const contactOptions = ref([]);
+const selectedLinkOption = ref(null);
+const linkPosition = ref('');
+const linking = ref(false);
+let contactsLookupTimer = null;
+let contactsLookupRequest = 0;
 const data = reactive({ id: null, full_name: '', methods: [], client_relations: [] });
 const createMethods = reactive([]);
 const createRelations = reactive([]);
 const newMethod = reactive({ type: '', contact: '' });
 const newRelation = reactive({ client_id: '', position: '' });
 
-const isCreate = computed(() => !props.contactId);
+const isLink = computed(() => Boolean(props.linkClientId || props.linkPartnerId));
+const activeContactId = computed(() => isLink.value ? Number(chosenContactId.value) || null : props.contactId);
+const isCreate = computed(() => !isLink.value && !activeContactId.value);
+const linkOptions = computed(() => {
+  const options = contactOptions.value.map(row => ({ value:String(row.id),label:row.full_name }));
+  if (selectedLinkOption.value && !options.some(row => row.value === selectedLinkOption.value.value)) options.unshift(selectedLinkOption.value);
+  return options;
+});
+function searchLinkContacts(query = '') {
+  clearTimeout(contactsLookupTimer);
+  const seq = ++contactsLookupRequest;
+  contactsLookupTimer = setTimeout(async () => {
+    try {
+      const result = await api('/api/clients/partners/contact-options?q=' + encodeURIComponent(String(query).trim().slice(0,120)));
+      if (seq === contactsLookupRequest && props.open && isLink.value) contactOptions.value = result.data || [];
+    } catch (e) {
+      if (seq === contactsLookupRequest && props.open) error.value = e.message || String(e);
+    }
+  }, query ? 220 : 0);
+}
+onBeforeUnmount(() => clearTimeout(contactsLookupTimer));
+async function linkExistingContact() {
+  if (!isLink.value || !activeContactId.value || linking.value) return;
+  linking.value = true;
+  error.value = '';
+  try {
+    const url = props.linkPartnerId
+      ? `/api/clients/partners/${props.linkPartnerId}/contacts`
+      : `/api/clients/contacts/${activeContactId.value}/client-relations`;
+    const payload = props.linkPartnerId
+      ? {contact_id:activeContactId.value, position:linkPosition.value.trim() || null}
+      : {client_id:props.linkClientId, position:linkPosition.value.trim() || null};
+    await api(url, {method:'POST',body:JSON.stringify(payload)});
+    emit('changed');
+    emit('close');
+  } catch (e) {
+    error.value = e.message || String(e);
+  } finally {
+    linking.value = false;
+  }
+}
 const clientOptions = computed(() => props.clients.map(client => ({ value: String(client.id), label: client.name })).sort((a, b) => a.label.localeCompare(b.label, 'ru')));
 
 async function api(url, options = {}) {
@@ -93,10 +142,12 @@ function reset() {
 }
 async function load() {
   reset();
-  if (!props.open || !props.contactId) return;
+  if (!props.open || !activeContactId.value) return;
   loading.value = true;
   try {
-    const result = await api(`/api/clients/contacts/${props.contactId}`);
+    const requestedId = activeContactId.value;
+    const result = await api(`/api/clients/contacts/${requestedId}`);
+    if (!props.open || Number(activeContactId.value) !== requestedId) return;
     applyContact(result.data || {});
   } catch (e) {
     error.value = e.message || String(e);
@@ -292,14 +343,33 @@ async function deleteRelation(relation) {
   } catch (e) { error.value = e.message || String(e); }
 }
 
-watch(() => [props.open, props.contactId, props.initialClientId, props.initialPartnerId], load, { immediate: true });
+watch(() => [props.open, props.contactId, props.initialClientId, props.initialPartnerId, props.linkClientId, props.linkPartnerId], () => {
+  chosenContactId.value = '';
+  selectedLinkOption.value = null;
+  linkPosition.value = '';
+  contactOptions.value = [];
+  contactsLookupRequest++;
+  clearTimeout(contactsLookupTimer);
+  if (props.open && isLink.value) searchLinkContacts();
+  load();
+}, { immediate: true });
+watch(chosenContactId, () => {
+  const option = linkOptions.value.find(row => row.value === String(chosenContactId.value));
+  if (option) selectedLinkOption.value = option;
+  load();
+});
 </script>
 
 <template>
   <UiDrawer :open="open" title="" width="720px" :min-width="520" :z-index="zIndex" @close="emit('close')">
     <template #title>
       <div class="contact-title">
-        <template v-if="isCreate">
+        <template v-if="isLink">
+          <UiSearchSelect v-model="chosenContactId" class="contact-link-select" :options="linkOptions"
+            placeholder="Выберите существующий контакт" search-placeholder="Поиск контакта по ФИО"
+            aria-label="Контакт для привязки" :clearable="false" @open="searchLinkContacts('')" @search="searchLinkContacts" />
+        </template>
+        <template v-else-if="isCreate">
           <input v-model="nameDraft" class="title-input" placeholder="ФИО контактного лица" @keyup.enter="createContact">
         </template>
         <template v-else-if="nameEditing">
@@ -316,11 +386,12 @@ watch(() => [props.open, props.contactId, props.initialClientId, props.initialPa
 
     <div v-if="error" class="contact-error">{{ error }}<button type="button" @click="error=''">×</button></div>
     <div v-if="loading" class="contact-loading">Загрузка контакта…</div>
+    <div v-else-if="isLink && !activeContactId" class="contact-loading">Выберите контакт из списка или найдите его по ФИО.</div>
     <div v-else class="contact-card">
       <section class="contact-section">
         <div class="section-title">
           <h3>Способы связи</h3>
-          <button type="button" class="section-add" @click="addMethodOpen=!addMethodOpen">＋ способ связи</button>
+          <button v-if="!isLink" type="button" class="section-add" @click="addMethodOpen=!addMethodOpen">＋ способ связи</button>
         </div>
         <div v-if="isCreate" class="entity-list">
           <div v-for="(method, index) in createMethods" :key="`${method.type}-${method.contact}-${index}`" class="method-row" :class="{ inactive: !method.is_active }">
@@ -352,7 +423,7 @@ watch(() => [props.open, props.contactId, props.initialClientId, props.initialPa
             <template v-else>
               <strong><span v-if="method.is_preferred" class="preferred-indicator">✓</span>{{ method.type }}</strong>
               <span class="method-value">{{ method.contact }}<button type="button" class="copy-method" title="Скопировать" aria-label="Скопировать способ связи" @click="copyMethod(method.contact)">⧉</button></span>
-              <div class="row-actions">
+              <div v-if="!isLink" class="row-actions">
                 <button type="button" class="icon-action preferred" :class="{ active: method.is_preferred }" :title="method.is_preferred?'Убрать предпочтительный':'Сделать предпочтительным'" @click="togglePreferred(method)">✓</button>
                 <button type="button" class="icon-action state" :class="{ active: method.is_active }" :title="method.is_active?'Сделать неактуальным':'Сделать актуальным'" @click="toggleMethod(method)">{{method.is_active?'●':'○'}}</button>
                 <button type="button" class="icon-action" title="Редактировать" @click="method.editing=true">✎</button>
@@ -373,7 +444,7 @@ watch(() => [props.open, props.contactId, props.initialClientId, props.initialPa
       <section v-if="!isCreate || !initialPartnerId" class="contact-section">
         <div class="section-title">
           <h3>Клиенты</h3>
-          <button type="button" class="section-add" @click="addRelationOpen=!addRelationOpen">＋ Клиент</button>
+          <button v-if="!isLink" type="button" class="section-add" @click="addRelationOpen=!addRelationOpen">＋ Клиент</button>
         </div>
         <div v-if="isCreate" class="entity-list">
           <div v-for="(relation, index) in createRelations" :key="`${relation.client_id}-${index}`" class="entity-row" :class="{ inactive: !relation.active }">
@@ -402,7 +473,7 @@ watch(() => [props.open, props.contactId, props.initialClientId, props.initialPa
             </template>
             <template v-else>
               <span>{{ relation.position || '—' }}</span>
-              <div class="row-actions">
+              <div v-if="!isLink" class="row-actions">
                 <button type="button" class="icon-action state" :class="{ active: relation.active }" :title="relation.active?'Сделать неактуальным':'Сделать актуальным'" @click="toggleRelation(relation)">{{relation.active?'●':'○'}}</button>
                 <button type="button" class="icon-action" title="Редактировать" @click="relation.editing=true">✎</button>
                 <button type="button" class="icon-action danger" title="Удалить" @click="deleteRelation(relation)">⌫</button>
@@ -419,6 +490,14 @@ watch(() => [props.open, props.contactId, props.initialClientId, props.initialPa
         </div>
       </section>
 
+      <div v-if="isLink" class="contact-link-section">
+        <label class="contact-link-label" for="contact-link-position">Должность {{linkPartnerId?'у партнёра':'у клиента'}}</label>
+        <input id="contact-link-position" v-model="linkPosition" maxlength="255" placeholder="Укажите должность (необязательно)" />
+        <div class="contact-actions">
+          <UiButton type="button" :disabled="linking || loading || !activeContactId" @click="linkExistingContact">{{ linking?'Привязываю…':'Привязать контакт' }}</UiButton>
+          <UiButton type="button" variant="secondary" :disabled="linking" @click="emit('close')">Отмена</UiButton>
+        </div>
+      </div>
       <div v-if="isCreate" class="contact-actions">
         <UiButton type="button" :disabled="creating || !nameDraft.trim()" @click="createContact">{{ creating ? 'Создаю…' : 'Создать контакт' }}</UiButton>
       </div>
@@ -429,4 +508,9 @@ watch(() => [props.open, props.contactId, props.initialClientId, props.initialPa
 <style scoped>
 .contact-title{display:flex;align-items:center;gap:5px;min-width:0}.contact-title strong{font-size:var(--irlix-font-size-body);line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.title-input{width:min(380px,55vw);height:30px;padding:4px 8px;border:1px solid var(--irlix-color-border);border-radius:7px;font:inherit;font-weight:600}.header-icon,.icon-action{width:25px;height:25px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--irlix-color-text-muted);font:inherit;font-weight:700;cursor:pointer;display:inline-grid;place-items:center}.header-icon:hover,.icon-action:hover{background:var(--irlix-color-surface-muted);color:var(--irlix-color-text)}.header-icon.save,.icon-action.save{color:var(--irlix-color-primary-text)}.contact-card{display:grid;gap:14px;font-size:var(--irlix-font-size-table)}.contact-error{display:flex;justify-content:space-between;gap:8px;padding:7px 9px;margin-bottom:8px;border-radius:7px;background:var(--irlix-color-surface-muted);color:var(--irlix-status-danger-text);font-size:var(--irlix-font-size-caption)}.contact-error button{border:0;background:transparent;color:inherit}.contact-loading,.empty-state{padding:10px 0;color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption)}.contact-section{display:grid;gap:6px}.section-title{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:30px}.contact-section h3{margin:0;font-size:var(--irlix-font-size-table)}.section-add{border:0;background:transparent;color:var(--irlix-color-primary-text);font:inherit;font-size:var(--irlix-font-size-caption);font-weight:700;cursor:pointer;padding:4px 6px;border-radius:6px}.section-add:hover{background:var(--irlix-color-surface-muted)}.entity-list{display:grid;border-top:1px solid var(--irlix-color-border)}.entity-row,.method-row{display:grid;grid-template-columns:minmax(150px,.75fr) minmax(180px,1fr) auto;gap:8px;align-items:center;min-height:42px;padding:3px 0;border-bottom:1px solid var(--irlix-color-border)}.entity-row.inactive,.method-row.inactive{opacity:.48}.entity-row input,.method-row input,.add-row>input{min-height:31px;padding:5px 8px;border:1px solid var(--irlix-color-border);border-radius:7px;font:inherit;font-size:var(--irlix-font-size-caption)}.method-row strong,.entity-row strong{font-size:var(--irlix-font-size-caption)}.method-row>span,.entity-row>span{font-size:var(--irlix-font-size-caption)}.preferred-indicator{display:inline-block;margin-right:5px;color:var(--irlix-color-primary-text);font-size:var(--irlix-font-size-caption);font-weight:800}.row-actions{display:flex;justify-content:flex-end;gap:2px;white-space:nowrap}.icon-action.preferred{color:var(--irlix-color-text-muted)}.icon-action.preferred.active{color:var(--irlix-color-primary-text)}.icon-action.state{color:var(--irlix-color-text-muted)}.icon-action.state.active{color:var(--irlix-color-primary-text)}.icon-action.danger{color:var(--irlix-color-text-muted)}.icon-action.danger:hover{color:var(--irlix-status-danger-text);background:var(--irlix-color-surface-muted)}.add-row{display:grid;grid-template-columns:minmax(180px,.85fr) minmax(180px,1fr) auto auto;gap:7px;align-items:center;padding:7px;border:1px solid var(--irlix-color-border);border-radius:8px;background:var(--irlix-color-surface-muted)}.methods-add{grid-template-columns:minmax(150px,.65fr) minmax(220px,1fr) auto auto}.text-cancel{border:0;background:transparent;color:var(--irlix-color-text-muted);font:inherit;font-size:var(--irlix-font-size-caption);cursor:pointer}.contact-actions{display:flex;justify-content:flex-end;padding-top:2px}@media(max-width:760px){.entity-row,.method-row,.add-row,.methods-add{grid-template-columns:1fr}.row-actions{justify-content:flex-start}.title-input{width:55vw}}
  .method-value{display:inline-flex;align-items:center;gap:6px;min-width:0;overflow-wrap:anywhere}.copy-method{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;min-width:24px;border:0;background:transparent;color:var(--irlix-color-text-muted);cursor:pointer;font:inherit}.copy-method:hover{color:var(--irlix-color-primary-text)}.contact-card .icon-action{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;line-height:1}
+.contact-link-select{width:min(410px,60vw)}
+.contact-link-section{display:grid;gap:8px;padding:12px 0;border-top:1px solid var(--irlix-color-border)}
+.contact-link-label{font-size:12px;color:var(--irlix-color-text-muted)}
+.contact-link-section input{height:32px;padding:5px 8px;border:1px solid var(--irlix-color-border);border-radius:7px;background:var(--irlix-color-surface);color:var(--irlix-color-text);font-size:14px}
+.contact-link-section .contact-actions{gap:8px}
 </style>

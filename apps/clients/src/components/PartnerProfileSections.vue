@@ -18,7 +18,6 @@ const tabs = [
 ];
 const data = reactive({partner:null,history:[],contacts:[],legal_entities:[],contacts_available:false});
 const loading = ref(false), saving = ref(false), error = ref('');
-const contactOptions = ref([]), lookup = ref(''), existing = ref(''), contactPosition = ref('');
 const contactOpen = ref(false);
 const editingRelation = ref(null), relationPosition = ref(''), contactCardId = ref(null);
 const legalOpen = ref(false), legalEditing = ref(''), legalOriginal = ref('');
@@ -32,7 +31,9 @@ const legalFields = [
  {key:'address',label:'Адрес'},
 ];
 const legal = reactive({id:null,name:'',inn:'',full_name:'',ogrn:'',kpp:'',registration_date:'',okpo:'',oktmo:'',address:''});
-const contactSelectOptions = computed(()=>contactOptions.value.map(row=>({value:String(row.id),label:row.full_name})));
+// Each tab receives a share of the full width proportional to its label;
+ // icons contribute roughly the same space to every tab.
+const tabColumns = tabs.map(item => `${[...item.label].length + 4}fr`).join(' ');
 async function api(url, options={}) {
  const response=await fetch(url,{...options,headers:{Accept:'application/json','Content-Type':'application/json',...(options.headers||{})}});
  const payload=await response.json().catch(()=>({}));
@@ -55,18 +56,6 @@ async function mutate(path,method,payload) {
 }
 async function addNote(text) {
  await mutate('/api/clients/partners/'+props.partnerId+'/history','POST',{text});
-}
-async function searchContacts() {
- error.value='';
- try{contactOptions.value=await api('/api/clients/partners/contact-options?q='+encodeURIComponent(lookup.value.trim()));}
- catch(e){error.value=e.message;}
-}
-async function linkContact(){
- const data={contact_id:Number(existing.value),position:contactPosition.value.trim()||null};
- if(!data.contact_id)return;
- if(await mutate('/api/clients/partners/'+props.partnerId+'/contacts','POST',data)){
-   contactOpen.value=false;existing.value='';contactPosition.value='';lookup.value='';
- }
 }
 function editRelation(row){editingRelation.value=row.id;relationPosition.value=row.position||'';}
 async function saveRelation(row,payload) {
@@ -93,7 +82,7 @@ watch(()=>props.partnerId,()=>{tab.value='about';contactOpen.value=false;contact
 
 <template>
  <section class="partner-subsections">
-  <UiTabs v-model="tab" :items="tabs" variant="card" class="partner-subsections__tabs"/>
+  <UiTabs v-model="tab" :items="tabs" variant="card" class="partner-subsections__tabs" :style="{ gridTemplateColumns:tabColumns }"/>
   <UiLoader v-if="loading" page label="Загрузка карточки партнёра"/>
   <p v-if="error" class="partner-subsections__error" role="alert">{{error}}</p>
   <main v-if="!loading" class="partner-subsections__body">
@@ -104,7 +93,7 @@ watch(()=>props.partnerId,()=>{tab.value='about';contactOpen.value=false;contact
   <section v-else-if="tab==='contacts'" class="partner-subsections__content">
    <div v-if="!data.contacts_available" class="partner-subsections__hint">Нет прав на просмотр контактных лиц.</div>
    <template v-else>
-    <div v-if="canManage && canManageContacts" class="partner-subsections__toolbar"><strong>Контакты</strong><span><UiButton compact variant="secondary" @click="contactOpen=true;searchContacts()">Привязать контакт</UiButton> <UiButton compact @click="contactCardId=0">Добавить</UiButton></span></div>
+    <div v-if="canManage && canManageContacts" class="partner-subsections__toolbar"><strong>Контакты</strong><span><UiButton compact variant="secondary" @click="contactOpen=true">Привязать контакт</UiButton> <UiButton compact @click="contactCardId=0">Добавить</UiButton></span></div>
     <table class="partner-subsections__table"><thead><tr><th>ФИО</th><th>Должность</th><th>Актуальность</th></tr></thead>
      <tbody>
       <tr v-for="row in data.contacts" :key="row.id">
@@ -161,23 +150,16 @@ watch(()=>props.partnerId,()=>{tab.value='about';contactOpen.value=false;contact
     <div v-if="!legal.id&&canManage" class="partner-subsections__actions"><UiButton :disabled="saving||!legal.name.trim()||!legal.inn.trim()||!legal.full_name.trim()" @click="saveLegal()">Добавить</UiButton><UiButton variant="secondary" @click="cancelLegal">Отмена</UiButton></div>
    </div>
   </UiDrawer>
-  <UiDrawer :open="contactOpen" title="Привязать контакт" width="520px" :z-index="1300" @close="contactOpen=false">
-   <div class="partner-subsections__add">
-    <p v-if="error" class="partner-subsections__error" role="alert">{{error}}</p>
-    <div class="partner-subsections__row"><input v-model="lookup" placeholder="Поиск контакта по ФИО" aria-label="Найти контакт" @keyup.enter="searchContacts"><UiButton compact variant="secondary" @click="searchContacts">Найти</UiButton></div>
-    <UiSearchSelect v-model="existing" :options="contactSelectOptions" placeholder="Выберите контакт" search-placeholder="Контакт" />
-    <input v-model="contactPosition" aria-label="Должность у партнёра" placeholder="Должность у партнёра">
-    <div class="partner-subsections__actions"><UiButton compact :disabled="saving||!existing" @click="linkContact">Привязать</UiButton><UiButton compact variant="secondary" @click="contactOpen=false">Отмена</UiButton></div>
-   </div>
-  </UiDrawer>
+  <ContactPersonCard v-if="contactOpen" :open="true" :link-partner-id="partnerId"
+    :z-index="1300" @close="contactOpen=false" @changed="load" />
   <ContactPersonCard v-if="contactCardId!==null" :open="true" :contact-id="contactCardId || null" :initial-partner-id="contactCardId===0 ? partnerId : null" :clients="[]" :z-index="1300" @close="contactCardId=null" @changed="load"/>
  </section>
 </template>
 
 <style scoped>
 .partner-subsections{display:flex;flex-direction:column;flex:1;min-height:0}
-.partner-subsections__tabs{margin:0 10px;width:calc(100% - 20px);flex:none;display:flex;align-items:center;gap:3px;overflow-x:auto}
-.partner-subsections__tabs :deep(.irlix-tab){flex:0 0 auto;padding-inline:16px}
+.partner-subsections__tabs{margin:0;width:100%;box-sizing:border-box;flex:none;display:grid;align-items:stretch;gap:3px;min-width:0;overflow:visible}
+.partner-subsections__tabs :deep(.irlix-tab){width:100%;min-width:0;padding-inline:6px;justify-content:center}
 .partner-subsections__body{flex:1;min-height:0;overflow:auto;padding:16px 18px 28px}
 .partner-subsections__about{min-height:0}
 .partner-subsections__history{display:flex;flex-direction:column;gap:12px;min-height:330px;height:100%}
