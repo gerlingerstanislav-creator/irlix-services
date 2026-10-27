@@ -7,7 +7,7 @@ import { api } from './api';
 import { clientPeriodApproved } from './approval-state.js';
 import { buildManagementGroups } from './management-grouping.js';
 import { buildConnectionPeriodLabels } from './management-connection-periods.js';
-import { resolveSectionAccess } from './section-access.js';
+import { chooseTimesheetsLanding, resolveSectionAccess } from './section-access.js';
 
 const initialParams = new URLSearchParams(window.location.search);
 const route = useRoute();
@@ -73,8 +73,13 @@ const menuItems = computed(() => [
   { id: 'analytics', icon: 'chart', label: 'Коммерческая загрузка' },
 ].filter(item => item.id === 'mine' ? can('timesheets.mine.view') : can(`timesheets.${item.id}.view`)));
 const bottomItems = computed(() => can('timesheets.audit.view') ? [{ id: 'audit', icon: 'audit', label: 'История действий' }] : []);
-const sectionAllowed = computed(() => [...menuItems.value, ...bottomItems.value].some(item => item.id === section.value));
-const pageAccess = computed(() => resolveSectionAccess(section.value, permissionsPhase.value, sectionAllowed.value));
+const entryDestination = computed(() => chooseTimesheetsLanding(contourPermissions.value));
+const sectionAllowed = computed(() => section.value === 'entry'
+  ? !!entryDestination.value
+  : [...menuItems.value, ...bottomItems.value].some(item => item.id === section.value));
+const pageAccess = computed(() => section.value === 'entry' && permissionsPhase.value === 'ready' && sectionAllowed.value
+  ? 'loading' // Keep the entry placeholder until router.replace resolves.
+  : resolveSectionAccess(section.value, permissionsPhase.value, sectionAllowed.value));
 const pageLoading = computed(() => pageAccess.value === 'loading' || (pageAccess.value === 'allowed' && loading.value));
 const absenceLabels = {
   paid_vacation: 'Оплачиваемый отпуск',
@@ -233,6 +238,12 @@ const loadPermissions = async () => {
     const response = await api('/api/clients/permissions/me');
     contourPermissions.value = response.data?.permissions || {};
     permissionsPhase.value = 'ready';
+    if (route.name === 'entry') {
+      // Every service launcher links to /timesheets/. Resolve that URL using
+      // actual section grants; retain month, client and employee filters.
+      if (entryDestination.value) await router.replace({ name: entryDestination.value, query: { ...route.query }, hash: route.hash });
+      return; // The route watcher loads the selected section exactly once.
+    }
     if (sectionAllowed.value) await refresh();
   } catch (e) {
     permissionsPhase.value = 'error';
@@ -878,7 +889,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
           <UiPeriodPicker v-if="section !== 'audit'" v-model="month" />
         </template>
       </UiAppTopbar>
-      <UiErrorState v-if="pageAccess === 'not-found'" :status="404" back-href="/timesheets/mine/" back-label="Мои таймшиты" />
+      <UiErrorState v-if="pageAccess === 'not-found'" :status="404" back-href="/timesheets/" back-label="Таймшиты" />
       <UiErrorState v-else-if="pageAccess === 'error'" :status="503" description="Не удалось проверить права доступа. Повторите попытку." retryable @retry="loadPermissions" />
       <UiErrorState v-else-if="pageAccess === 'forbidden'" :status="403" />
       <div v-if="error" class="toast error">{{ error }}</div>

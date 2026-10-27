@@ -16,8 +16,11 @@ test('Timesheets canonical routes remain independent and unknown paths stay 404'
 test('Legacy partner links redirect to unified Management with filters and hash intact', () => {
   const to = { query: { month:'2026-10', client_id:'31', employee_id:'9' }, hash:'#day' };
   assert.deepEqual(redirect('/partners/')(to), { name:'management', query:to.query, hash:'#day' });
-  assert.deepEqual(redirect('/')({query:{...to.query,section:'partners'},hash:to.hash}),{
+  const entry = named.entry;
+  assert.equal(entry.path, '/');
+  assert.equal(entry.beforeEnter({query:to.query,hash:to.hash}),true);
+  assert.deepEqual(entry.beforeEnter({query:{...to.query,section:'partners'},hash:to.hash}),{
     name:'management',query:to.query,hash:to.hash
   });
-  assert.equal(redirect('/')({query:{section:'missing'},hash:''}).name,'not-found');
+  assert.equal(entry.beforeEnter({query:{section:'missing'},hash:''}).name,'not-found');
 });
