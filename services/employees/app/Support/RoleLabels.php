@@ -16,16 +16,28 @@ final class RoleLabels
         $byId = [];
         foreach ($departments as $department) $byId[(int) $department->id] = $department;
         $own = $byId[(int) ($employee->department_id ?? 0)] ?? null;
-        if ($own && self::valid((string) ($own->alias ?? ''))) $labels[] = (string) $own->alias;
+        $functional = self::functionalClientRoles($employee, $departments);
+        // Legacy client Accounting may have the alias "accounting". Never
+        // publish that FINANCE label when it denotes account management.
+        if ($own && self::valid((string) ($own->alias ?? ''))
+            && !((string) $own->alias === 'accounting' && in_array('account-manager', $functional, true))) {
+            $labels[] = (string) $own->alias;
+        }
 
         foreach ($departments as $department) {
             $alias = (string) ($department->alias ?? '');
             if ((int) ($department->manager_id ?? 0) !== (int) $employee->id || !self::valid($alias)) continue;
+            if ($alias === 'accounting' && in_array('account-manager',
+                self::functionalClientRoles((object) ['department_id' => $department->id], $departments), true)) {
+                $labels[] = 'account-management-head';
+                continue;
+            }
             $labels[] = $alias;
             $labels[] = $alias.'-head';
         }
-
-        $labels = array_values(array_unique($labels));
+        // Functional client roles are DERIVED from department ancestry,
+        // unlike organizational JWT labels which remain direct-only.
+        $labels = array_values(array_unique([...$labels, ...$functional]));
         sort($labels, SORT_STRING);
         return $labels;
     }
@@ -54,6 +66,35 @@ final class RoleLabels
             $id = (int) ($department->parent_id ?? 0);
         }
         return false;
+    }
+
+    /** Derive matrix roles without inheriting every organizational ancestor. */
+    public static function functionalClientRoles(?object $employee, array $departments): array
+    {
+        $id = (int) ($employee->department_id ?? 0);
+        if ($id <= 0) return [];
+        $byId = [];
+        foreach ($departments as $department) $byId[(int) $department->id] = $department;
+        $chain = [];
+        $visited = [];
+        while ($id > 0 && isset($byId[$id]) && !isset($visited[$id])) {
+            $visited[$id] = true;
+            $chain[] = $byId[$id];
+            $id = (int) ($byId[$id]->parent_id ?? 0);
+        }
+        $aliases = array_map(static fn ($department) => (string) ($department->alias ?? ''), $chain);
+        $names = array_map(static fn ($department) => mb_strtolower(trim((string) ($department->name ?? ''))), $chain);
+        $inClientService = in_array('client-service', $aliases, true)
+            || in_array('client service', $names, true)
+            || in_array('клиентская служба', $names, true);
+        $accounting = in_array('account-management', $aliases, true)
+            || ($inClientService && count(array_intersect($names, ['accounting', 'аккаунтинг'])) > 0);
+        $sales = in_array('sales', $aliases, true)
+            || ($inClientService && count(array_intersect($names, ['sales', 'продажи'])) > 0);
+        return array_values(array_filter([
+            $accounting ? 'account-manager' : null,
+            $sales ? 'sales-manager' : null,
+        ]));
     }
 
     private static function valid(string $alias): bool
