@@ -22,6 +22,21 @@ $check($roles(200,3,['personnel-officer']), ['account-management','account-manag
 $check($roles(100,1), ['irlix','irlix-head']);
 $check($roles(101,2,['system-admin','system-admin']), ['accounting','system-admin']);
 $check($roles(0,4), ['sales','sales-manager']);
+// A Backend employee inherits configurable baseline permissions from
+// Development and Irlix, but NO parent manager/JWT role.
+$engineering = [
+    (object)['id'=>20,'name'=>'Irlix','alias'=>'irlix','parent_id'=>null,'manager_id'=>null],
+    (object)['id'=>21,'name'=>'Development','alias'=>'development','parent_id'=>20,'manager_id'=>901],
+    (object)['id'=>22,'name'=>'Backend','alias'=>'backend','parent_id'=>21,'manager_id'=>null],
+];
+$engineer = (object)['id'=>900,'department_id'=>22];
+$check(RoleLabels::resolve($engineer,$engineering), ['backend']);
+$check(RoleLabels::ancestorDepartmentRoles($engineer,$engineering), ['development','irlix']);
+$check(RoleLabels::ancestorDepartmentRoles((object)['department_id'=>21],$engineering), ['irlix']);
+$check(RoleLabels::ancestorDepartmentRoles((object)['department_id'=>999],$engineering), []);
+$engineering[0]->parent_id = 22;
+$check(RoleLabels::ancestorDepartmentRoles($engineer,$engineering), ['development','irlix']); // cycle-safe
+$engineering[0]->parent_id = null;
 $unsafe = [(object) ['id'=>5,'alias'=>'platform-admin','parent_id'=>null,'manager_id'=>501],
     (object) ['id'=>6,'alias'=>'accounting-head','parent_id'=>null,'manager_id'=>501],
     (object) ['id'=>7,'alias'=>'system-admin','parent_id'=>null,'manager_id'=>501]];
@@ -72,6 +87,8 @@ $clientTree[1]->parent_id = 14;
 $check(RoleLabels::belongsToClientContour((object)['department_id'=>13], $clientTree), false);
 $clientTree[1]->parent_id = 11;
 
+$check(RoleLabels::ancestorDepartmentRoles((object)['department_id'=>13], $clientTree), ['account-management']);
+$check(RoleLabels::ancestorDepartmentRoles((object)['department_id'=>15], $clientTree), ['finance']);
 $check(RoleLabels::functionalClientRoles((object)['department_id'=>13], $clientTree), ['account-manager']);
 $check(RoleLabels::resolve((object)['id'=>502,'department_id'=>13], $clientTree),
     ['account-manager']);
