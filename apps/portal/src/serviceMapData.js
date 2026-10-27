@@ -29,6 +29,8 @@ export const links = [
  // System hosts monitoring, map and embedded migration console; no standalone /migration/ UI.
  ['system','employees-api'],['system','platform-core'],['system','migration-api'],
  ['design-system','employees-api'],
+ // Every authenticated frontend can submit a report to Platform Core.
+ ...['dashboard','employees','vacations','clients','timesheets','specialists','equipment','finance','recruitment','cv-converter','design-system','brandbook'].map(id=>[id,'platform-core']),
  ['employees','employees-api'],['vacations','vacations-api'],
  ['clients','clients-api'],['timesheets','timesheets-api'],['specialists','specialists-api'],
  ['equipment','equipment-api'],['finance','finance-api'],['recruitment','recruitment-api'],['cv-converter','cv-api'],
@@ -74,7 +76,7 @@ export const serviceDescriptions = {
  system:'Административная Система: ресурсный монитор, интерактивная карта, единый контроль переноса (/system/migration/control/).',
  'design-system':'Внутренняя витрина визуальных компонентов: Keycloak/Employees SSO, серверная авторизация, меню по эффективным правам. Примеры синтетические.',
  brandbook:'Закрытый цифровой брендбук IRLIX: просмотр только для назначенного топ-менеджмента и администратора платформы; серверная проверка через Employees/Keycloak.',
- 'platform-core':'Платформенные API, общие настройки и инфраструктурные функции.',
+ 'platform-core':'Платформенные API, единые репорты об ошибках и инфраструктурные функции.',
  'employees-api':'API сотрудников, оргструктуры, ролей и организационного доступа.',
  'employees-auth-sync':'Фоновая синхронизация организационных и специальных Keycloak-ролей из Employees.',
  'vacations-api':'API отсутствий и процессов их согласования.',
