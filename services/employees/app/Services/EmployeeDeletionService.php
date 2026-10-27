@@ -32,9 +32,11 @@ final class EmployeeDeletionService
             'employee_name' => $employee->full_name ?: null,
         ];
         $targets = [
-            'vacations' => rtrim((string) env('VACATIONS_INTERNAL_URL', 'http://vacations:8000'), '/'),
-            'clients' => rtrim((string) env('CLIENTS_INTERNAL_URL', 'http://clients:8000'), '/'),
+            // Timesheets must resolve ownership against Clients before Clients removes the membership.
+            // Keep the financially protected services first, before unrelated data is erased.
             'timesheets' => rtrim((string) env('TIMESHEETS_INTERNAL_URL', 'http://timesheets:8000'), '/'),
+            'clients' => rtrim((string) env('CLIENTS_INTERNAL_URL', 'http://clients:8000'), '/'),
+            'vacations' => rtrim((string) env('VACATIONS_INTERNAL_URL', 'http://vacations:8000'), '/'),
             'specialists' => rtrim((string) env('SPECIALISTS_INTERNAL_URL', 'http://specialists:8000'), '/'),
             'recruitment' => rtrim((string) env('RECRUITMENT_INTERNAL_URL', 'http://recruitment:8000'), '/'),
         ];

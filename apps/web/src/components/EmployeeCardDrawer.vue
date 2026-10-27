@@ -63,7 +63,12 @@ const request = async (url, options = {}) => {
   const response = await fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
   if (response.status === 204) return null;
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`);
+  if (!response.ok) {
+    const failure = new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`);
+    failure.service = typeof payload.service === 'string' ? payload.service : null;
+    failure.upstreamStatus = Number.isInteger(payload.status) ? payload.status : response.status;
+    throw failure;
+  }
   return payload;
 };
 const load = async () => {
@@ -177,7 +182,15 @@ const deleteEmployee = async () => {
   try {
     await request(`/api/employees/employees/${props.employeeId}`, { method: 'DELETE' });
     emit('updated'); emit('close');
-  } catch (e) { error.value = e.message; }
+  } catch (e) {
+    const serviceName = {
+      vacations: 'Vacations', timesheets: 'Timesheets', clients: 'Clients',
+      specialists: 'Specialists', recruitment: 'Recruitment',
+    }[e.service] || e.service;
+    error.value = serviceName
+      ? `Не удалось удалить сотрудника: ошибка очистки ${serviceName} (HTTP ${e.upstreamStatus}). ${e.message === 'Cross-service employee purge failed' ? 'Попробуйте повторить операцию; если ошибка повторится, передайте название сервиса администратору.' : e.message}`
+      : e.message;
+  }
   finally { deleting.value = false; }
 };
 const addSalary = async () => {
