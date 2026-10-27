@@ -91,6 +91,12 @@ final class ClientsOverviewPageService
         if ($section === 'clients') {
             $this->applyClientFilters($query, $filters);
         }
+        if ($section === 'reports' && isset($filters['year'])) {
+            // Include periods spanning the year boundary, not only ones starting in it.
+            $year = (int) $filters['year'];
+            $query->whereDate('period_start', '<=', sprintf('%04d-12-31', $year))
+                ->whereDate('period_end', '>=', sprintf('%04d-01-01', $year));
+        }
         if ($section === 'requests') {
             $this->applyRequestFilters($query, $filters);
         }

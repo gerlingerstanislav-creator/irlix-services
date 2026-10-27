@@ -18,6 +18,7 @@ import PartnersRegistry from './components/PartnersRegistry.vue';
 import SpecialistsAbsenceRoster from './components/SpecialistsAbsenceRoster.vue';
 import ClientMembersRegistry from './components/ClientMembersRegistry.vue';
 import ReportingPeriodsView from './components/ReportingPeriodsView.vue';
+import { fetchAllReportingYearPages } from './reportingYearPages.js';
 import CashFlowView from './components/CashFlowView.vue';
 import RequestsWorkflowView from './components/RequestsWorkflowView.vue';
 import RequestClientLogo from './components/RequestClientLogo.vue';
@@ -264,6 +265,18 @@ async function fetchOverviewPage(section, page, generation) {
   await nextTick();
   setupScrollObserver();
 }
+async function fetchReportingYear(generation, year) {
+  const periods = await fetchAllReportingYearPages(page => {
+    const params = sectionParams('reports', page);
+    params.set('year', String(year));
+    return api('/api/clients/overview?' + params);
+  }, () => generation === viewGeneration);
+  if (generation !== viewGeneration || periods === null) return;
+  overview.reportingPeriods = periods;
+  hasMore.value = false;
+  nextPage.value = 1;
+  totalRows.value = periods.length;
+}
 async function loadMore() {
   const section = sectionForView(view.value);
   if (!section || !hasMore.value || loading.value || loadingMore.value || moreError.value) return;
@@ -325,7 +338,11 @@ async function loadSection(preserveRows = false) {
     const section = sectionForView(view.value);
     if (!allowedSections.value.includes(view.value) && view.value !== 'attempt-funnel') return;
     const tasks = [];
-    if (section) tasks.push(fetchOverviewPage(section, 1, generation));
+    if (section === 'reports' && reportMode.value === 'gantt') {
+      tasks.push(fetchReportingYear(generation, Number(reportGanttYear.value)));
+    } else if (section) {
+      tasks.push(fetchOverviewPage(section, 1, generation));
+    }
     if (needsCatalog(view.value) && (!preserveRows || !catalogClients.value.length)) tasks.push(api('/api/clients/overview?section=catalog').then(result => {
       if (generation === viewGeneration) catalogClients.value = normalizeClients(result.data?.clients || []);
     }));
@@ -346,6 +363,9 @@ async function loadSection(preserveRows = false) {
   } catch (e) { if (generation === viewGeneration) error.value = e.message || String(e); }
   finally { if (generation === viewGeneration) { if (!preserveRows) loading.value = false; await nextTick(); setupScrollObserver(); } }
 }
+watch([reportMode, reportGanttYear], () => {
+  if (initialized.value && view.value === 'reports') { error.value=''; loadSection(); }
+});
 async function refreshCurrent() { error.value=''; await loadSection(); }
 function openLeadFromClient(lead) {
   const id = Number(typeof lead === 'object' ? lead?.id : lead);
