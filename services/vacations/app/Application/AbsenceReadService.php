@@ -133,6 +133,13 @@ final class AbsenceReadService
                             });
                         });
                 });
+            } elseif ($status === 'in_review') {
+                // The generic label is shown only when no current stage is
+                // derivable. Do not mix it with the named approval stages.
+                $query->where('status', 'in_review')->whereNotExists(function ($step) {
+                    $step->selectRaw('1')->from('absence_approvals as step')
+                        ->whereColumn('step.absence_id', 'absences.id')->where('step.status', 'pending');
+                });
             } else $query->where('status', $status);
         }
         return $this->rows($query->orderBy('starts_on')->orderBy('id'), true);
