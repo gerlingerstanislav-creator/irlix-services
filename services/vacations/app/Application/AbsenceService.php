@@ -8,6 +8,7 @@ use App\Models\AbsenceStatusHistory;
 use App\Models\AbsenceAuditLog;
 use App\Domain\Absence\AbsenceDayCalculator;
 use App\Domain\Absence\AbsenceStatus;
+use App\Domain\Absence\AbsenceStatusProjection;
 use App\Domain\Absence\AbsenceType;
 use App\Domain\Absence\AbsenceWorkflow;
 use Carbon\CarbonImmutable;
@@ -32,21 +33,21 @@ final class AbsenceService
             ->orderBy('id')
             ->get()
             ->map(fn ($item) => $item->getRawOriginal())
-            ->all();
+            ->pipe(fn ($items) => AbsenceStatusProjection::many($items->all()));
     }
 
     public function getOwn(int $absenceId, int $employeeId): array
     {
         $absence = Absence::query()->where('id', $absenceId)->where('employee_id', $employeeId)->first();
         if (!$absence) throw new DomainException('Отсутствие не найдено');
-        return $absence->getRawOriginal();
+        return AbsenceStatusProjection::one($absence->getRawOriginal());
     }
 
     public function get(int $absenceId): array
     {
         $absence = Absence::query()->where('id', $absenceId)->first();
         if (!$absence) throw new DomainException('Отсутствие не найдено');
-        return $absence->getRawOriginal();
+        return AbsenceStatusProjection::one($absence->getRawOriginal());
     }
 
     public function history(int $absenceId, int $employeeId): array
@@ -186,8 +187,9 @@ final class AbsenceService
             return DB::transaction(function () use ($absenceId, $employeeId, $actorSubject) {
                 $next = AbsenceApproval::query()->where('absence_id', $absenceId)->where('status', 'waiting')->orderBy('sequence')->first();
                 $status = $next ? AbsenceStatus::EmployeeReview->value : AbsenceStatus::Confirmed->value;
+                $lifecycle = $next ? 'in_review' : AbsenceStatus::Confirmed->value;
                 if ($next) AbsenceApproval::query()->where('absence_id', $absenceId)->where('sequence', $next->sequence)->where('status', 'waiting')->update(['status'=>'pending','updated_at'=>now()]);
-                Absence::query()->where('id', $absenceId)->update(['status'=>$status,'submitted_at'=>now(),'confirmed_at'=>$next ? null : now(),'updated_at'=>now()]);
+                Absence::query()->where('id', $absenceId)->update(['status'=>$lifecycle,'submitted_at'=>now(),'confirmed_at'=>$next ? null : now(),'updated_at'=>now()]);
                 $this->recordStatus($absenceId, AbsenceStatus::Planned->value, $status, $actorSubject, $employeeId, 'submitted');
                 $this->audit($absenceId, 'submitted', $actorSubject, $employeeId, null, $this->get($absenceId));
                 return $this->get($absenceId);
@@ -207,7 +209,7 @@ final class AbsenceService
 
         return DB::transaction(function () use ($absenceId, $employeeId, $actorSubject, $current, $target, $type, $hrApproverId, $managerApproverId) {
             Absence::query()->where('id', $absenceId)->update([
-                'status' => $target->value,
+                'status' => 'in_review',
                 'submitted_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -287,7 +289,11 @@ final class AbsenceService
             }
         });
 
-        return $query->orderBy('a.created_at')->get()->map(fn ($row) => $row->getRawOriginal())->all();
+        return $query->orderBy('a.created_at')->get()->map(function ($row) {
+            $data = $row->getRawOriginal();
+            if ($data['absence_status'] === 'in_review') $data['absence_status'] = $data['stage'];
+            return $data;
+        })->all();
     }
 
     public function approvalsFor(int $absenceId): array
@@ -341,7 +347,7 @@ final class AbsenceService
                     ->where('status', 'waiting')
                     ->update(['status' => 'pending', 'updated_at' => now()]);
                 Absence::query()->where('id', $approval->absence_id)->update([
-                    'status' => $next->stage,
+                    'status' => 'in_review',
                     'updated_at' => now(),
                 ]);
                 $to = $next->stage;
