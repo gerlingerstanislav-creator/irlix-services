@@ -161,8 +161,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.keyboard.press('Escape');
   // Wait for the preceding save-driven overview refresh and modal teardown.
   await page.waitForFunction(() => !document.querySelector('.entity-form') && !document.querySelector('.irlix-app-topbar__loading'));
-  const memberNav = page.getByRole('navigation',{name:'Навигация сервиса клиентов'}).getByRole('button',{name:'Подключения',exact:true});
-  await memberNav.click();
+  assert.equal(await nav.getByRole('button',{name:'Подключения',exact:true}).count(),0,'Connections are absent from the sidebar');
+  // Historical direct links still open the registry, even though the menu entry is gone.
+  await page.goto(base+'/clients/members/');
+  await page.waitForURL(url=>url.pathname==='/clients/members/');
   await page.locator('.cm-registry').waitFor({timeout:8000});
   try { await page.getByRole('button',{name:'＋ Подключить специалиста',exact:true}).click({timeout:8000}); }
   catch(error) { console.error('Client member page diagnostic',{url:page.url(),body:(await page.locator('body').innerText()).slice(0,3500),errors}); throw error; }
