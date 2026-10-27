@@ -44,6 +44,7 @@ final class AbsenceWorkflow
     {
         return in_array($status, [
             AbsenceStatus::EmployeeReview,
+            AbsenceStatus::InReview,
             AbsenceStatus::HrReview,
             AbsenceStatus::AccountManagerReview,
             AbsenceStatus::ManagerReview,
