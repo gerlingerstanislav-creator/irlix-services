@@ -54,6 +54,13 @@ const loadWorkspace=async()=>{
   try{
     const payload=await api('/api/vacations/workspace');
     workspace.value=payload.data;
+    // A user may have Manage/Department access but no "My vacations"
+    // grant. Do not open a forbidden default section after login.
+    if (!availableSections.value.has(section.value)) {
+      const first = menuItems.value[0]?.id
+        || (visible.value.history ? 'history' : null);
+      if (first && router.hasRoute(first)) await router.replace({name:first});
+    }
     const attentionId=Number(new URLSearchParams(location.search).get('absence')||0);
     if(Number.isSafeInteger(attentionId)&&attentionId>0)await loadDetail(attentionId);
   }catch(e){notifyError(e.message)}
