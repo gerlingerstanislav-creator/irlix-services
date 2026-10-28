@@ -75,6 +75,8 @@ jobs:
         run: node --test apps/timesheets/tests/*.test.mjs
       - name: Recruitment authorization regression tests
         run: node --test apps/recruitment/tests/*.test.mjs
+      - name: Vacations permission and navigation regression tests
+        run: node --test apps/vacations/tests/*.test.mjs
       - name: Planner regression tests
         run: python3 -m unittest discover -s scripts/ci/tests -v
       - id: detect
