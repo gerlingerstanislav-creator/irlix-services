@@ -1,5 +1,14 @@
 <?php
 
+// Load Laravel helpers before exercising the real app services. An isolated
+// PHP script does not load env() or the request/container helpers by itself.
+require __DIR__.'/../vendor/autoload.php';
+
+set_exception_handler(static function (\Throwable $error): void {
+    fwrite(STDERR, 'Vacations role authorization FAIL: '.$error->getMessage()."\n");
+    exit(1);
+});
+
 require __DIR__.'/../app/Services/VacationsRoleAuthorization.php';
 use App\Services\VacationsRoleAuthorization as Authz;
 require __DIR__.'/../app/Services/VacationsObjectScope.php';
