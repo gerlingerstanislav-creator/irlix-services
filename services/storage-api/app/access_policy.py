@@ -82,6 +82,9 @@ def can_access(principal: Principal, object_id: str, permission: Permission,
         node = objects[current]
         chain.append(node)
         current = node.parent_id
+    if current is not None:
+        # A hierarchy deeper than 32 levels is not fully validated.
+        return False
     target = chain[0]
     if any(node.owner_employee_id != target.owner_employee_id for node in chain):
         return False
