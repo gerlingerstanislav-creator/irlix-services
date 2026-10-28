@@ -43,7 +43,7 @@ class ReadinessProbeTests(unittest.TestCase):
         self.assertEqual(run.call_count, 2)
         args = run.call_args_list[0].args[0]
         self.assertEqual(args[:5], ["docker-compose", "-f", "docker-compose.storage.yml", "exec", "-T"])
-        self.assertEqual(args[5], "api")
+        self.assertEqual(args[5], "storage-api")
 
     def test_probe_uses_read_only_schema_existence_query(self):
         self.assertIn("to_regclass('storage.objects')", mod.CHECK_API)
