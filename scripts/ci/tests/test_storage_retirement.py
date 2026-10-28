@@ -38,6 +38,12 @@ class FilestashRetirementTests(unittest.TestCase):
         self.assertIn('sh scripts/storage/retire-filestash.sh', deploy)
         self.assertIn('[ "$service" = storage-drive ]', deploy)
         self.assertIn("http://127.0.0.1:8115/", script)
+        self.assertIn('while [ "$attempt" -le 30 ]', script)
+        self.assertIn('if [ "$storage_ready" != true ]; then', script)
+        self.assertIn('storage_ready=true', script)
+        self.assertLess(script.index("Storage Drive and API readiness confirmed."),
+                        script.index("docker ps -aq"))
+ 
         self.assertIn("http://127.0.0.1:8114/health", script)
         self.assertIn("label=com.docker.compose.service=storage-web", script)
         self.assertIn("storage_filestash_state", script)
