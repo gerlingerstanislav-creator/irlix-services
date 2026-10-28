@@ -74,6 +74,8 @@ final class VacationsRoleAuthorization
                 => 'vacations.mine.manage',
             $method === 'GET' && $path === 'api/department-roster'
                 => 'vacations.department.view',
+            $method === 'GET' && $path === 'api/calendar-absences'
+                => 'vacations.department.view',
             $method === 'POST' && $path === 'api/absences/for-employee'
                 => 'vacations.department.manage',
             $method === 'GET' && $path === 'api/registry'
@@ -94,7 +96,7 @@ final class VacationsRoleAuthorization
             $method === 'GET' && $path === 'api/history'
                 => 'vacations.history.view',
             $method === 'GET' && in_array($path, [
-                'api/calendar-absences','api/client-service-calendar','api/client-service-absence-alerts',
+                'api/client-service-calendar','api/client-service-absence-alerts',
             ], true) => 'vacations.client-calendar.view',
             default => null,
         };
