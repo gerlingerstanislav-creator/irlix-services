@@ -518,3 +518,115 @@ def copy_file(request: Request, object_id: UUID, data: CopyInput):
         _audit(repo, actor, oid, "file.copy.source")
         _audit(repo, actor, new_id, "file.copy.target")
     return {"id": new_id, "name": title, "kind": "file", "copied": True}
+
+
+
+def _register_version(repo, actor, object_id, key, size, digest):
+    if not isinstance(digest, str) or len(digest) != 64:
+        raise HTTPException(503, "Не подтверждена целостность версии")
+    repo.conn.execute(
+        "INSERT INTO storage.file_versions "
+        "(id,object_id,s3_key,created_by_employee_id,size_bytes,sha256) "
+        "VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (s3_key) DO NOTHING",
+        (str(uuid4()), object_id, key, actor.employee_id, size, digest)
+    )
+
+
+def _register_current_if_missing(repo, actor, object_id, key):
+    existing = repo.conn.execute(
+        "SELECT 1 FROM storage.file_versions WHERE s3_key=%s", (key,)
+    ).fetchone()
+    if existing:
+        return
+    try:
+        info = _s3().head_object(Bucket=_bucket(), Key=key)
+    except (ClientError, BotoCoreError):
+        raise HTTPException(503, "Текущая версия не найдена")
+    _register_version(repo, actor, object_id, key, info.get("ContentLength", 0),
+                      info.get("Metadata", {}).get("sha256"))
+
+
+@router.get("/objects/{object_id}/versions")
+def versions(request: Request, object_id: UUID):
+    actor = _identity(request)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        oid = _authorize(repo, actor, object_id, Permission.READ)
+        row = repo.object_summary(oid)
+        if not row or row[1] != "file":
+            raise HTTPException(404, "Файл не найден")
+        values = conn.execute(
+            "SELECT id::text,size_bytes,sha256,created_at,s3_key "
+            "FROM storage.file_versions WHERE object_id=%s "
+            "ORDER BY created_at DESC LIMIT 100", (oid,)
+        ).fetchall()
+        result = [{"id": vid, "size_bytes": size, "sha256": digest,
+                   "created_at": created.isoformat(), "current": key == row[5]}
+                  for vid, size, digest, created, key in values]
+    return {"versions": result}
+
+
+@router.post("/objects/{object_id}/versions")
+async def replace_version(request: Request, object_id: UUID, file: UploadFile = File(...)):
+    actor = _identity(request)
+    payload = await file.read(LIMIT + 1)
+    await file.close()
+    if len(payload) > LIMIT:
+        raise HTTPException(413, "Версия больше 10 МБ")
+    new_key = S3_ROOT + "versions/" + str(uuid4())
+    digest = hashlib.sha256(payload).hexdigest()
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        repo.lock()
+        oid = _authorize(repo, actor, object_id, Permission.EDIT)
+        old = repo.object_summary(oid)
+        if not old or old[1] != "file" or old[6] != "active" or not old[5].startswith(S3_ROOT):
+            raise HTTPException(404, "Файл не найден")
+        _register_current_if_missing(repo, actor, oid, old[5])
+        mime = mimetypes.guess_type(old[4])[0] or "application/octet-stream"
+        try:
+            _s3().put_object(Bucket=_bucket(), Key=new_key, Body=payload, ContentType=mime,
+                             Metadata={"sha256": digest})
+        except (BotoCoreError, ClientError):
+            raise HTTPException(503, "Не удалось сохранить версию")
+        _register_version(repo, actor, oid, new_key, len(payload), digest)
+        conn.execute(
+            "UPDATE storage.objects SET s3_key=%s,updated_at=now(),revision=revision+1 WHERE id=%s",
+            (new_key, oid)
+        )
+        _audit(repo, actor, oid, "version.replace")
+    return {"replaced": True, "id": oid}
+
+
+@router.post("/objects/{object_id}/versions/{version_id}/restore")
+def restore_version(request: Request, object_id: UUID, version_id: UUID):
+    actor = _identity(request)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        repo.lock()
+        oid = _authorize(repo, actor, object_id, Permission.EDIT)
+        old = repo.object_summary(oid)
+        if not old or old[1] != "file" or old[6] != "active":
+            raise HTTPException(404, "Файл не найден")
+        version = conn.execute(
+            "SELECT s3_key,size_bytes,sha256 FROM storage.file_versions "
+            "WHERE id=%s AND object_id=%s", (str(version_id), oid)
+        ).fetchone()
+        if not version:
+            raise HTTPException(404, "Версия не найдена")
+        _register_current_if_missing(repo, actor, oid, old[5])
+        new_key = S3_ROOT + "versions/" + str(uuid4())
+        if not version[0].startswith(S3_ROOT):
+            raise HTTPException(403, "Неверное пространство хранения")
+        try:
+            _s3().copy_object(Bucket=_bucket(), Key=new_key,
+                              CopySource={"Bucket": _bucket(), "Key": version[0]})
+        except (BotoCoreError, ClientError):
+            raise HTTPException(503, "Не удалось восстановить версию")
+        _register_version(repo, actor, oid, new_key, version[1], version[2])
+        conn.execute(
+            "UPDATE storage.objects SET s3_key=%s,updated_at=now(),revision=revision+1 WHERE id=%s",
+            (new_key, oid)
+        )
+        _audit(repo, actor, oid, "version.restore")
+    return {"restored": True, "id": oid}
