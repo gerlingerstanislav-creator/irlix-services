@@ -424,6 +424,46 @@ def folder_targets(request: Request):
     return {"entries": options}
 
 
+@router.get("/search")
+def search_objects(request: Request, q: str = Query(..., min_length=2, max_length=80)):
+    actor = _identity(request)
+    term = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        if actor.platform_admin:
+            rows = conn.execute(
+                "SELECT id::text,kind,owner_employee_id,parent_id::text,display_name "
+                "FROM storage.objects WHERE state='active' AND "
+                "display_name ILIKE %s ESCAPE '\\' ORDER BY display_name LIMIT 200", (term,)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "WITH RECURSIVE scope AS ("
+                " SELECT o.id,o.owner_employee_id,0 AS depth,ARRAY[o.id] AS seen "
+                " FROM storage.objects o WHERE o.owner_employee_id=%s OR EXISTS ("
+                " SELECT 1 FROM storage.grants g WHERE g.object_id=o.id "
+                " AND g.employee_id=%s AND g.revoked_at IS NULL)"
+                " UNION ALL "
+                " SELECT o.id,o.owner_employee_id,s.depth+1,s.seen||o.id "
+                " FROM storage.objects o JOIN scope s ON o.parent_id=s.id "
+                " WHERE o.owner_employee_id=s.owner_employee_id AND o.state='active'"
+                " AND s.depth<32 AND NOT o.id=ANY(s.seen)"
+                ") SELECT DISTINCT o.id::text,o.kind,o.owner_employee_id,"
+                "o.parent_id::text,o.display_name FROM storage.objects o "
+                "JOIN scope s ON s.id=o.id WHERE o.state='active' "
+                "AND o.display_name ILIKE %s ESCAPE '\\' ORDER BY o.display_name LIMIT 200",
+                (actor.employee_id, actor.employee_id, term)
+            ).fetchall()
+        result = []
+        for oid, kind, owner, parent, title in rows:
+            objects, grants = repo.load_objects(oid), repo.load_grants(oid)
+            if can_access(actor, oid, Permission.READ, objects, grants):
+                result.append({"id": oid, "kind": kind, "owner_employee_id": owner,
+                               "parent_id": parent, "name": title,
+                               "can_edit": can_access(actor, oid, Permission.EDIT, objects, grants)})
+    return {"entries": result}
+
+
 # P1: logical relocation never alters existing S3 object keys or file bytes.
 class MoveInput(BaseModel):
     parent_id: UUID | None = None
