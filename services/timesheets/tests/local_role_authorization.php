@@ -22,4 +22,16 @@ $check(!Authz::evaluate(['service:timesheets','scope:all'], $rows)['timesheets.m
     'Legacy service grants must not be imported');
 $check(Authz::evaluate(['platform-admin'], [])['timesheets.audit.view']['scope'] === 'all',
     'Platform admin override is required');
+$jwt = ['employee-id:54','org:irlix','org:account-management','head:account-management','special:personnel-officer'];
+$live = ['employee_id'=>54,'roles'=>['personnel-officer'],
+    'role_claims'=>['org:irlix','org:account-management','head:account-management','special:personnel-officer']];
+$check(Authz::currentIdentityMatches($jwt,$live),'Valid current identity was denied');
+$live['role_claims']=['org:irlix','org:account-management','special:personnel-officer'];
+$check(!Authz::currentIdentityMatches($jwt,$live),'Stale manager JWT role remained effective');
+$live['role_claims']=['org:irlix','org:account-management','head:account-management','special:personnel-officer'];
+$live['employee_id']=55;
+$check(!Authz::currentIdentityMatches($jwt,$live),'Mismatched actor was trusted');
+$live['employee_id']=54;
+$check(!Authz::currentIdentityMatches([...$jwt,'platform-admin'],$live),
+    'Revoked platform admin role was trusted');
 echo "Timesheets V2 local authorization: PASS\n";
