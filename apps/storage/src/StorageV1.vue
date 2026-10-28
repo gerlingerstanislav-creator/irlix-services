@@ -149,8 +149,8 @@ async function loadDirectory() {
   if (directoryOptions.value.length) return;
   try {
     const [peopleResponse, unitsResponse] = await Promise.all([
-      props.directoryFetch('/api/employees/employees?employment_status=' + encodeURIComponent('Трудоустроен')),
-      props.directoryFetch('/api/employees/departments'),
+      props.directoryFetch('/api/employees/storage-v1-directory'),
+      props.directoryFetch('/api/employees/storage-v1-departments'),
     ]);
     if (!peopleResponse.ok || !unitsResponse.ok) throw new Error('Каталог сотрудников недоступен');
     const people = (await peopleResponse.json()).data;
