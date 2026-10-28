@@ -391,6 +391,34 @@ def restore(request: Request, object_id: UUID):
     return {"restored": True}
 
 
+@router.get("/folders/targets")
+def folder_targets(request: Request):
+    actor = _identity(request)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        if actor.platform_admin:
+            rows = conn.execute(
+                "SELECT id::text,owner_employee_id,display_name,parent_id::text "
+                "FROM storage.objects WHERE kind='folder' AND state='active' "
+                "ORDER BY display_name LIMIT 400"
+            ).fetchall()
+        else:
+            # Include descendants of shared folders, but never trust this query
+            # alone: each candidate still passes full ancestor ACL validation.
+            rows = conn.execute(
+                "SELECT id::text,owner_employee_id,display_name,parent_id::text "
+                "FROM storage.objects WHERE kind='folder' AND state='active' "
+                "ORDER BY display_name LIMIT 400"
+            ).fetchall()
+        options = [
+            {"id": oid, "owner_employee_id": owner, "name": label, "parent_id": parent}
+            for oid, owner, label, parent in rows
+            if can_access(actor, oid, Permission.UPLOAD,
+                          repo.load_objects(oid), repo.load_grants(oid))
+        ]
+    return {"entries": options}
+
+
 # P1: logical relocation never alters existing S3 object keys or file bytes.
 class MoveInput(BaseModel):
     parent_id: UUID | None = None
