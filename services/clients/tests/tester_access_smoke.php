@@ -87,6 +87,33 @@ namespace {
         ]) === ['sales', 'account-management-head'],
         'Finance accountant leaked into Clients account-head permission matrix'
     );
+    $v2Departments = [
+        ['id'=>1,'alias'=>'irlix','parent_id'=>null,'manager_id'=>null],
+        ['id'=>2,'alias'=>'client-service','parent_id'=>1,'manager_id'=>null],
+        ['id'=>3,'alias'=>'accounting','parent_id'=>2,'manager_id'=>77],
+        ['id'=>4,'alias'=>'finance','parent_id'=>1,'manager_id'=>null],
+        ['id'=>5,'alias'=>'accounting','parent_id'=>4,'manager_id'=>88],
+    ];
+    $identityLabels = ['org:irlix','org:client-service','org:account-management',
+        'head:account-management','head:accounting','special:personnel-officer'];
+    $asAccountHead = \App\Support\ClientContourAccess::currentIdentityLabels(
+        $identityLabels, 77, $v2Departments, [['id'=>77,'department_id'=>3]]);
+    $check($asAccountHead === ['org:irlix','org:client-service','org:account-management',
+        'head:account-management','special:personnel-officer'],
+        'V2 account-management leaked Finance head authority or lost client hierarchy');
+    $afterTransfer = \App\Support\ClientContourAccess::currentIdentityLabels(
+        $identityLabels, 77, $v2Departments, [['id'=>77,'department_id'=>5]]);
+    $check($afterTransfer === ['org:irlix','head:account-management','special:personnel-officer'],
+        'V2 org role was not revoked on a department change');
+    $v2Departments[2]['manager_id'] = null;
+    $afterRemoval = \App\Support\ClientContourAccess::currentIdentityLabels(
+        $identityLabels, 77, $v2Departments, [['id'=>77,'department_id'=>3]]);
+    $check(!in_array('head:account-management', $afterRemoval, true),
+        'V2 head role was not revoked on manager change');
+    $check(\App\Support\ClientContourAccess::currentIdentityLabels(
+        $identityLabels, 77, $v2Departments, []) === [],
+        'Missing verified employee was permitted to use signed organizational roles');
+
     $request = fn ($path, $method = 'GET', $data = []) => \Illuminate\Http\Request::create('/'.$path, $method, $data, [], [], ['HTTP_AUTHORIZATION' => 'Bearer synthetic-token']);
     foreach ([['platform-tester'], [' PLATFORM_TESTER ', 'sales-manager', 'department-manager']] as $roles) {
         $access = $resolver->resolve($request('api/permissions/me'));
