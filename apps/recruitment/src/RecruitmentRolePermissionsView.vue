@@ -6,7 +6,7 @@ const policy=ref({permissions:[],matrix:[],enabled:false});
 const loading=ref(false),error=ref(''),saving=ref('');
 const newRole=ref(''),addedRoles=ref([]);
 const roles=computed(()=>[...new Set([
-  'org:irlix','org:hr','head:backend','special:recruiter',...addedRoles.value,
+  'org:irlix','org:hr','head:backend','special:personnel-officer',...addedRoles.value,
   ...policy.value.matrix.map(row=>row.role),
 ])].filter(role=>role!=='special:platform-admin').sort());
 const roleValid=computed(()=>/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/.test(newRole.value.trim())
