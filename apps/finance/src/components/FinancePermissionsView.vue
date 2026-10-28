@@ -15,7 +15,7 @@ const roles = computed(() => [...new Set([
 ])].filter(role => role !== 'special:platform-admin').sort());
 const cell = (role, permission) => {
   const row = policy.value.matrix.find(item => item.role === role && item.permission === permission);
-  return row?.allowed && row?.scope === 'all' ? 'all' : 'none';
+  return !row ? 'inherit' : (row.allowed && row.scope === 'all' ? 'all' : 'deny');
 };
 const roleError = computed(() => newRole.value !== '' && !rolePattern.test(newRole.value.trim())
   ? 'Введите системный идентификатор org:…, head:… или special:…' : '');
@@ -39,9 +39,11 @@ async function update(role, permission, scope) {
   saving.value = role + ':' + permission;
   error.value = '';
   try {
-    policy.value = await api({ method: 'PUT', body: JSON.stringify({
-      role, permission, allowed: scope === 'all', scope,
-    }) });
+    policy.value = await api(scope === 'inherit'
+      ? { method: 'DELETE', body: JSON.stringify({ role, permission }) }
+      : { method: 'PUT', body: JSON.stringify({
+          role, permission, allowed: scope === 'all', scope: scope === 'all' ? 'all' : 'none',
+        }) });
   } catch (e) { error.value = e.message; }
   finally { saving.value = ''; }
 }
@@ -77,7 +79,8 @@ onMounted(load);
                 <select :value="cell(role, permission)" :disabled="!!saving"
                   :aria-label="role + ' — ' + permission"
                   @change="update(role, permission, $event.target.value)">
-                  <option value="none">Нет доступа</option>
+                  <option value="inherit">Не задано</option>
+                  <option value="deny">Запретить</option>
                   <option value="all">Все данные</option>
                 </select>
               </td>
