@@ -107,6 +107,8 @@ final class TimesheetsContext
     public function accessInfo(Request $request, array $employee, array $assignments, $departments): array
     {
         $jwtMode = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+        $localEnabled = $jwtMode
+            && filter_var(env('IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
         $assignedAccess = $jwtMode ? [] : $this->dependencyGet($request,
             'EMPLOYEES_URL', 'http://employees:8000/api', '/access/me');
         $roles = array_values(array_unique(array_merge(
@@ -115,12 +117,17 @@ final class TimesheetsContext
         )));
         $employeeId = (int) $employee['id'];
         $platformAdmin = in_array('platform-admin', $roles, true);
-        $managedDepartmentIds = $jwtMode
-            ? array_values(array_map(static fn ($role) => (int) substr($role, strlen('scope:department-')),
-                array_filter($roles, static fn ($role) =>
-                    is_string($role) && preg_match('/^scope:department-[1-9][0-9]*$/D', $role))))
-            : $departments->filter(static fn ($d) => (int) ($d['manager_id'] ?? 0) === $employeeId)
-                ->pluck('id')->map(static fn ($id) => (int) $id)->values()->all();
+        // V2 derives leadership scope from CURRENT trusted Employees manager
+        // relationships, never from the legacy global scope:* JWT grant.
+        $managedDepartmentIds = $localEnabled
+            ? $departments->filter(static fn ($d) => (int) ($d['manager_id'] ?? 0) === $employeeId)
+                ->pluck('id')->map(static fn ($id) => (int) $id)->values()->all()
+            : ($jwtMode
+                ? array_values(array_map(static fn ($role) => (int) substr($role, strlen('scope:department-')),
+                    array_filter($roles, static fn ($role) =>
+                        is_string($role) && preg_match('/^scope:department-[1-9][0-9]*$/D', $role))))
+                : $departments->filter(static fn ($d) => (int) ($d['manager_id'] ?? 0) === $employeeId)
+                    ->pluck('id')->map(static fn ($id) => (int) $id)->values()->all());
         do {
             $previousCount = count($managedDepartmentIds);
             foreach ($departments as $department) {
@@ -134,8 +141,6 @@ final class TimesheetsContext
         $isAccountManager = collect($assignments)->contains(static fn (array $a) =>
             (int) ($a['account_employee_id'] ?? 0) === $employeeId
             || in_array($employeeId, $a['delegated_account_employee_ids'] ?? [], true));
-        $localEnabled = $jwtMode
-            && filter_var(env('IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
         // Local policy uses the SAME verified roles and supports the existing
         // per-permission own/team/all object checks in this service. Clients
         // remains authoritative for connections, not Timesheets permissions.
