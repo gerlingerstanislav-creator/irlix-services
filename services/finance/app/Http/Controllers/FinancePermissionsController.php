@@ -29,6 +29,19 @@ final class FinancePermissionsController
         ]]);
     }
 
+    public function remove(Request $request, FinancePermissionManagementService $service)
+    {
+        $this->requireAdmin($request);
+        $input = $request->validate([
+            'role' => ['required', 'string', 'max:120', 'regex:/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D'],
+            'permission' => ['required', Rule::in(FinanceRoleAuthorization::PERMISSIONS)],
+        ]);
+        if ($input['role'] === 'special:platform-admin') abort(422, 'Platform superuser is immutable');
+        $service->remove($input['role'], $input['permission'],
+            (string) ($request->attributes->get('identity', [])['sub'] ?? 'unknown'));
+        return $this->index($request, $service);
+    }
+
     public function update(Request $request, FinancePermissionManagementService $service)
     {
         $this->requireAdmin($request);
