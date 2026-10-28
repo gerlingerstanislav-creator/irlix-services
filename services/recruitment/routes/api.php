@@ -76,6 +76,12 @@ Route::post('/candidates', function (Request $request) {
         'salary_expectation'=>['nullable','string','max:128'],'source'=>['nullable','string','max:128'],'recruiter_name'=>['nullable','string','max:255'],'email'=>['nullable','email','max:255'],
         'phone'=>['nullable','string','max:64'],'stack'=>['array'],'stack.*'=>['string','max:128'],
     ]);
+    $local = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+        && filter_var(env('IRLIX_RECRUITMENT_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+    $grants = (array) $request->attributes->get('recruitment_local_permissions', []);
+    if ($local && !\App\Services\RecruitmentRoleAuthorization::canWriteSensitiveField($grants, $data, 'salary_expectation')) {
+        abort(403, 'Additional permission required for this field');
+    }
     $id = DB::table('candidates')->insertGetId([
         'full_name'=>$data['full_name'],'role'=>$data['role']??null,'grade'=>$data['grade']??null,'city'=>$data['city']??null,'salary_expectation'=>$data['salary_expectation']??null,
         'source'=>$data['source']??null,'recruiter_name'=>$data['recruiter_name']??null,'email'=>$data['email']??null,'phone'=>$data['phone']??null,
