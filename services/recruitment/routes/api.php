@@ -87,7 +87,11 @@ Route::post('/candidates', function (Request $request) {
         'source'=>$data['source']??null,'recruiter_name'=>$data['recruiter_name']??null,'email'=>$data['email']??null,'phone'=>$data['phone']??null,
         'stack_json'=>json_encode($data['stack']??[], JSON_UNESCAPED_UNICODE),'created_at'=>now(),'updated_at'=>now(),
     ]);
-    return response()->json(['data'=>DB::table('candidates')->find($id)], 201);
+    $created = DB::table('candidates')->find($id);
+    if ($local && !($grants['recruitment.compensation.view'] ?? false)) {
+        $created->salary_expectation = null;
+    }
+    return response()->json(['data'=>$created], 201);
 });
 
 Route::post('/requests', function (Request $request) {
@@ -135,6 +139,12 @@ Route::post('/interviews/{id}/evaluations', function (Request $request, int $id)
 Route::post('/offers', function (Request $request) {
     $data = $request->validate(['hiring_process_id'=>['required','integer'],'role'=>['required','string','max:255'],'compensation'=>['nullable','string','max:255'],'planned_start_date'=>['nullable','date']]);
     abort_if(!DB::table('hiring_processes')->where('id',$data['hiring_process_id'])->exists(),422,'Hiring process not found');
+    $local = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+        && filter_var(env('IRLIX_RECRUITMENT_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+    $grants = (array) $request->attributes->get('recruitment_local_permissions', []);
+    if ($local && !\App\Services\RecruitmentRoleAuthorization::canWriteSensitiveField($grants, $data, 'compensation')) {
+        abort(403, 'Additional permission required for this field');
+    }
     $id = DB::table('offers')->insertGetId([...$data,'status'=>'draft','created_at'=>now(),'updated_at'=>now()]);
     return response()->json(['data'=>DB::table('offers')->find($id)],201);
 });
