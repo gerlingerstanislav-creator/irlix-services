@@ -294,6 +294,69 @@ async def upload(request: Request, file: UploadFile = File(...),
     return {"id": oid, "name": title, "kind": "file", "size": len(data)}
 
 
+@router.get("/preview/{object_id}")
+def preview_safe(request: Request, object_id: UUID):
+    """Authenticated bounded preview. HTML/SVG/Office macros are never inline."""
+    actor = _identity(request)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        oid = _authorize(repo, actor, object_id, Permission.READ)
+        row = repo.object_summary(oid)
+        if not row or row[1] != "file" or row[6] != "active" or not row[5]:
+            raise HTTPException(404, "Файл не найден")
+        title, key = row[4], row[5]
+        if not key.startswith(S3_ROOT):
+            raise HTTPException(404, "Файл не найден")
+        extension = os.path.splitext(title)[1].lower()
+        types = {
+            ".pdf": "application/pdf", ".png": "image/png",
+            ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".gif": "image/gif", ".webp": "image/webp",
+            ".txt": "text/plain", ".csv": "text/plain", ".log": "text/plain",
+            ".mp4": "video/mp4", ".webm": "video/webm",
+        }
+        mime = types.get(extension)
+        if mime is None:
+            raise HTTPException(415, "Просмотр формата пока недоступен")
+        _audit(repo, actor, oid, "file.preview")
+    try:
+        obj = _s3().get_object(Bucket=_bucket(), Key=key)
+        stream = obj["Body"]
+        try:
+            if int(obj.get("ContentLength", LIMIT + 1)) > LIMIT:
+                raise HTTPException(413, "Файл слишком большой для просмотра")
+            raw = stream.read(LIMIT + 1)
+        finally:
+            stream.close()
+    except (ClientError, BotoCoreError):
+        raise HTTPException(503, "Не удалось прочитать файл")
+    if len(raw) > LIMIT:
+        raise HTTPException(413, "Файл слишком большой для просмотра")
+    signatures = {
+        ".pdf": raw.startswith(b"%PDF-"),
+        ".png": raw.startswith(b"\\x89PNG\\r\\n\\x1a\\n"),
+        ".jpg": raw.startswith(b"\\xff\\xd8\\xff"),
+        ".jpeg": raw.startswith(b"\\xff\\xd8\\xff"),
+        ".gif": raw.startswith((b"GIF87a", b"GIF89a")),
+        ".webp": raw.startswith(b"RIFF") and raw[8:12] == b"WEBP",
+    }
+    if extension in signatures and not signatures[extension]:
+        raise HTTPException(415, "Несоответствие содержимого и расширения")
+    if extension in {".txt", ".csv", ".log"}:
+        try:
+            raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(415, "Текстовый предпросмотр требует UTF-8")
+        # Text is displayed as text/plain, not as active HTML or JS.
+        mime = "text/plain; charset=utf-8"
+    return Response(raw, media_type=mime, headers={
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": "inline",
+        "Content-Security-Policy": "sandbox; default-src 'none'; base-uri 'none'",
+    })
+
+
 @router.get("/files/{object_id}")
 def download(request: Request, object_id: UUID):
     actor = _identity(request)
