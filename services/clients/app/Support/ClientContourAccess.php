@@ -57,6 +57,11 @@ class ClientContourAccess
             && !str_starts_with($role, 'scope:')
             && !str_starts_with($role, 'employee-id:')
             && !str_starts_with($role, 'permission:')
+            // The new signed identity labels must not become implicit
+            // legacy Clients matrix grants before its own role cutover.
+            && !str_starts_with($role, 'org:')
+            && !str_starts_with($role, 'head:')
+            && !str_starts_with($role, 'special:')
             && !in_array($role, ['accounting', 'accounting-head',
                 'account-manager', 'sales-manager', 'department-manager', 'manager'], true)
         ));
