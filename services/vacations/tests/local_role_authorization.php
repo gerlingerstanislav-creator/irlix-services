@@ -31,6 +31,7 @@ $routes=[
     ['POST','api/absences','vacations.mine.manage'],
     ['POST','api/absences/for-employee','vacations.department.manage'],
     ['GET','api/department-roster','vacations.department.view'],
+    ['GET','api/calendar-absences','vacations.department.view'],
     ['GET','api/registry','vacations.manage.view'],
     ['GET','api/approvals','vacations.approvals.view'],
     ['POST','api/approvals/18/approve','vacations.approvals.manage'],
