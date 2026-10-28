@@ -6,6 +6,29 @@ use App\Models\FinanceRolePermission;
 
 final class FinanceRoleAuthorization
 {
+    /**
+     * Keycloak supplies signed roles; Employees verifies that each signed
+     * identity role is still assigned. A current role never grants access
+     * without also appearing in the signed bearer. No Employees permissions
+     * or global service grants are imported.
+     */
+    public static function currentIdentityMatches(array $signed, array $current): bool
+    {
+        $ids = array_values(array_filter($signed, static fn ($role) =>
+            is_string($role) && preg_match('/^employee-id:[1-9][0-9]*$/D', $role) === 1));
+        if (count($ids) !== 1 || (int) substr($ids[0], 12) !== (int) ($current['employee_id'] ?? 0)
+            || !is_array($current['roles'] ?? null)
+            || !is_array($current['role_claims'] ?? null)) return false;
+        $fresh = array_fill_keys((array) $current['role_claims'], true);
+        foreach ($signed as $role) {
+            if (!is_string($role)) continue;
+            if ($role === 'platform-admin' && !in_array('platform-admin', $current['roles'], true)) return false;
+            if (preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $role)
+                && !isset($fresh[$role])) return false;
+        }
+        return true;
+    }
+
     public const PERMISSIONS = [
         'finance.view',
         'finance.salary.view',
