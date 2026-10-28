@@ -322,14 +322,28 @@ final class WorkspaceController extends Controller
             $visibleEmployeeIds = [$actorId];
 
             $localGrants = $request->attributes->get('vacations_local_permissions');
-            $canReadGlobalHistory = $this->authorization->isElevated($access)
-                && (!is_array($localGrants)
-                    || (($localGrants['vacations.history.view']['allowed'] ?? false)
-                        && ($localGrants['vacations.history.view']['scope'] ?? 'none') === 'all'));
-            if ($canReadGlobalHistory) {
+            if (is_array($localGrants)) {
+                $scope = (string) ($localGrants['vacations.history.view']['scope'] ?? 'none');
+                if (in_array($scope, ['team', 'all'], true)) {
+                    $payload = $this->employees->vacationsDirectory($request);
+                    $people = array_values($payload['employees'] ?? []);
+                    $departments = array_values($payload['departments'] ?? []);
+                    $directory = array_values(array_filter($people,
+                        static fn (array $person): bool => $scope === 'all'
+                            || \App\Services\VacationsObjectScope::allows(
+                                'team', $actorId, (int) ($person['id'] ?? 0), $departments, $people)));
+                    $visibleEmployeeIds = array_values(array_unique(array_merge(
+                        [$actorId], array_map(static fn (array $person): int =>
+                            (int) ($person['id'] ?? 0), $directory)
+                    )));
+                }
+            } elseif ($this->authorization->isElevated($access)) {
                 $payload = $this->employees->vacationsDirectory($request);
                 $directory = array_values($payload['employees'] ?? []);
-                $visibleEmployeeIds = array_values(array_unique(array_merge([$actorId], array_map(fn ($row) => (int) $row['id'], $directory))));
+                $visibleEmployeeIds = array_values(array_unique(array_merge(
+                    [$actorId], array_map(static fn (array $row): int =>
+                        (int) ($row['id'] ?? 0), $directory)
+                )));
             }
             $directoryMap = [];
             foreach ($directory as $person) $directoryMap[(int) $person['id']] = $person;
