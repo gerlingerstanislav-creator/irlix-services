@@ -89,7 +89,7 @@ check_status "Brandbook gate endpoint internal-only" http://127.0.0.1/_brandbook
 # read anonymously. Never turn a data API 401/302 into a blanket 200 check.
 check_body "Anonymous Storage static SPA" http://127.0.0.1/storage/ storage-drive "IRLIX · Хранилище"
 check_status "Anonymous Storage V1 deep link SPA" http://127.0.0.1/storage/v1 200
-storage_asset="$(curl_stand -fsS http://127.0.0.1/storage/ | grep -o '/storage/assets/[^" ]*\\.js' | head -n1)"
+storage_asset="$(curl_stand -fsS http://127.0.0.1/storage/ | grep -o '/storage/assets/[^" ]*\.js' | head -n1)"
 [ -n "$storage_asset" ] || fail "Storage static JS asset was not found"
 check_status "Anonymous Storage static JS" "http://127.0.0.1$storage_asset" 200
 check_status "Anonymous Storage legacy API still admin gated" http://127.0.0.1/api/storage/items 302
