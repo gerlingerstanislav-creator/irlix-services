@@ -270,6 +270,7 @@ class StorageSessionGateTests(TestCase):
 
         class FakeResponse:
             status_code = 204
+            headers = {"X-Storage-Employee-ID": "1", "X-Storage-Platform-Admin": "1"}
 
         class FakeClient:
             async def __aenter__(self):
