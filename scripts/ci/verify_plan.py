@@ -217,6 +217,11 @@ def main():
     if not selected or selected.intersection({'employees', 'storage-s3', 'storage-drive', 'storage-api'}):
         subprocess.run([*sudo, "python3", str(ROOT / "scripts/storage/inspect-v1-readiness.py"), *compose],
                        check=True, cwd=ROOT, timeout=90)
+    # Record *effective running-container* AuthZ switches and aggregate matrix
+    # coverage on every production release, including script-only deploys.
+    # Read-only, no credentials/identity records in CI logs, no V2 activation.
+    subprocess.run([*sudo, "python3", str(ROOT / "scripts/authz/inspect_runtime.py"), *compose],
+                   check=True, cwd=ROOT, timeout=240)
     for service in sorted(selected):
         assert re.fullmatch(r"[a-z0-9][a-z0-9-]*", service)
         container = subprocess.check_output([*sudo, *compose, "ps", "-q", service], cwd=ROOT, text=True).strip()
