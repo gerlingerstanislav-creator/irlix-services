@@ -87,6 +87,22 @@ namespace {
         ]) === ['sales', 'account-management-head'],
         'Finance accountant leaked into Clients account-head permission matrix'
     );
+    $check(\App\Support\ClientContourAccess::currentSpecialsMatch(
+        ['employee-id:77','org:irlix','special:personnel-officer'],77,
+        ['employee_id'=>77,'roles'=>['personnel-officer']]),
+        'Live explicitly assigned special role unexpectedly denied');
+    $check(!\App\Support\ClientContourAccess::currentSpecialsMatch(
+        ['employee-id:77','special:personnel-officer'],77,
+        ['employee_id'=>77,'roles'=>[]]),
+        'Revoked personnel role persisted in Clients JWT');
+    $check(!\App\Support\ClientContourAccess::currentSpecialsMatch(
+        ['employee-id:77','platform-admin','scope:all'],77,
+        ['employee_id'=>77,'roles'=>[]]),
+        'Revoked Clients administrator kept stale global scope');
+    $check(!\App\Support\ClientContourAccess::currentSpecialsMatch(
+        ['employee-id:77','special:personnel-officer'],77,
+        ['employee_id'=>78,'roles'=>['personnel-officer']]),
+        'Another employee supplied authorization for actor');
     $v2Departments = [
         ['id'=>1,'alias'=>'irlix','parent_id'=>null,'manager_id'=>null],
         ['id'=>2,'alias'=>'client-service','parent_id'=>1,'manager_id'=>null],
