@@ -40,7 +40,9 @@ async function setPermission(role, permission, scope) {
   saving.value = `${role.key}:${permission.key}`; error.value = '';
   try {
     data.value = (await api('/api/clients/permissions', {
-      method: 'PUT', body: JSON.stringify({ role: role.key, permission: permission.key, allowed: scope !== 'none', scope }),
+      method: 'PUT', body: JSON.stringify({ role: role.key, permission: permission.key,
+        allowed: !['none', 'deny'].includes(scope), denied: scope === 'deny',
+        scope: scope === 'deny' ? 'none' : scope }),
     })).data;
   } catch (e) { error.value = e.message; }
   finally { saving.value = ''; }
@@ -53,7 +55,7 @@ onMounted(load);
     <div class="permissions-intro"><h2>Разрешения контура клиентов</h2><p>Настройки применяются к Clients, Timesheets и следующим сервисам этого контура. Администратор платформы всегда имеет полный доступ. Тестировщику платформы доступ к сервису клиентов закрыт.</p></div>
     <div v-if="error" class="error-banner">{{error}}<button type="button" @click="load">Повторить</button></div>
     <UiLoader v-if="loading" page label="Загрузка разрешений" />
-    <div v-else class="permissions-wrap"><table class="permissions-table"><thead><tr><th>Действие</th><th v-for="role in data.roles" :key="role.key">{{role.label}}</th></tr></thead><tbody><template v-for="group in permissionGroups" :key="group.key"><tr class="irlix-table-group"><th :colspan="data.roles.length+1">{{group.label}}</th></tr><tr v-for="permission in group.permissions" :key="permission.key"><td>{{permission.label}}</td><td v-for="role in data.roles" :key="role.key"><select :value="data.matrix?.[role.key]?.[permission.key]?.scope || 'none'" :disabled="!data.can_manage || role.locked || data.matrix?.[role.key]?.[permission.key]?.locked || saving===`${role.key}:${permission.key}`" @change="setPermission(role, permission, $event.target.value)"><option v-for="scope in data.scopes" :key="scope.key" :value="scope.key">{{scope.label}}</option></select></td></tr></template></tbody></table></div>
+    <div v-else class="permissions-wrap"><table class="permissions-table"><thead><tr><th>Действие</th><th v-for="role in data.roles" :key="role.key">{{role.label}}</th></tr></thead><tbody><template v-for="group in permissionGroups" :key="group.key"><tr class="irlix-table-group"><th :colspan="data.roles.length+1">{{group.label}}</th></tr><tr v-for="permission in group.permissions" :key="permission.key"><td>{{permission.label}}</td><td v-for="role in data.roles" :key="role.key"><select :value="data.matrix?.[role.key]?.[permission.key]?.denied ? 'deny' : (data.matrix?.[role.key]?.[permission.key]?.scope || 'none')" :disabled="!data.can_manage || role.locked || data.matrix?.[role.key]?.[permission.key]?.locked || saving===`${role.key}:${permission.key}`" @change="setPermission(role, permission, $event.target.value)"><option v-for="scope in data.scopes" :key="scope.key" :value="scope.key">{{scope.label}}</option><option value="deny">Явно запретить</option></select></td></tr></template></tbody></table></div>
   </section>
 </template>
 
