@@ -17,6 +17,33 @@ test('Drive supports real S3-backed browsing, upload, folders and previews', () 
   }
 });
 
+test('Shared IRLIX chrome and clean /storage/ SSO are used everywhere', () => {
+  const wrapper = text('../src/StorageApp.vue');
+  const entry = text('../src/main.js');
+  const vite = text('../vite.config.js');
+  const portal = text('../../portal/src/main.js');
+  const index = text('../index.html');
+  assert.ok(wrapper.includes('<UiAppShell'));
+  assert.ok(wrapper.includes('service="storage"'));
+  assert.ok(wrapper.includes('service-name="Хранилище"'));
+  assert.ok(wrapper.includes(':service-access="access"'));
+  assert.ok(wrapper.includes('auth.fetch(\'/api/employees/access/me\''));
+  assert.ok(wrapper.includes('isPlatformAdministratorAccess(result)'));
+  assert.ok(wrapper.includes('auth.logout()'));
+  assert.ok(entry.includes("import StorageApp from './StorageApp.vue'"));
+  assert.ok(vite.includes("base: '/storage/'"));
+  assert.ok(index.includes('IRLIX · Хранилище'));
+  assert.ok(portal.includes("window.location.replace('/storage/')"));
+  assert.ok(!portal.includes('hostname}:8110'));
+  assert.ok(ingress.includes('location /storage/ {'));
+  assert.ok(ingress.includes('location /api/storage/ {'));
+  assert.ok(ingress.includes('location @storage_pilot_login {'));
+  assert.ok(ingress.includes('location = /_storage_pilot_gate {'));
+  assert.ok(!ingress.includes('location /storage/ { return 302'));
+  assert.ok(compose.includes('STORAGE_PUBLIC_ORIGIN: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}'));
+  assert.ok(!compose.includes('STORAGE_PUBLIC_ORIGIN: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}:8110'));
+});
+
 test('Storage remains admin-only, with backend gate and never exposes credentials', () => {
   assert.match(api, /async def guard\(request: Request\):/);
   assert.match(api, /_storage_pilot_access/);

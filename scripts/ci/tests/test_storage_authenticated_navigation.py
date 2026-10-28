@@ -12,7 +12,9 @@ class StorageAuthenticatedNavigationChecks(unittest.TestCase):
         self.assertIn("verify_storage_authenticated_navigation(compose, sudo, host)", script)
         self.assertIn("tests/storage_pilot_session_runtime.php", script)
         self.assertIn("urllib.request.HTTPRedirectHandler", script)
-        self.assertIn('assert "storage=1" not in location', script)
+        self.assertIn('"http://127.0.0.1/storage/"', script)
+        self.assertIn('"http://127.0.0.1/api/storage/items?folder="', script)
+        self.assertIn('assert status == 200', script)
 
     def test_employees_runtime_copies_storage_gate_and_auth_smoke(self):
         dockerfile = (ROOT / "services/employees/Dockerfile").read_text()

@@ -112,10 +112,16 @@ def verify_storage_pilot(host):
     """Verify our Drive origin, API and S3; deny anonymous requests."""
     args = ["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}",
             "-H", f"Host: {host}", "--connect-timeout", "2", "--max-time", "10"]
-    frontend = subprocess.check_output([*args, "http://127.0.0.1:8110/"], text=True).strip()
-    assert frontend == "302", f"storage SSO anonymous entry expected 302; got {frontend}"
-    gate = subprocess.check_output([*args, "http://127.0.0.1:8110/_storage_pilot_gate"], text=True).strip()
+    frontend = subprocess.check_output([*args, "http://127.0.0.1/storage/"], text=True).strip()
+    assert frontend == "302", f"Storage canonical anonymous entry expected 302; got {frontend}"
+    gate = subprocess.check_output([*args, "http://127.0.0.1/_storage_pilot_gate"], text=True).strip()
     assert gate == "404", f"internal storage gate exposed: {gate}"
+    asset = subprocess.check_output([*args, "http://127.0.0.1/storage/assets/missing.js"], text=True).strip()
+    assert asset == "302", f"Storage static assets must be gated: {asset}"
+    api_external = subprocess.check_output([*args, "http://127.0.0.1/api/storage/items"], text=True).strip()
+    assert api_external == "302", f"Storage external API must require SSO: {api_external}"
+    old_port = subprocess.check_output([*args, "http://127.0.0.1:8110/"], text=True).strip()
+    assert old_port == "302", f"Legacy port must redirect to /storage/: {old_port}"
     # Own Drive must serve its app, not the fallback Portal.
     drive = subprocess.check_output([
         "curl", "-sS", "--connect-timeout", "2", "--max-time", "10",
@@ -161,7 +167,7 @@ def verify_storage_authenticated_navigation(compose, sudo, host):
 
     opener = urllib.request.build_opener(DoNotFollowRedirect())
     request = urllib.request.Request(
-        "http://127.0.0.1:8110/",
+        "http://127.0.0.1/storage/",
         headers={"Host": host, "Cookie": "irlix_storage_pilot=" + secret_cookie},
         method="GET",
     )
@@ -171,13 +177,24 @@ def verify_storage_authenticated_navigation(compose, sudo, host):
             location = response.headers.get("Location", "")
     except urllib.error.HTTPError as exc:
         status, location = exc.code, exc.headers.get("Location", "")
-    assert status in {200, 302}, (
-        f"Storage authenticated nginx/Drive route unhealthy: HTTP {status}"
+    assert status == 200, (
+        f"Storage authenticated canonical Drive route unhealthy: HTTP {status}"
     )
-    assert "storage=1" not in location, (
-        "Storage authenticated cookie was rejected and looped to Dashboard"
+    assert not location, "Storage authenticated navigation redirected unexpectedly"
+    # Confirm the actual SPA is returned, not a healthy but incorrect Dashboard.
+    request_api = urllib.request.Request(
+        "http://127.0.0.1/api/storage/items?folder=",
+        headers={"Host": host, "Cookie": "irlix_storage_pilot=" + secret_cookie},
+        method="GET",
     )
-    print("[verify] Storage: real admin session cookie, nginx gate and Drive OK", flush=True)
+    try:
+        with opener.open(request_api, timeout=15) as response:
+            assert response.status == 200, "Storage canonical API read denied"
+            listing = json.load(response)
+            assert "files" in listing and "folders" in listing, "Unexpected Storage API response"
+    except urllib.error.HTTPError as exc:
+        raise AssertionError(f"Authenticated Storage listing unhealthy: HTTP {exc.code}") from None
+    print("[verify] Storage: real admin cookie, clean /storage/ route and S3 listing OK", flush=True)
 
 def main():
     plan = json.loads((ROOT / ".ci/deploy-plan.json").read_text())

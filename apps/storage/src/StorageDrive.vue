@@ -167,21 +167,6 @@ onMounted(() => refresh());
 
 <template>
   <div class="storage-shell" @dragenter.prevent="showDrop = true" @dragover.prevent @dragleave="showDrop = false" @drop.prevent="dropped">
-    <header class="storage-header">
-      <div class="storage-brand"><span class="storage-logo">i</span><span><b>IRLIX</b><small>services</small></span></div>
-      <div class="storage-header-title"><span class="storage-divider"></span><span>Хранилище</span><span class="storage-pilot">Пилот</span></div>
-      <a href="/" class="storage-header-link">На дашборд <span aria-hidden="true">↗</span></a>
-    </header>
-    <div class="storage-body">
-      <aside class="storage-sidebar">
-        <div class="storage-sidebar-title">РАБОЧЕЕ ПРОСТРАНСТВО</div>
-        <button class="storage-nav active" @click="go('')"><span>▦</span> Мои файлы</button>
-        <div class="storage-sidebar-line"></div>
-        <div class="storage-sidebar-title">ХРАНИЛИЩЕ</div>
-        <div class="storage-capacity"><span class="storage-capacity-icon">◫</span><div><strong>Локальный S3</strong><small>SeaweedFS · тестовый контур</small></div></div>
-        <p class="storage-sidebar-note">Доступно администраторам платформы. Не храните здесь коммерческие документы до настройки резервного копирования.</p>
-        <div class="storage-sidebar-bottom">IRLIX STORAGE · v0.1</div>
-      </aside>
       <main class="storage-main">
         <div class="storage-main-top">
           <div class="storage-heading"><h1>Файлы</h1><p>Хранение и просмотр документов в корпоративной инфраструктуре</p></div>
@@ -237,7 +222,6 @@ onMounted(() => refresh());
         </div>
         <div class="storage-footer"><span>{{ folders.length }} папок · {{ files.length }} файлов</span><span>{{ readableSize(totalSize) }} · показана текущая папка</span></div>
       </main>
-    </div>
     <div v-if="createFolder" class="storage-overlay" @click.self="createFolder=false">
       <form class="storage-modal storage-small-modal" @submit.prevent="addFolder">
         <div class="storage-modal-head"><h2>Новая папка</h2><button type="button" @click="createFolder=false">×</button></div>

@@ -4,6 +4,7 @@ COPY apps/storage/package.json ./
 RUN npm install --no-audit --no-fund && ln -s /app/apps/storage/node_modules /app/node_modules
 COPY apps/storage /app/apps/storage
 COPY packages/ui /app/packages/ui
+COPY packages/auth /app/packages/auth
 RUN npm run build
 FROM nginx:1.27-alpine
 COPY apps/storage/nginx.conf /etc/nginx/conf.d/default.conf

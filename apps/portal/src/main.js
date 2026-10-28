@@ -99,9 +99,9 @@ const start = async () => {
       return;
     }
 
-    // Storage S3/Filestash is a strictly-admin isolated pilot.
-    // Filestash requires a dedicated root origin, so SSO issues a host-wide
-    // short-lived HttpOnly cookie and redirects to this same host on port 8110.
+    // Storage Drive is a strictly-admin isolated pilot at /storage/.
+    // The short-lived HttpOnly cookie is validated at nginx and Storage API.
+    // Navigation stays on the canonical corporate origin, without :8110.
     if (new URLSearchParams(window.location.search).get('storage') === '1') {
       startup.stage?.('storage-access-check');
       const response = await auth.fetch('/api/employees/storage-pilot/session', {
@@ -113,7 +113,7 @@ const start = async () => {
         startup.done?.();
         return;
       }
-      window.location.replace(`${window.location.protocol}//${window.location.hostname}:8110/`);
+      window.location.replace('/storage/');
       return;
     }
 
