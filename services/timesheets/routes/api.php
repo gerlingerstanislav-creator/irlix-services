@@ -12,6 +12,7 @@ Route::get('/health', HealthController::class);
 Route::get('/permissions/me', [TimesheetsPermissionsController::class, 'me']);
 Route::get('/permissions', [TimesheetsPermissionsController::class, 'index']);
 Route::put('/permissions', [TimesheetsPermissionsController::class, 'update']);
+Route::delete('/permissions', [TimesheetsPermissionsController::class, 'remove']);
 Route::get('/workspace', [PersonalTimesheetsController::class, 'workspace']);
 Route::put('/entries', [PersonalTimesheetsController::class, 'write']);
 Route::post('/confirm', [PersonalTimesheetsController::class, 'confirm']);
