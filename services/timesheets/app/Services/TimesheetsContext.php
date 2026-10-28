@@ -134,15 +134,28 @@ final class TimesheetsContext
         $isAccountManager = collect($assignments)->contains(static fn (array $a) =>
             (int) ($a['account_employee_id'] ?? 0) === $employeeId
             || in_array($employeeId, $a['delegated_account_employee_ids'] ?? [], true));
-        $contour = $this->dependencyGet($request, 'CLIENTS_URL',
-            'http://clients:8000/api', '/permissions/me');
-        $contourPermissions = (array) ($contour['permissions'] ?? []);
+        $localEnabled = $jwtMode
+            && filter_var(env('IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+        // Local policy uses the SAME verified roles and supports the existing
+        // per-permission own/team/all object checks in this service. Clients
+        // remains authoritative for connections, not Timesheets permissions.
+        if ($localEnabled) {
+            $contourPermissions = (array) $request->attributes->get('timesheets_local_permissions', []);
+        } else {
+            $contour = $this->dependencyGet($request, 'CLIENTS_URL',
+                'http://clients:8000/api', '/permissions/me');
+            $contourPermissions = (array) ($contour['permissions'] ?? []);
+        }
         $canLock = $platformAdmin || (bool) ($contourPermissions['timesheets.management.manage']['allowed'] ?? false);
         $path = $request->path();
         $scopePermission = str_contains($path, '/analytics') ? 'timesheets.analytics.view'
             : (str_contains($path, '/audit') ? 'timesheets.audit.view'
             : (in_array($request->method(), ['POST', 'PUT', 'PATCH', 'DELETE'], true)
                 ? 'timesheets.management.manage' : 'timesheets.management.view'));
+        if ($localEnabled && $path === 'api/workspace') $scopePermission = 'timesheets.mine.view';
+        if ($localEnabled && in_array($path, ['api/entries','api/confirm','api/unconfirm'], true)) {
+            $scopePermission = 'timesheets.mine.manage';
+        }
         $scope = $platformAdmin ? 'all' : (string) ($contourPermissions[$scopePermission]['scope'] ?? 'none');
         return compact('roles', 'platformAdmin', 'managedDepartmentIds', 'isAccountManager',
             'canLock', 'contourPermissions', 'scope');
