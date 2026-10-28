@@ -49,6 +49,10 @@ final class ServiceEntitlement
                     return response()->json(['message'=>'Recruitment permission policy unavailable'],503);
                 }
                 $path=$request->path();
+                if ($path === 'api/permissions/me') {
+                    $request->attributes->set('recruitment_local_permissions', $permissions);
+                    return $next($request);
+                }
                 $administrator=in_array('platform-admin',$roles,true)
                     ||in_array('special:platform-admin',$roles,true);
                 if ($path==='api/role-permissions') {
