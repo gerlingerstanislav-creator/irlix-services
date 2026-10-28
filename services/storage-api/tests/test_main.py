@@ -177,6 +177,11 @@ class StoragePilotApiTests(TestCase):
         app.dependency_overrides.clear()
         self.assertEqual(self.client.get("/items").status_code, 401)
         self.assertEqual(self.client.post("/folders", data={"folder_name": "oops"}).status_code, 401)
+        self.assertEqual(self.client.post("/rename", data={
+            "kind": "file", "key": "pilot-ui/00000000000000000000000000000000__a.pdf",
+            "new_name": "b.pdf"}).status_code, 401)
+        self.assertEqual(self.client.get("/thumbnails", params={
+            "key": "pilot-ui/00000000000000000000000000000000__a.png"}).status_code, 401)
         self.assertFalse(self.store.records)
 
 
