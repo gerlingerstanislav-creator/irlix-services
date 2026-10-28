@@ -5,6 +5,7 @@ export const routes = [
   { path: '/depreciation', redirect: { name: 'valuation' } },
   { path: '/written-off', name: 'written-off', meta: { section: 'written-off' } },
   { path: '/settings', name: 'settings', meta: { section: 'settings' } },
+  { path: '/role-permissions', name: 'role-permissions', meta: { section: 'role-permissions' } },
   { path: '/items/:id(\\d+)', name: 'item', meta: { section: 'registry' } },
   { path: '/:pathMatch(.*)*', name: 'not-found', meta: { section: 'not-found' } },
 ];
