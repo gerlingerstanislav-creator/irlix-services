@@ -4,8 +4,9 @@ import { useRoute, useRouter } from 'vue-router';
 import { UiAppSidebar, UiAppTopbar, UiRegistryTable, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 import { recruitmentApi } from './api';
+import RecruitmentRolePermissionsView from './RecruitmentRolePermissionsView.vue';
 
-const navItems = [
+const standardNavItems = [
   { id: 'dashboard', label: 'Обзор', icon: 'dashboard' },
   { id: 'requests', label: 'Заявки', icon: 'briefcase' },
   { id: 'candidates', label: 'Кандидаты', icon: 'users' },
@@ -18,6 +19,12 @@ const navItems = [
   { id: 'tasks', label: 'Задачи', icon: 'tasks' },
   { id: 'analytics', label: 'Аналитика', icon: 'assessment' },
 ];
+
+const roleMatrixAdmin=ref(false);
+const navItems=computed(()=>[
+  ...standardNavItems,
+  ...(roleMatrixAdmin.value?[{id:'role-permissions',label:'Разрешения',icon:'settings'}]:[]),
+]);
 
 const stageDefinitions = [
   ['new', 'Новый'], ['outreach', 'Поиск контакта'], ['contact', 'Контакт'], ['hr_interview', 'HR интервью'],
@@ -69,6 +76,10 @@ function offerLabel(type) { return offerStatuses.find(([id]) => id === type)?.[1
 async function reload() {
   loading.value = true; error.value = '';
   try {
+    try {
+      const access = await auth.fetch('/api/recruitment/role-permissions', {cache:'no-store'});
+      roleMatrixAdmin.value = access.ok && (await access.json()).data?.can_manage === true;
+    } catch { roleMatrixAdmin.value = false; }
     const data = await recruitmentApi.workspace();
     Object.assign(workspace, data);
     workspace.interviews ||= []; workspace.offers ||= []; workspace.tasks ||= [];
@@ -132,6 +143,8 @@ onMounted(reload);
       <div v-else-if="error" class="panel"><h2>Не удалось загрузить данные</h2><p>{{ error }}</p><button class="primary" @click="reload">Повторить</button></div>
 
       <UiErrorState v-else-if="route.section === 'not-found'" :status="404" back-href="/recruitment/" back-label="На главную Recruitment" />
+      <UiErrorState v-else-if="route.section==='role-permissions' && !roleMatrixAdmin" :status="403" />
+      <RecruitmentRolePermissionsView v-else-if="route.section==='role-permissions' && roleMatrixAdmin"/>
       <template v-else-if="route.section === 'dashboard'">
         <header class="page-head"><div><div class="eyebrow">Recruitment</div><h1>Обзор найма</h1><p>Заявки, кандидаты, интервью, офферы и подготовка выхода.</p></div><button class="primary" @click="modal='request'">+ Новая заявка</button></header>
         <section class="metric-grid"><article v-for="[label,value] in dashboardStats" :key="label" class="metric"><span>{{ label }}</span><strong>{{ value }}</strong><small>Актуально сейчас</small></article></section>
