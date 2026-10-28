@@ -2,10 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\FinanceRolePermission;
+use App\Services\FinancePermissionManagementService;
 use App\Services\FinanceRoleAuthorization;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 final class FinancePermissionsController
@@ -20,19 +19,17 @@ final class FinancePermissionsController
             403, 'Role preview is read-only');
     }
 
-    public function index(Request $request)
+    public function index(Request $request, FinancePermissionManagementService $service)
     {
         $this->requireAdmin($request);
         return response()->json(['data' => [
             'can_manage' => true,
             'enabled' => filter_var(env('IRLIX_FINANCE_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
-            'permissions' => FinanceRoleAuthorization::PERMISSIONS,
-            'scopes' => ['none', 'all'],
-            'matrix' => FinanceRolePermission::query()->orderBy('role')->orderBy('permission')->get(),
+            ...$service->matrix(),
         ]]);
     }
 
-    public function update(Request $request)
+    public function update(Request $request, FinancePermissionManagementService $service)
     {
         $this->requireAdmin($request);
         $input = $request->validate([
@@ -48,22 +45,7 @@ final class FinancePermissionsController
             || (!$input['allowed'] && $input['scope'] !== 'none')) {
             return response()->json(['message' => 'Finance currently supports only full-ledger grants or denial'], 422);
         }
-        DB::transaction(static function () use ($input, $request): void {
-            $row = FinanceRolePermission::query()->where('role', $input['role'])
-                ->where('permission', $input['permission'])->lockForUpdate()->first();
-            $before = $row ? ['allowed' => (bool) $row->allowed, 'scope' => $row->scope] : null;
-            FinanceRolePermission::query()->updateOrCreate(
-                ['role' => $input['role'], 'permission' => $input['permission']],
-                ['allowed' => $input['allowed'], 'scope' => $input['scope']]
-            );
-            DB::table('finance_permission_audit')->insert([
-                'actor' => (string) ($request->attributes->get('identity', [])['sub'] ?? 'unknown'),
-                'role' => $input['role'], 'permission' => $input['permission'],
-                'before' => $before === null ? null : json_encode($before, JSON_THROW_ON_ERROR),
-                'after' => json_encode(['allowed' => $input['allowed'], 'scope' => $input['scope']], JSON_THROW_ON_ERROR),
-                'created_at' => now(),
-            ]);
-        });
-        return $this->index($request);
+        $service->update($input, (string) ($request->attributes->get('identity', [])['sub'] ?? 'unknown'));
+        return $this->index($request, $service);
     }
 }
