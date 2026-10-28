@@ -14,6 +14,24 @@ final class PartnerAccessService
         private readonly CurrentEmployee $actor,
     ) {}
 
+    /**
+     * Match exact partner endpoints and method, never use a broad default
+     * grant that could turn a new sensitive operation into write access.
+     */
+    public static function permissionFor(string $method, string $path, bool $local): ?string
+    {
+        if (!$local) {
+            return $method === 'GET' ? 'timesheets.management.view' : 'timesheets.management.manage';
+        }
+        return match (true) {
+            $method === 'GET' && $path === 'api/partner-hours' => 'timesheets.partner-hours.view',
+            $method === 'PUT' && $path === 'api/partner-hours' => 'timesheets.partner-hours.manage',
+            $method === 'POST' && $path === 'api/partner-hours/confirm' => 'timesheets.partner-hours.manage',
+            $method === 'POST' && $path === 'api/partner-hours/final-approval' => 'timesheets.partner-hours.approve',
+            default => null,
+        };
+    }
+
     public function resolve(Request $request): array
     {
         $me = $this->actor->resolve($request);
@@ -26,15 +44,14 @@ final class PartnerAccessService
             // business permission after Timesheets is switched to local V2.
             $localPermissions = $request->attributes->get('timesheets_local_permissions');
             abort_unless(is_array($localPermissions), 503, 'Timesheets permissions were not verified');
-            $access = ['permissions' => $localPermissions,
-                'platform_admin' => (bool) ($request->attributes->get('identity', [])['realm_roles'] ?? false)
-                    && (in_array('platform-admin', (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []), true)
-                        || in_array('special:platform-admin', (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []), true))];
-            $permission = match (true) {
-                $request->is('api/partner-hours/final-approval') => 'timesheets.partner-hours.approve',
-                $request->isMethod('GET') => 'timesheets.partner-hours.view',
-                default => 'timesheets.partner-hours.manage',
-            };
+            $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
+            $access = [
+                'permissions' => $localPermissions,
+                'platform_admin' => in_array('platform-admin', $roles, true)
+                    || in_array('special:platform-admin', $roles, true),
+            ];
+            $permission = self::permissionFor($request->method(), $request->path(), true);
+            abort_unless($permission !== null, 403, 'Partner-hours operation is not authorized');
         } else {
             $response = Http::withToken($token)
                 ->withHeaders($request->header('X-Irlix-Role-Preview')
@@ -44,8 +61,7 @@ final class PartnerAccessService
             abort_unless($response->successful(), 503, 'Не удалось проверить доступ через Clients');
             $access = $response->json('data');
             abort_unless(is_array($access), 503, 'Некорректный ответ прав');
-            $permission = $request->isMethod('GET')
-                ? 'timesheets.management.view' : 'timesheets.management.manage';
+            $permission = self::permissionFor($request->method(), $request->path(), false);
         }
         $grant = $access['permissions'][$permission] ?? [];
         abort_unless(($access['platform_admin'] ?? false) || ($grant['allowed'] ?? false),
