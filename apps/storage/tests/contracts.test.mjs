@@ -44,6 +44,23 @@ test('Shared IRLIX chrome and clean /storage/ SSO are used everywhere', () => {
   assert.ok(!compose.includes('STORAGE_PUBLIC_ORIGIN: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}:8110'));
 });
 
+test('Public Storage bootstrap does not bypass protected file APIs', () => {
+  const smoke = text('../../../scripts/verify-stand.sh');
+  const storageLocation = ingress.split('location /storage/ {')[1]?.split('location = /storage {')[0];
+  assert.ok(storageLocation, 'canonical Storage frontend location missing');
+  assert.doesNotMatch(storageLocation, /auth_request\s+/,
+    'Storage SPA must be reachable before browser OIDC can issue Storage cookies');
+  assert.ok(ingress.includes('location /api/storage/ {'));
+  assert.ok(ingress.includes('location /api/storage/v1/ {'));
+  assert.ok(ingress.includes('auth_request /_storage_pilot_gate;'));
+  assert.ok(ingress.includes('auth_request /_storage_v1_gate;'));
+  assert.ok(smoke.includes('check_body "Storage frontend (public shell)"'));
+  assert.ok(smoke.includes('check_status "Storage JS (public shell)"'));
+  assert.ok(smoke.includes('check_status "Anonymous Storage legacy API"'));
+  assert.ok(smoke.includes('check_status "Anonymous Storage V1 API"'));
+  assert.ok(!smoke.includes('Anonymous Storage canonical route'));
+});
+
 test('Storage release waits for both new container origins before cleanup', () => {
   const cleanup = text('../../../scripts/storage/retire-filestash.sh');
   assert.ok(cleanup.includes('while [ "$attempt" -le 30 ]'));

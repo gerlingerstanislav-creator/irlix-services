@@ -13,14 +13,17 @@ class StorageVerifyRouting(unittest.TestCase):
         self.assertIn('"storage-api"', source)
         self.assertIn('health = json.loads(body)', source)
 
-    def test_canonical_storage_gate_smoke(self):
+    def test_storage_public_shell_and_protected_api_smoke(self):
         source = (VERIFY.parent.parent / "verify-stand.sh").read_text()
-        self.assertIn("http://127.0.0.1/storage/ 302", source)
-        self.assertIn("http://127.0.0.1/storage/assets/missing.js 302", source)
+        self.assertIn('check_body "Storage frontend (public shell)"', source)
+        self.assertIn('check_status "Storage JS (public shell)"', source)
         self.assertIn("http://127.0.0.1/api/storage/items 302", source)
+        self.assertIn("http://127.0.0.1/api/storage/v1/ 401", source)
         self.assertIn("http://127.0.0.1/_storage_pilot_gate 404", source)
+        self.assertIn("http://127.0.0.1/_storage_v1_gate 404", source)
         self.assertIn("http://127.0.0.1:8110/ 302", source)
         self.assertNotIn("http://127.0.0.1:8110/_storage_pilot_gate", source)
+        self.assertNotIn('http://127.0.0.1/storage/ 302', source)
 
 
 if __name__ == "__main__":

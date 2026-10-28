@@ -82,12 +82,18 @@ check_status "Anonymous Brandbook deep link gated" http://127.0.0.1/brandbook/co
 check_status "Anonymous Brandbook SVG gated" http://127.0.0.1/brandbook/downloads/irlix-logo-dark-background.svg 302
 check_status "Brandbook gate endpoint internal-only" http://127.0.0.1/_brandbook_gate 404
 
-# Canonical Storage UI/API are gated at the corporate origin, including
-# all static assets. The former :8110 listener redirects to /storage/.
-check_status "Anonymous Storage canonical route" http://127.0.0.1/storage/ 302
-check_status "Anonymous Storage asset" http://127.0.0.1/storage/assets/missing.js 302
-check_status "Anonymous Storage API" http://127.0.0.1/api/storage/items 302
-check_status "Storage internal gate" http://127.0.0.1/_storage_pilot_gate 404
+# Storage serves a data-free SPA bootstrap to anonymous browsers so that
+# Keycloak can initialize and obtain the separate, short-lived Storage cookies.
+# NEVER infer API access from the static HTML/JS being publicly reachable.
+check_body "Storage frontend (public shell)" http://127.0.0.1/storage/ storage-drive "IRLIX"
+storage_asset="$(curl_stand -fsS http://127.0.0.1/storage/ | sed -n 's/.*src="\([^"]*\/assets\/[^"]*\.js\)".*/\1/p' | head -n1)"
+[ -n "$storage_asset" ] || fail "Storage entry JS asset was not found in HTML"
+check_status "Storage JS (public shell)" "http://127.0.0.1$storage_asset" 200
+# Both data contours remain independently authenticated on the backend.
+check_status "Anonymous Storage legacy API" http://127.0.0.1/api/storage/items 302
+check_status "Anonymous Storage V1 API" http://127.0.0.1/api/storage/v1/ 401
+check_status "Storage pilot internal gate" http://127.0.0.1/_storage_pilot_gate 404
+check_status "Storage V1 internal gate" http://127.0.0.1/_storage_v1_gate 404
 check_status "Storage old-port redirect" http://127.0.0.1:8110/ 302
 
 echo "[verify] OIDC discovery uses configured public Keycloak URL"
