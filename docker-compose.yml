@@ -248,6 +248,7 @@ services:
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_CLIENT_ID: irlix-services-web
       IRLIX_AUTHZ_JWT_ENABLED: ${IRLIX_AUTHZ_JWT_ENABLED:-false}
+      IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED: ${IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED:-false}
       EMPLOYEES_URL: http://employees:8000/api
       CLIENTS_URL: http://clients:8000/api
       PLATFORM_CORE_URL: http://platform-core:8000/api
