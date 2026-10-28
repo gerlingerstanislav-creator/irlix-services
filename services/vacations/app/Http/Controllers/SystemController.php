@@ -67,6 +67,23 @@ final class SystemController extends Controller
         if ($validator->fails()) return response()->json(['errors' => $validator->errors()], 422);
         $data = $validator->validated();
 
+        // In V2, an omitted employee_ids filter MUST NOT become "all
+        // employees" for a team/own role. The service-local scope resolves
+        // allowed IDs first; the read use case keeps its legacy contract.
+        $local = $request->attributes->get('vacations_local_permissions');
+        if (is_array($local)) {
+            $scope = (string) ($local['vacations.department.view']['scope'] ?? 'none');
+            $ids = app(\App\Services\VacationsScopedAccess::class)->visibleEmployeeIds(
+                $request, $scope,
+                (int) $request->attributes->get('vacations_local_employee_id', 0),
+                $data['employee_ids'] ?? []
+            );
+            if ($ids !== null) {
+                if ($ids === []) return response()->json(['data' => []]);
+                $data['employee_ids'] = $ids;
+            }
+        }
+
         $rows = $this->reads->calendarAbsences(
             $data['from'], $data['to'], $data['employee_ids'] ?? []
         );
