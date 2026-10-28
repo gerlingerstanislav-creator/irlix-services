@@ -25,7 +25,6 @@ final class ServiceEntitlement
             // Global and cross-contour read models are not yet provably
             // filtered per row. Fail closed rather than reusing legacy grants.
             $unsupported = [
-                'api/department-roster', 'api/calendar-absences',
                 'api/client-service-calendar', 'api/client-service-absence-alerts',
             ];
             if (in_array($request->path(), $unsupported, true)) {
