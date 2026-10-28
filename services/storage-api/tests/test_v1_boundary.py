@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from unittest.mock import patch
-from app.main import app, guard
+from app.main import app, guard, v1_guard
 from app.metadata_repository import metadata_connection
 from app.v1_api import _identity, _name, _normalize_id, _employee_active
 
@@ -33,6 +33,7 @@ class V1BoundaryTests(unittest.TestCase):
 
     def test_v1_api_fails_closed_without_server_verified_actor(self):
         app.dependency_overrides[guard] = lambda: None
+        app.dependency_overrides[v1_guard] = lambda: None
         try:
             with TestClient(app) as client:
                 response = client.get("/v1/items")
