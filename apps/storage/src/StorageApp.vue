@@ -21,6 +21,10 @@ const items = [
 ];
 const route = useRoute();
 const router = useRouter();
+const folderLabels = ref({});
+function onBreadcrumbs(crumbs) {
+  folderLabels.value = Object.fromEntries(crumbs.map(crumb => [crumb.path, crumb.name]));
+}
 const activeSection = computed(() => route.meta.section || 'not-found');
 const breadcrumbs = computed(() => {
   if (activeSection.value === 'available') return [{ label: 'Доступные мне' }];
@@ -30,7 +34,7 @@ const breadcrumbs = computed(() => {
   return [
     { label: 'Мои файлы', href: segments.length ? '/storage/' : undefined },
     ...segments.map((label, index) => ({
-      label,
+      label: folderLabels.value[segments.slice(0, index + 1).join('/') + '/'] || label,
       href: index < segments.length - 1
         ? '/storage/?folder=' + encodeURIComponent(segments.slice(0, index + 1).join('/') + '/')
         : undefined,
@@ -81,7 +85,7 @@ onMounted(async () => {
     @update:section="navigateSection"
     @logout="auth.logout()"
   >
-    <StorageDrive v-if="activeSection === 'files'" />
+    <StorageDrive v-if="activeSection === 'files'" @breadcrumbs="onBreadcrumbs" />
     <section v-else-if="activeSection === 'available'" class="storage-placeholder">
       <h2>Доступные мне</h2>
       <p>Раздел для файлов, к которым предоставлен доступ другими сотрудниками. Пока общий доступ не подключён — чужие файлы не отображаются.</p>

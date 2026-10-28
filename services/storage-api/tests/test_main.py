@@ -1,6 +1,8 @@
 import asyncio
 from datetime import datetime, timezone
 from io import BytesIO
+from PIL import Image
+from botocore.exceptions import ClientError
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -18,9 +20,14 @@ class FakeS3:
 
     def get_object(self, Bucket, Key):
         if Key not in self.records:
-            raise AssertionError("Unexpected get on missing key")
+            raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
         payload = self.records[Key]
         return {"Body": BytesIO(payload), "ContentLength": len(payload)}
+
+    def head_object(self, Bucket, Key):
+        if Key not in self.records:
+            raise ClientError({"Error": {"Code": "NoSuchKey"}}, "HeadObject")
+        return {"ContentLength": len(self.records[Key])}
 
     def list_objects_v2(self, Bucket, Prefix, Delimiter, MaxKeys, **kwargs):
         found = set()
@@ -83,6 +90,66 @@ class StoragePilotApiTests(TestCase):
         self.assertEqual(listed["folders"], [{"name": "Отчёты", "path": "Отчёты/"}])
         self.assertEqual(self.client.get("/items?folder=Отчёты/").json()["files"], [])
 
+    def test_rename_preserves_physical_identity_and_updates_download_name(self):
+        file_result = self.client.post("/files", files={
+            "file": ("old.pdf", b"%PDF synthetic", "application/pdf")}).json()
+        key = file_result["key"]
+        response = self.client.post("/rename", data={
+            "kind": "file", "key": key, "new_name": "new.pdf"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIn(key, self.store.records)
+        self.assertEqual(self.client.get("/items").json()["files"][0]["name"], "new.pdf")
+        download = self.client.get("/files", params={"key": key})
+        self.assertEqual(download.content, b"%PDF synthetic")
+        self.assertIn("new.pdf", download.headers["content-disposition"])
+        self.assertEqual(self.client.post("/rename", data={
+            "kind": "file", "key": key, "new_name": "wrong.exe"}).status_code, 422)
+        self.assertEqual(self.client.post("/rename", data={
+            "kind": "file", "key": "other/secret.pdf", "new_name": "a.pdf"}).status_code, 404)
+
+    def test_folder_rename_keeps_existing_path_and_updates_breadcrumbs(self):
+        self.assertEqual(self.client.post("/folders", data={"folder_name": "Original"}).status_code, 200)
+        response = self.client.post("/rename", data={
+            "kind": "folder", "path": "Original/", "new_name": "Новое название"})
+        self.assertEqual(response.status_code, 200, response.text)
+        listed = self.client.get("/items").json()
+        self.assertEqual(listed["folders"], [{"name": "Новое название", "path": "Original/"}])
+        inside = self.client.get("/items", params={"folder": "Original/"}).json()
+        self.assertEqual(inside["breadcrumbs"], [{"name": "Новое название", "path": "Original/"}])
+        self.assertIn("pilot-ui/Original/.irlix-folder", self.store.records)
+
+    def test_rename_rejects_collisions_and_missing_targets(self):
+        self.client.post("/folders", data={"folder_name": "One"})
+        self.client.post("/folders", data={"folder_name": "Two"})
+        clash = self.client.post("/rename", data={
+            "kind": "folder", "path": "One/", "new_name": "Two"})
+        self.assertEqual(clash.status_code, 409)
+        self.assertEqual(self.client.post("/rename", data={
+            "kind": "folder", "path": "missing/", "new_name": "New"}).status_code, 404)
+        self.assertEqual(self.client.post("/rename", data={
+            "kind": "folder", "path": "One/", "new_name": "../bad"}).status_code, 422)
+        self.assertEqual(self.client.post("/rename", data={
+            "kind": "folder", "path": "", "new_name": "Root"}).status_code, 422)
+
+    def test_thumbnail_is_resized_and_untrusted_data_is_not_exposed(self):
+        source = BytesIO()
+        Image.new("RGB", (900, 600), (42, 100, 170)).save(source, format="PNG")
+        upload = self.client.post("/files", files={
+            "file": ("synthetic.png", source.getvalue(), "image/png")}).json()
+        result = self.client.get("/thumbnails", params={"key": upload["key"]})
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.headers["content-type"], "image/jpeg")
+        self.assertEqual(result.headers["cache-control"], "private, no-store")
+        with Image.open(BytesIO(result.content)) as image:
+            self.assertLessEqual(image.width, 320)
+            self.assertLessEqual(image.height, 240)
+        self.assertEqual(self.client.get("/thumbnails", params={
+            "key": "pilot-ui/not-legit"}).status_code, 404)
+        other = self.client.post("/files", files={"file": ("doc.pdf", b"pdf")}).json()
+        self.assertEqual(self.client.get("/thumbnails", params={"key": other["key"]}).status_code, 415)
+        fake = self.client.post("/files", files={"file": ("fake.png", b"not a png")}).json()
+        self.assertEqual(self.client.get("/thumbnails", params={"key": fake["key"]}).status_code, 415)
+
     def test_rejects_traversal_invalid_names_and_oversized_upload(self):
         for value in ("../", "documents/../", "a//", "a\\b/"):
             self.assertEqual(self.client.get("/items", params={"folder": value}).status_code, 422)
@@ -110,6 +177,11 @@ class StoragePilotApiTests(TestCase):
         app.dependency_overrides.clear()
         self.assertEqual(self.client.get("/items").status_code, 401)
         self.assertEqual(self.client.post("/folders", data={"folder_name": "oops"}).status_code, 401)
+        self.assertEqual(self.client.post("/rename", data={
+            "kind": "file", "key": "pilot-ui/00000000000000000000000000000000__a.pdf",
+            "new_name": "b.pdf"}).status_code, 401)
+        self.assertEqual(self.client.get("/thumbnails", params={
+            "key": "pilot-ui/00000000000000000000000000000000__a.png"}).status_code, 401)
         self.assertFalse(self.store.records)
 
 

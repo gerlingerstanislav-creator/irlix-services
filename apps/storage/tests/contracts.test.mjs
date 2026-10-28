@@ -99,7 +99,13 @@ test('Drive has one compact action/filter row, shared buttons and transient corn
   const css = text('../src/storage.css');
   assert.ok(vue.includes('class="storage-toolbar"'));
   assert.ok(vue.includes('<UiButton variant="secondary"'));
-  assert.ok(vue.includes('<UiViewSelect v-model="layout"'));
+  assert.ok(vue.includes('class="storage-switch"'));
+  assert.ok(vue.includes('aria-pressed="layout === \'list\'"'));
+  assert.ok(vue.includes('aria-pressed="layout === \'grid\'"'));
+  assert.ok(!vue.includes('<UiViewSelect v-model="layout"'));
+  assert.ok(vue.includes('<UiIcon name="list"'));
+  assert.ok(vue.includes('viewBox="0 0 24 24"'));
+  assert.ok(css.includes('.storage-switch{'));
   assert.ok(vue.includes('class="storage-toolbar-tools"'));
   assert.ok(vue.includes('class="storage-actions"'));
   assert.ok(!vue.includes('class="storage-main-top"'));
@@ -113,4 +119,35 @@ test('Drive has one compact action/filter row, shared buttons and transient corn
   assert.ok(vue.includes("router.push({ name: 'files'"));
   assert.ok(css.includes('.storage-toast{position:fixed;right:20px;bottom:20px;'));
   assert.ok(css.includes('height:var(--irlix-control-height,27px)'));
+});
+
+test('Storage list is flush and rectangular, tiles use authenticated lazy thumbnails', () => {
+  const css = text('../src/storage.css');
+  const wrapper = text('../src/StorageApp.vue');
+  assert.ok(css.includes('.storage-main{flex:1;min-width:0;padding:16px 0 0;'));
+  assert.ok(css.includes('.storage-content{min-height:270px;flex:1;'));
+  assert.ok(css.includes('border-radius:0;overflow:auto'));
+  assert.ok(vue.includes('thumbnailUrl(item)'));
+  assert.ok(vue.includes('loading="lazy"'));
+  assert.ok(vue.includes('decoding="async"'));
+  assert.ok(vue.includes('@error="failedThumbs.add(item.key)"'));
+  assert.ok(vue.includes('class="storage-tile-actions"'));
+  assert.ok(vue.includes('class="storage-download-cell" @click.stop'));
+  assert.ok(vue.includes('<UiActionMenu :items="actionsFor(item)"'));
+  assert.ok(wrapper.includes('@breadcrumbs="onBreadcrumbs"'));
+  assert.ok(wrapper.includes('folderLabels.value'));
+});
+
+test('Rename operations are server-backed with metadata-only persistence and no file deletion', () => {
+  const css = text('../src/storage.css');
+  assert.ok(vue.includes("await api('/rename', { method: 'POST', body })"));
+  assert.ok(vue.includes('class="storage-modal storage-small-modal" @submit.prevent="renameItem"'));
+  assert.ok(vue.includes("item.kind === 'file'"));
+  assert.ok(vue.includes('aria-label="Свойства объекта"'));
+  assert.ok(css.includes('.storage-properties{'));
+  assert.ok(api.includes('META_ROOT = "pilot-ui-meta/"'));
+  assert.ok(api.includes('@app.post("/rename", dependencies=[Depends(guard)])'));
+  assert.ok(api.includes('@app.get("/thumbnails", dependencies=[Depends(guard)])'));
+  assert.ok(api.includes('Image.MAX_IMAGE_PIXELS = 12_000_000'));
+  assert.doesNotMatch(api, /delete_object\s*\(/);
 });
