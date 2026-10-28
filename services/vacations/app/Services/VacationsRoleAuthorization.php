@@ -15,6 +15,19 @@ final class VacationsRoleAuthorization
         'vacations.history.view', 'vacations.client-calendar.view',
     ];
 
+    /** Only service-local read permissions can open business navigation. */
+    public static function canOpenWorkspace(array $permissions): bool
+    {
+        foreach ([
+            'vacations.mine.view', 'vacations.department.view',
+            'vacations.manage.view', 'vacations.approvals.view',
+            'vacations.history.view',
+        ] as $permission) {
+            if (($permissions[$permission]['allowed'] ?? false) === true) return true;
+        }
+        return false;
+    }
+
     /**
      * Signed V2 claims must be a subset of the current assignments of the
      * SAME Employees actor. No live role can add a privilege absent from JWT.
