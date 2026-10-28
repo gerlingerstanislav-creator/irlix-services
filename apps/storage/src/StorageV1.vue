@@ -25,14 +25,29 @@ const shareRole = ref('reader');
 const grants = ref([]);
 const historyItem = ref(null);
 const historyEvents = ref([]);
+const operationItem = ref(null);
+const operationKind = ref('');
+const operationName = ref('');
+const operationParent = ref('');
+const targetFolders = ref([]);
 const directoryOptions = ref([]);
 const currentEmployeeId = computed(() => Number(props.access?.employee_id || 0));
 const isAdmin = computed(() => Array.isArray(props.access?.roles) && props.access.roles.includes('platform-admin'));
 const canManage = item => isAdmin.value || item.owner_employee_id === currentEmployeeId.value;
+const targets = computed(() => [
+  { value: '', label: 'Корневая папка' },
+  ...targetFolders.value.filter(folder => operationKind.value !== 'move'
+    || folder.owner_employee_id === operationItem.value?.owner_employee_id)
+    .map(folder => ({ value: folder.id, label: folder.name,
+                     meta: 'Владелец #' + folder.owner_employee_id })),
+]);
 const actionsFor = item => [
-  ...(item.kind === 'file' && mode.value !== 'trash' ? [{ id: 'download', label: 'Скачать' }] : []),
+  ...(item.kind === 'file' && mode.value !== 'trash'
+    ? [{ id: 'download', label: 'Скачать' }, { id: 'copy', label: 'Создать копию' }] : []),
   ...(canManage(item) && mode.value !== 'trash' ? [
-    { id: 'share', label: 'Настроить доступ' }, { id: 'history', label: 'История действий' }, { id: 'trash', label: 'В корзину', danger: true },
+    { id: 'rename', label: 'Переименовать' }, { id: 'move', label: 'Переместить' },
+    { id: 'share', label: 'Настроить доступ' }, { id: 'history', label: 'История действий' },
+    { id: 'trash', label: 'В корзину', danger: true },
   ] : []),
   ...(mode.value === 'trash' && canManage(item) ? [{ id: 'restore', label: 'Восстановить' }] : []),
 ];
@@ -134,6 +149,7 @@ async function mutate(item, action) {
   if (action === 'download') return download(item);
   if (action === 'share') return openSharing(item);
   if (action === 'history') return openHistory(item);
+  if (['rename','move','copy'].includes(action)) return openOperation(item, action);
   if (!['trash', 'restore'].includes(action)) return;
   if (action === 'trash' && !window.confirm('Переместить «' + item.name + '» в корзину? Файл можно восстановить.')) return;
   busy.value = true; error.value = '';
@@ -193,6 +209,45 @@ async function loadDirectory() {
 async function openSharing(item) {
   shareItem.value = item; grants.value = []; shareRecipient.value = '';
   await Promise.all([loadDirectory(), loadGrants(item)]);
+}
+async function openOperation(item, kind) {
+  operationItem.value = item;
+  operationKind.value = kind;
+  operationName.value = kind === 'copy' ? 'Копия ' + item.name : item.name;
+  operationParent.value = item.parent_id || '';
+  targetFolders.value = [];
+  error.value = '';
+  if (kind === 'move' || kind === 'copy') {
+    try {
+      const data = await request('/folders/targets');
+      targetFolders.value = data.entries || [];
+    } catch (err) { error.value = err.message; }
+  }
+}
+async function submitOperation() {
+  const item = operationItem.value;
+  if (!item || busy.value) return;
+  busy.value = true; error.value = '';
+  try {
+    if (operationKind.value === 'rename') {
+      await request('/objects/' + item.id, { method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: operationName.value }) });
+    } else if (operationKind.value === 'move') {
+      await request('/objects/' + item.id + '/move', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parent_id: operationParent.value || null }) });
+    } else if (operationKind.value === 'copy') {
+      await request('/objects/' + item.id + '/copy', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parent_id: operationParent.value || null,
+                               name: operationName.value }) });
+    }
+    notice.value = 'Операция выполнена';
+    operationItem.value = null;
+    await refresh();
+  } catch (err) { error.value = err.message; }
+  finally { busy.value = false; }
 }
 async function openHistory(item) {
   historyItem.value = item; historyEvents.value = []; error.value = '';
@@ -276,6 +331,25 @@ onMounted(() => refresh());
       </form>
     </div>
 
+    <div v-if="operationItem" class="storage-overlay" @click.self="!busy && (operationItem=null)">
+      <form class="storage-modal storage-small-modal" @submit.prevent="submitOperation">
+        <div class="storage-modal-head">
+          <h2>{{ operationKind === 'rename' ? 'Переименовать' : operationKind === 'move' ? 'Переместить' : 'Создать копию' }}</h2>
+          <button type="button" :disabled="busy" @click="operationItem=null">×</button>
+        </div>
+        <label v-if="operationKind !== 'move'">Название
+          <input v-model="operationName" maxlength="160" required />
+        </label>
+        <label v-if="operationKind !== 'rename'">Папка назначения
+          <UiSearchSelect v-model="operationParent" :options="targets" placeholder="Корневая папка" :clearable="true" :teleport="true" />
+        </label>
+        <p class="storage-rename-hint">Содержимое исходного файла не удаляется. Перенос между владельцами запрещён.</p>
+        <div class="storage-modal-actions">
+          <UiButton type="button" variant="secondary" :disabled="busy" @click="operationItem=null">Отмена</UiButton>
+          <UiButton :disabled="busy || (operationKind !== 'move' && !operationName.trim())">Сохранить</UiButton>
+        </div>
+      </form>
+    </div>
     <div v-if="historyItem" class="storage-overlay" @click.self="historyItem=null">
       <section class="storage-modal storage-small-modal storage-v1-history" role="dialog" aria-modal="true" aria-label="История действий с файлом">
         <div class="storage-modal-head"><h2>История: {{ historyItem.name }}</h2><button type="button" @click="historyItem=null">×</button></div>
