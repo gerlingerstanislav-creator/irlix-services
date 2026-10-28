@@ -8,6 +8,7 @@ COPY bootstrap/app.php /app/bootstrap/app.php
 COPY tests /app/tests
 COPY database/migrations /app/database/migrations
 RUN php /app/tests/local_role_authorization.php
+RUN php /app/tests/compensation_policy.php
 RUN find /app/app /app/routes /app/bootstrap /app/database/migrations -name '*.php' -print0 | xargs -0 -n1 php -l
 
 FROM php:8.4-cli-alpine
