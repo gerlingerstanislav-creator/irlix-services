@@ -37,9 +37,9 @@ final class ServiceEntitlement
                     if (str_starts_with((string) $permission, 'timesheets.')) continue;
                     if (($effect['allowed'] ?? false) === true) { $granted = true; break; }
                 }
-                // Self permission read is essential for UI's 403/error state,
-                // but it never authorizes any business operation.
-                if (!$granted && $request->path() !== 'api/permissions/me') {
+                // Do not leak a full Employees directory via /permissions/me
+                // to users with zero Clients permissions. Frontend handles 403.
+                if (!$granted) {
                     return response()->json(['message' => 'Clients access denied by local policy'], 403);
                 }
                 $request->attributes->set('client_contour_access', $access);
