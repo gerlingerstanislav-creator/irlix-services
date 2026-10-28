@@ -59,6 +59,11 @@ final class ServiceEntitlement
                     str_starts_with($path, 'api/management/') => 'timesheets.management.manage',
                     $path === 'api/analytics' => 'timesheets.analytics.view',
                     $path === 'api/audit' => 'timesheets.audit.view',
+                    $path === 'api/attention' => 'timesheets.mine.view',
+                    $path === 'api/partner-hours' && $request->isMethod('GET') => 'timesheets.partner-hours.view',
+                    $path === 'api/partner-hours' && $request->isMethod('PUT') => 'timesheets.partner-hours.manage',
+                    $path === 'api/partner-hours/confirm' && $request->isMethod('POST') => 'timesheets.partner-hours.manage',
+                    $path === 'api/partner-hours/final-approval' && $request->isMethod('POST') => 'timesheets.partner-hours.approve',
                     in_array($path, ['api/permissions'], true) => null,
                     default => null,
                 };
