@@ -6,8 +6,11 @@ use App\Http\Controllers\HealthController;
 use App\Http\Controllers\ManagementTimesheetsController;
 use App\Http\Controllers\PersonalTimesheetsController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\TimesheetsPermissionsController;
 
 Route::get('/health', HealthController::class);
+Route::get('/permissions', [TimesheetsPermissionsController::class, 'index']);
+Route::put('/permissions', [TimesheetsPermissionsController::class, 'update']);
 Route::get('/workspace', [PersonalTimesheetsController::class, 'workspace']);
 Route::put('/entries', [PersonalTimesheetsController::class, 'write']);
 Route::post('/confirm', [PersonalTimesheetsController::class, 'confirm']);
