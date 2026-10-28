@@ -20,8 +20,7 @@ final class ServiceEntitlement
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
         if (!$token) return response()->json(['message' => 'Authentication required'], 401);
 
-        if (filter_var(env('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
-            && !$request->is('api/permissions')) {
+        if (filter_var(env('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
             // Global and cross-contour read models are not yet provably
             // filtered per row. Fail closed rather than reusing legacy grants.
             if (!filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
@@ -47,6 +46,16 @@ final class ServiceEntitlement
                 $roles, (array) $fresh->json('data')
             )) {
                 return response()->json(['message' => 'Vacations roles changed; refresh authentication'], 403);
+            }
+            if ($path === 'api/permissions') {
+                // The service administrator manages its OWN matrix.
+                // Legacy service:vacations is not an extra prerequisite;
+                // the current JWT still needs a live administrator role.
+                if (!in_array('platform-admin', $roles, true)
+                    && !in_array('special:platform-admin', $roles, true)) {
+                    return response()->json(['message' => 'Vacations matrix administration denied'], 403);
+                }
+                return $next($request);
             }
             try {
                 $permissions = app(\App\Services\VacationsRoleAuthorization::class)->forSignedRoles($roles);
