@@ -187,6 +187,19 @@ class ClientContourAccess
                 : array_values(array_unique(array_map('intval', $accessResponse->json('data.department_ids', [])))));
         if ($jwtMode && !$localRoleMode && in_array('scope:all', $specialRoles, true))
             $departmentIds = $departments->pluck('id')->map(fn ($id) => (int) $id)->all();
+        if ($localRoleMode && $departmentIds !== []) {
+            // A head scope covers the current managed subtree, not just the
+            // department's root row. Use stable IDs and terminate on cycles.
+            do {
+                $before = count($departmentIds);
+                foreach ($departments as $department) {
+                    $parentId = (int) ($department['parent_id'] ?? 0);
+                    $childId = (int) ($department['id'] ?? 0);
+                    if ($childId > 0 && in_array($parentId, $departmentIds, true)
+                        && !in_array($childId, $departmentIds, true)) $departmentIds[] = $childId;
+                }
+            } while (count($departmentIds) !== $before);
+        }
         $chain = collect($jwtMode ? [] : $contextResponse->json('data.department_chain', []));
         $departmentAliases = $jwtMode
             ? $specialRoles
