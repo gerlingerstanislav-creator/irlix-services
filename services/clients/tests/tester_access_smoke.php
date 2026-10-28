@@ -355,6 +355,35 @@ namespace {
     $jwtFinanceRequest->attributes->set('identity', ['realm_roles'=>['employee-id:502','service:timesheets','accounting']]);
     $jwtFinance = $resolver->resolve($jwtFinanceRequest);
     $check(!in_array('account-manager', $jwtFinance['roles'], true), 'JWT finance accounting inherited account role');
+    // Staged Clients V2 must ignore legacy role->permission shortcuts, but
+    // allow explicitly configured namespaced rules from signed role claims.
+    $oldLocalClients = getenv('IRLIX_CLIENTS_LOCAL_AUTHZ_ENABLED');
+    putenv('IRLIX_CLIENTS_LOCAL_AUTHZ_ENABLED=true');
+    $v2Matrix = \Illuminate\Support\Facades\DB::table('client_contour_permissions');
+    foreach ([
+        ['role'=>'org:client-service','permission'=>'clients.view','scope'=>'own'],
+        ['role'=>'head:account-management','permission'=>'reports.view','scope'=>'team'],
+    ] as $grant) $v2Matrix->insert($grant + ['allowed'=>true,'denied'=>false]);
+    $actorStub = ['id'=>513,'position'=>'Account Manager','functional_roles'=>['account-manager']];
+    $v2Request = $request('api/permissions/me');
+    $v2Request->attributes->set('identity', ['realm_roles'=>[
+        'employee-id:513','org:client-service','org:account-management',
+        'head:account-management','service:clients','account-manager',
+    ]]);
+    $v2Access = $resolver->resolve($v2Request);
+    $check(($v2Access['permissions']['clients.view']['scope'] ?? 'none') === 'own',
+        'V2 client-service explicit baseline missing');
+    $check(($v2Access['permissions']['reports.view']['scope'] ?? 'none') === 'team',
+        'V2 verified account-management head matrix scope missing');
+    $check(!($v2Access['permissions']['cashflow.view']['allowed'] ?? false),
+        'V2 incorrectly imported broad legacy account-manager permissions');
+    $departmentsStub[1]['manager_id'] = null;
+    $revokeAccess = $resolver->resolve($v2Request);
+    $check(!($revokeAccess['permissions']['reports.view']['allowed'] ?? false),
+        'Stale V2 head JWT label survived removal of manager assignment');
+    $departmentsStub[1]['manager_id'] = 513;
+    if ($oldLocalClients === false) putenv('IRLIX_CLIENTS_LOCAL_AUTHZ_ENABLED');
+    else putenv('IRLIX_CLIENTS_LOCAL_AUTHZ_ENABLED='.$oldLocalClients);
     if ($oldJwtMode === false) putenv('IRLIX_AUTHZ_JWT_ENABLED');
     else putenv('IRLIX_AUTHZ_JWT_ENABLED='.$oldJwtMode);
 
