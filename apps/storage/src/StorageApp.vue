@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { UiAppShell, UiErrorState, isPlatformAdministratorAccess } from '@irlix/ui';
 import { createBrowserAuth } from '@irlix/auth';
 import StorageDrive from './StorageDrive.vue';
+import StorageTrash from './StorageTrash.vue';
 
 // Same OIDC session as Dashboard and every other IRLIX service.
 // The short-lived HttpOnly Storage cookie is independently checked by nginx
@@ -18,6 +19,7 @@ const error = ref('');
 const items = [
   { id: 'files', label: 'Мои файлы', icon: 'file-text', href: '/storage/' },
   { id: 'available', label: 'Доступные мне', icon: 'users', href: '/storage/available' },
+  { id: 'trash', label: 'Корзина', icon: 'archive', href: '/storage/trash' },
 ];
 const route = useRoute();
 const router = useRouter();
@@ -27,6 +29,7 @@ function onBreadcrumbs(crumbs) {
 }
 const activeSection = computed(() => route.meta.section || 'not-found');
 const breadcrumbs = computed(() => {
+  if (activeSection.value === 'trash') return [{ label: 'Корзина' }];
   if (activeSection.value === 'available') return [{ label: 'Доступные мне' }];
   if (activeSection.value !== 'files') return [{ label: 'Страница не найдена' }];
   const path = typeof route.query.folder === 'string' ? route.query.folder : '';
@@ -42,7 +45,7 @@ const breadcrumbs = computed(() => {
   ];
 });
 function navigateSection(id) {
-  if (id === 'files' || id === 'available') router.push({ name: id });
+  if (id === 'files' || id === 'available' || id === 'trash') router.push({ name: id });
 }
 
 onMounted(async () => {
@@ -86,6 +89,7 @@ onMounted(async () => {
     @logout="auth.logout()"
   >
     <StorageDrive v-if="activeSection === 'files'" @breadcrumbs="onBreadcrumbs" />
+    <StorageTrash v-else-if="activeSection === 'trash'" />
     <section v-else-if="activeSection === 'available'" class="storage-placeholder">
       <h2>Доступные мне</h2>
       <p>Раздел для файлов, к которым предоставлен доступ другими сотрудниками. Пока общий доступ не подключён — чужие файлы не отображаются.</p>
