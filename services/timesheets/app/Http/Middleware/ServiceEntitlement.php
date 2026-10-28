@@ -32,6 +32,10 @@ final class ServiceEntitlement
                     return response()->json(['message' => 'Timesheets authorization unavailable'], 503);
                 }
                 $path = $request->path();
+                if ($path === 'api/permissions/me') {
+                    $request->attributes->set('timesheets_local_permissions', $permissions);
+                    return $next($request);
+                }
                 $required = match (true) {
                     $path === 'api/workspace' => 'timesheets.mine.view',
                     in_array($path, ['api/entries','api/confirm','api/unconfirm'], true) => 'timesheets.mine.manage',
