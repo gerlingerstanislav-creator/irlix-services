@@ -389,3 +389,104 @@ def restore(request: Request, object_id: UUID):
         except AccessDenied:
             raise HTTPException(403, "Недостаточно прав")
     return {"restored": True}
+
+
+# P1: logical relocation never alters existing S3 object keys or file bytes.
+class MoveInput(BaseModel):
+    parent_id: UUID | None = None
+
+
+class RenameInput(BaseModel):
+    name: str
+
+
+class CopyInput(BaseModel):
+    parent_id: UUID | None = None
+    name: str | None = None
+
+
+@router.post("/objects/{object_id}/move")
+def move_object(request: Request, object_id: UUID, data: MoveInput):
+    actor = _identity(request)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        repo.lock()
+        oid = _authorize(repo, actor, object_id, Permission.MOVE)
+        source = repo.object_summary(oid)
+        if not source or source[6] != "active":
+            raise HTTPException(404, "Объект не найден")
+        if data.parent_id:
+            dest = _authorize(repo, actor, data.parent_id, Permission.READ)
+            target = repo.object_summary(dest)
+            if not target or target[1] != "folder" or target[6] != "active":
+                raise HTTPException(409, "Недоступная папка назначения")
+            if source[2] != target[2]:
+                raise HTTPException(403, "Перемещение между владельцами запрещено")
+            if oid in repo.load_objects(dest):
+                raise HTTPException(409, "Нельзя переместить папку внутрь себя")
+        else:
+            dest = None
+        try:
+            conn.execute("UPDATE storage.objects SET parent_id=%s,updated_at=now(),"
+                         "revision=revision+1 WHERE id=%s", (dest, oid))
+        except psycopg.errors.UniqueViolation:
+            raise HTTPException(409, "Объект с таким названием уже существует")
+        _audit(repo, actor, oid, "object.move")
+    return {"moved": True, "id": oid, "parent_id": dest}
+
+
+@router.patch("/objects/{object_id}")
+def rename_object(request: Request, object_id: UUID, data: RenameInput):
+    actor = _identity(request)
+    title = _name(data.name)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        repo.lock()
+        oid = _authorize(repo, actor, object_id, Permission.EDIT)
+        old = repo.object_summary(oid)
+        if not old or old[6] != "active":
+            raise HTTPException(404, "Объект не найден")
+        if old[1] == "file":
+            from pathlib import PurePath
+            if PurePath(old[4]).suffix.lower() != PurePath(title).suffix.lower():
+                raise HTTPException(422, "Расширение файла нельзя изменять")
+        try:
+            conn.execute("UPDATE storage.objects SET display_name=%s,updated_at=now(),"
+                         "revision=revision+1 WHERE id=%s", (title, oid))
+        except psycopg.errors.UniqueViolation:
+            raise HTTPException(409, "Название уже занято")
+        _audit(repo, actor, oid, "object.rename")
+    return {"name": title, "id": oid}
+
+
+@router.post("/objects/{object_id}/copy")
+def copy_file(request: Request, object_id: UUID, data: CopyInput):
+    actor = _identity(request)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        repo.lock()
+        oid = _authorize(repo, actor, object_id, Permission.COPY)
+        source = repo.object_summary(oid)
+        if not source or source[1] != "file" or source[6] != "active":
+            raise HTTPException(422, "Копирование папки пока не поддерживается")
+        if not source[5] or not source[5].startswith(S3_ROOT):
+            raise HTTPException(404, "Недоступный файл")
+        parent, owner = _parent_for_create(repo, actor, data.parent_id)
+        title = _name(data.name or ("Копия " + source[4]))
+        new_id = str(uuid4())
+        target_key = S3_ROOT + new_id
+        try:
+            _s3().copy_object(Bucket=_bucket(), Key=target_key,
+                              CopySource={"Bucket": _bucket(), "Key": source[5]})
+        except (ClientError, BotoCoreError):
+            raise HTTPException(503, "Не удалось скопировать файл")
+        try:
+            conn.execute("INSERT INTO storage.objects "
+                         "(id,kind,owner_employee_id,parent_id,display_name,s3_key) "
+                         "VALUES (%s,'file',%s,%s,%s,%s)",
+                         (new_id, owner, parent, title, target_key))
+        except psycopg.errors.UniqueViolation:
+            raise HTTPException(409, "Название уже существует")
+        _audit(repo, actor, oid, "file.copy.source")
+        _audit(repo, actor, new_id, "file.copy.target")
+    return {"id": new_id, "name": title, "kind": "file", "copied": True}
