@@ -1,0 +1,28 @@
+<?php
+
+require __DIR__.'/../app/Services/FinanceRoleAuthorization.php';
+
+use App\Services\FinanceRoleAuthorization as Authz;
+
+$check = static function (bool $condition, string $message): void {
+    if (!$condition) throw new RuntimeException($message);
+};
+$rows = [
+    ['role'=>'org:irlix','permission'=>'finance.view','allowed'=>false,'scope'=>'none'],
+    ['role'=>'org:accounting','permission'=>'finance.view','allowed'=>true,'scope'=>'all'],
+    ['role'=>'head:accounting','permission'=>'finance.planning.approve','allowed'=>true,'scope'=>'all'],
+    ['role'=>'special:personnel-officer','permission'=>'finance.salary.view','allowed'=>true,'scope'=>'team'],
+];
+$actual = Authz::evaluate(['org:irlix','org:accounting','head:accounting','special:personnel-officer'], $rows);
+$check(!$actual['finance.view'], 'Explicit deny must win for finance.view');
+$check($actual['finance.planning.approve'], 'Direct head permission must be applied');
+$check(!$actual['finance.salary.view'], 'An unsupported team grant must fail closed');
+$check(!Authz::evaluate(['org:irlix'], [])[ 'finance.view'], 'A company role gives no implicit finance access');
+$check(!Authz::evaluate(['service:finance','permission:finance-view'], $rows)['finance.view'],
+    'Legacy service/permission markers must not be imported');
+$check(Authz::evaluate(['platform-admin'], [])['finance.salary.view'], 'Platform admin is a superuser');
+$check(Authz::evaluate(['special:platform-admin'], [])['finance.salary.view'], 'Verified special admin is a superuser');
+$check(!Authz::evaluate(['org:accounting'], [
+    ['role'=>'org:accounting','permission'=>'finance.salary.view','allowed'=>true,'scope'=>'own']
+])['finance.salary.view'], 'Unsupported own scope must fail closed');
+echo "Finance V2 local authorization: PASS\n";
