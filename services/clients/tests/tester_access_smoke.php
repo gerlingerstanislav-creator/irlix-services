@@ -27,7 +27,7 @@ namespace {
     });
     $schema = \Illuminate\Support\Facades\DB::connection()->getSchemaBuilder();
     $schema->create('client_contour_permissions', function ($t) {
-        $t->id(); $t->string('role'); $t->string('permission'); $t->boolean('allowed'); $t->string('scope'); $t->timestamps();
+        $t->id(); $t->string('role'); $t->string('permission'); $t->boolean('allowed'); $t->boolean('denied')->default(false); $t->string('scope'); $t->timestamps();
         $t->unique(['role', 'permission']);
     });
     // Old tester permission grants must remain ineffective after privilege removal.
