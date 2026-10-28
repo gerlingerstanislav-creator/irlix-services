@@ -95,4 +95,9 @@ $test(!Authz::currentIdentityMatches($signed,$live),'Other employee authorized a
 $live['employee_id']=74;
 $test(!Authz::currentIdentityMatches([...$signed,'platform-admin'],$live),
     'Old superuser JWT survived administrator role removal');
+$test(!Authz::canOpenWorkspace([]), 'Empty Vacations matrix accidentally admits a service');
+$test(!Authz::canOpenWorkspace(['vacations.mine.manage'=>['allowed'=>true,'scope'=>'own']]),
+    'Mutation grant alone must not expose the service');
+$test(Authz::canOpenWorkspace(['vacations.manage.view'=>['allowed'=>true,'scope'=>'team']]),
+    'Manager with independent read grant must be admitted without mine permission');
 echo "Vacations local roles: PASS\n";
