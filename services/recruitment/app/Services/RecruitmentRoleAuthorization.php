@@ -9,6 +9,7 @@ final class RecruitmentRoleAuthorization
     public const PERMISSIONS=[
         'recruitment.workspace.view',
         'recruitment.compensation.view',
+        'recruitment.compensation.manage',
         'recruitment.candidates.manage',
         'recruitment.requests.manage',
         'recruitment.hiring.manage',
@@ -54,6 +55,16 @@ final class RecruitmentRoleAuthorization
                 &&!isset($current[$role]))return false;
         }
         return true;
+    }
+
+    /**
+     * Independent sensitive-field write gate. A general candidate/offer edit
+     * grant never implies the right to change salary and compensation.
+     */
+    public static function canWriteSensitiveField(array $permissions, array $input, string $field): bool
+    {
+        return !array_key_exists($field, $input)
+            || ($permissions['recruitment.compensation.manage'] ?? false) === true;
     }
 
     public static function requiredPermission(string $method,string $path):?string
