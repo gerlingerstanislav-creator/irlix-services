@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { UiButton, UiIcon } from '@irlix/ui';
+import { UiButton, UiIcon, UiViewSelect } from '@irlix/ui';
 
 const route = useRoute();
 const router = useRouter();
@@ -181,10 +181,7 @@ onMounted(() => refresh());
           <div class="storage-toolbar-tools">
             <label class="storage-search"><UiIcon name="search" /><input v-model="search" placeholder="Поиск в папке" aria-label="Поиск в папке" /></label>
             <select v-model="sortBy" aria-label="Сортировка"><option value="name">По названию</option><option value="date">По дате</option><option value="size">По размеру</option></select>
-            <div class="storage-switch" role="group" aria-label="Вид файлов">
-              <button type="button" :class="{ active:layout==='list' }" :aria-pressed="layout==='list'" aria-label="Список" title="Список" @click="layout = 'list'"><UiIcon name="list" /></button>
-              <button type="button" :class="{ active:layout==='grid' }" :aria-pressed="layout==='grid'" aria-label="Плитки" title="Плитки" @click="layout = 'grid'">▦</button>
-            </div>
+            <UiViewSelect v-model="layout" :options="[{ value: 'list', label: 'Список' }, { value: 'grid', label: 'Плитки' }]" aria-label="Вид файлов" />
           </div>
           <div class="storage-actions">
             <UiButton variant="secondary" type="button" @click="createFolder = true" :disabled="busy">＋ Папка</UiButton>
