@@ -69,10 +69,9 @@ final class EmployeesDirectory
             'platform-admin','special:platform-admin'])) return $roles;
         // Even GET previews must not authorize download or privilege reuse.
         if ($request->header('X-Irlix-Role-Preview') !== null) {
-            return array_values(array_diff($roles, [
-                'personnel-officer','special:personnel-officer',
-                'platform-admin','special:platform-admin',
-            ]));
+            // Role preview is not an access token with current privileges;
+            // never reuse it to read another employee's sensitive records.
+            throw new DomainException('Просмотр роли не разрешает доступ к кадровым данным.');
         }
         // Employees /access/me is available to authenticated users even
         // without employees.read. Do not forward any preview headers.
@@ -91,7 +90,14 @@ final class EmployeesDirectory
         if (!is_array($current)) {
             throw new RuntimeException('Invalid current privileged role response');
         }
-        return self::limitToCurrentPrivilegedRoles($roles, $employeeId, $current);
+        $verified = self::limitToCurrentPrivilegedRoles($roles, $employeeId, $current);
+        // A revoked superuser/personnel token may also carry an old
+        // scope:all claim. Deny the entire stale token immediately instead
+        // of merely removing role labels while retaining stale scope grants.
+        if (count($verified) !== count($roles)) {
+            throw new DomainException('Привилегии изменены. Обновите авторизацию.');
+        }
+        return $verified;
     }
 
     public function vacationsAccess(Request $request, int $employeeId): array
