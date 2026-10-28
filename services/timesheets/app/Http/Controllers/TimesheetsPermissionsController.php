@@ -18,6 +18,41 @@ final class TimesheetsPermissionsController
             403, 'Role preview is read-only');
     }
 
+    /**
+     * One trusted permissions endpoint for the Timesheets frontend. During
+     * migration only, it relays the historical Clients matrix; afterwards
+     * it resolves solely the Timesheets database against verified JWT roles.
+     */
+    public function me(Request $request)
+    {
+        $jwt = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+        $local = $jwt && filter_var(env('IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+        if ($local) {
+            $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
+            $permissions = (array) $request->attributes->get('timesheets_local_permissions',
+                app(TimesheetsRoleAuthorization::class)->forVerifiedRoles($roles));
+            return response()->json(['data' => ['permissions' => $permissions, 'mode' => 'local']]);
+        }
+
+        $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
+        if (!$token) return response()->json(['message' => 'Authentication required'], 401);
+        try {
+            $response = \Illuminate\Support\Facades\Http::withToken((string) $token)
+                ->acceptJson()->timeout(6)->get(
+                    rtrim((string) env('CLIENTS_URL', 'http://clients:8000/api'), '/').'/permissions/me'
+                );
+        } catch (\Throwable) {
+            return response()->json(['message' => 'Legacy permission matrix unavailable'], 503);
+        }
+        if (!$response->successful()) {
+            return response()->json(['message' => 'Legacy permission matrix unavailable'], 503);
+        }
+        return response()->json(['data' => [
+            'permissions' => (array) $response->json('data.permissions', []),
+            'mode' => 'legacy',
+        ]]);
+    }
+
     public function index(Request $request, TimesheetsPermissionManagementService $service)
     {
         $this->authorizeAdmin($request);
