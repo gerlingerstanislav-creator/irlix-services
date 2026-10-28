@@ -42,6 +42,15 @@ final class ServiceEntitlement
                 || in_array($method, ['GET','PATCH'], true) &&
                     preg_match('#^api/absences/[1-9][0-9]*(?:/history)?$#D', $path) === 1
                     && ($method !== 'PATCH' || !str_ends_with($path, '/history'));
+            $ownSubmission = $method === 'POST'
+                && preg_match('#^api/absences/[1-9][0-9]*/submit$#D', $path) === 1;
+            $ownDocument = ($method === 'GET'
+                    && preg_match('#^api/absences/[1-9][0-9]*/attachments(?:/[1-9][0-9]*/download)?$#D', $path) === 1)
+                || ($method === 'POST'
+                    && preg_match('#^api/absences/[1-9][0-9]*/attachments$#D', $path) === 1)
+                || ($method === 'DELETE'
+                    && preg_match('#^api/absences/[1-9][0-9]*/attachments/[1-9][0-9]*$#D', $path) === 1);
+            $personal = $personal || $ownSubmission || $ownDocument;
             if (!$personal) {
                 return response()->json(['message' => 'Vacations V2 object authorization not yet verified'], 503);
             }
@@ -70,6 +79,19 @@ final class ServiceEntitlement
             if (($permission['allowed'] ?? false) !== true
                 || !in_array(($permission['scope'] ?? 'none'), ['own','team','all'], true)) {
                 return response()->json(['message' => 'Vacations permission denied'], 403);
+            }
+            // For document and submit routes, ownership is independently
+            // verified from the Vacations database BEFORE domain workflows.
+            // A matrix grant never authorizes another employee's attachments.
+            if ($ownDocument || $ownSubmission) {
+                $id = (int) (explode('/', $path)[2] ?? 0);
+                $owner = \App\Models\Absence::query()->whereKey($id)->value('employee_id');
+                if ($owner === null) {
+                    return response()->json(['message' => 'Absence not found'], 404);
+                }
+                if ((int) $owner !== (int) $fresh->json('data.employee_id')) {
+                    return response()->json(['message' => 'Other employees require object-scope authorization'], 403);
+                }
             }
             // Even a team/all grant never changes ownership of these personal
             // endpoints. The domain controller remains the final authority.
