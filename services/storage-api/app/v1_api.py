@@ -185,6 +185,30 @@ def available(request: Request):
     return {"entries": result}
 
 
+@router.get("/trash")
+def list_trashed(request: Request):
+    actor = _identity(request)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        if actor.platform_admin:
+            rows = conn.execute(
+                "SELECT id::text,kind,owner_employee_id,display_name,deleted_at "
+                "FROM storage.objects WHERE state='trashed' ORDER BY deleted_at DESC LIMIT 200"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id::text,kind,owner_employee_id,display_name,deleted_at "
+                "FROM storage.objects WHERE owner_employee_id=%s AND state='trashed' "
+                "ORDER BY deleted_at DESC LIMIT 200", (actor.employee_id,)
+            ).fetchall()
+        result = []
+        for oid, kind, owner, title, removed in rows:
+            if can_access(actor, oid, Permission.RESTORE, repo.load_objects(oid), repo.load_grants(oid)):
+                result.append({"id": oid, "kind": kind, "name": title,
+                               "owner_employee_id": owner, "deleted_at": removed})
+    return {"entries": result}
+
+
 @router.post("/folders")
 def create_folder(request: Request, data: FolderInput):
     actor = _identity(request)
