@@ -85,7 +85,11 @@ final class ServiceEntitlement
             // A matrix grant never authorizes another employee's attachments.
             if ($ownDocument || $ownSubmission) {
                 $id = (int) (explode('/', $path)[2] ?? 0);
-                $owner = \App\Models\Absence::query()->whereKey($id)->value('employee_id');
+                try {
+                    $owner = \App\Models\Absence::query()->whereKey($id)->value('employee_id');
+                } catch (\Throwable) {
+                    return response()->json(['message' => 'Vacations object ownership unavailable'], 503);
+                }
                 if ($owner === null) {
                     return response()->json(['message' => 'Absence not found'], 404);
                 }
