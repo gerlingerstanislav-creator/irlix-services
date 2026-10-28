@@ -56,10 +56,11 @@ $assert(200, 'GET', '/api/workspace');
 $assert(200, 'GET', '/api/history');
 $assert(200, 'GET', '/api/production-calendar');
 $assert(200, 'GET', '/api/registry');
-$assert(503, 'GET', '/api/department-roster');
+$assert(200, 'GET', '/api/department-roster');
 $assert(200, 'GET', '/api/approvals');
-$assert(503, 'GET', '/api/client-service-calendar');
-$assert(503, 'GET', '/api/calendar-absences');
+$assert(200, 'GET', '/api/client-service-calendar');
+$assert(200, 'GET', '/api/client-service-absence-alerts');
+$assert(200, 'GET', '/api/calendar-absences');
 $scoped = new \App\Services\VacationsScopedAccess(new \App\Support\EmployeesDirectory());
 if (!$scoped->permits(Request::create('/api/registry','GET'), 'team', 17)) {
     throw new RuntimeException('Scoped registry blocked at middleware despite controller row filter');
