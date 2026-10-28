@@ -148,6 +148,6 @@ test('Rename operations are server-backed with metadata-only persistence and no 
   assert.ok(api.includes('META_ROOT = "pilot-ui-meta/"'));
   assert.ok(api.includes('@app.post("/rename", dependencies=[Depends(guard)])'));
   assert.ok(api.includes('@app.get("/thumbnails", dependencies=[Depends(guard)])'));
-  assert.ok(api.includes('Image.MAX_IMAGE_PIXELS = 25_000_000'));
+  assert.ok(api.includes('Image.MAX_IMAGE_PIXELS = 12_000_000'));
   assert.doesNotMatch(api, /delete_object\s*\(/);
 });
