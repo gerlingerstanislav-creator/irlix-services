@@ -4,6 +4,7 @@ use App\Http\Controllers\AccessRoleController;
 use App\Http\Controllers\BrandbookSessionController;
 use App\Http\Controllers\StoragePilotSessionController;
 use App\Http\Controllers\StorageV1SessionController;
+use App\Http\Controllers\StorageV1DirectoryController;
 use App\Http\Controllers\DesignSystemSessionController;
 use Illuminate\Support\Facades\Route;
 
@@ -20,3 +21,6 @@ Route::post('/storage-pilot/session', [StoragePilotSessionController::class, 'st
 
 // Independent user Storage V1 cookie; legacy pilot remains admin-only.
 Route::post('/storage-v1/session', [StorageV1SessionController::class, 'store']);
+
+Route::get('/storage-v1-directory', [StorageV1DirectoryController::class, 'people']);
+Route::get('/storage-v1-departments', [StorageV1DirectoryController::class, 'departments']);
