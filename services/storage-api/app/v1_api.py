@@ -334,9 +334,9 @@ def preview_safe(request: Request, object_id: UUID):
         raise HTTPException(413, "Файл слишком большой для просмотра")
     signatures = {
         ".pdf": raw.startswith(b"%PDF-"),
-        ".png": raw.startswith(b"\\x89PNG\\r\\n\\x1a\\n"),
-        ".jpg": raw.startswith(b"\\xff\\xd8\\xff"),
-        ".jpeg": raw.startswith(b"\\xff\\xd8\\xff"),
+        ".png": raw.startswith(b"\x89PNG\r\n\x1a\n"),
+        ".jpg": raw.startswith(b"\xff\xd8\xff"),
+        ".jpeg": raw.startswith(b"\xff\xd8\xff"),
         ".gif": raw.startswith((b"GIF87a", b"GIF89a")),
         ".webp": raw.startswith(b"RIFF") and raw[8:12] == b"WEBP",
     }
