@@ -27,6 +27,8 @@ final class ServiceEntitlement
             if (filter_var(env('IRLIX_CLIENTS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
                 try {
                     $access = app(\App\Support\ClientContourAccess::class)->resolve($request);
+                } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $error) {
+                    return response()->json(['message' => 'Clients authorization denied'], $error->getStatusCode());
                 } catch (\Throwable) {
                     return response()->json(['message' => 'Clients authorization unavailable'], 503);
                 }
