@@ -150,6 +150,26 @@ final class EmployeesDirectory
 
     public function vacationsDirectory(Request $request): array
     {
+        // The old /vacations-directory projection is already filtered by
+        // legacy Employees permission/scope and does not contain manager_id.
+        // Reusing it for V2 would silently shrink team access, and sometimes
+        // make ALL appear to be OWN. The current organization projection
+        // provides authoritative IDs and manager assignments; Vacations
+        // independently applies its own effective permission + object scope.
+        $local = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+            && filter_var(env('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+            && is_array($request->attributes->get('vacations_local_permissions'));
+        if ($local) {
+            $directory = $this->clientsDirectory($request);
+            if (!is_array($directory['employees'] ?? null)
+                || !is_array($directory['departments'] ?? null)) {
+                throw new RuntimeException('Current organization directory is incomplete');
+            }
+            return [
+                'employees' => array_values($directory['employees']),
+                'departments' => array_values($directory['departments']),
+            ];
+        }
         return $this->get($request, '/vacations-directory');
     }
 
