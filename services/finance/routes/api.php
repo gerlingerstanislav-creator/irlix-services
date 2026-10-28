@@ -6,6 +6,7 @@ use App\Http\Controllers\AccrualPaymentController;
 use App\Http\Controllers\CashTransferController;
 use App\Support\ClientsGateway;
 use App\Http\Controllers\BudgetController;
+use App\Http\Controllers\FinancePermissionsController;
 use App\Support\RevenueReport;
 use App\Support\ProfitabilityReport;
 use Illuminate\Support\Facades\DB;
@@ -39,6 +40,10 @@ Route::get('/health',function(){
         return response()->json(['status'=>'unavailable','service'=>'finance'],503);
     }
 });
+// Finance-local authorization matrix; only platform admin can edit.
+Route::get('/permissions', [FinancePermissionsController::class, 'index']);
+Route::put('/permissions', [FinancePermissionsController::class, 'update']);
+
 Route::get('/me', fn(Request $r)=>response()->json(['data'=>[
     'permissions'=>$r->attributes->get('identity')['permissions']??[],
     'actor'=>financeActor($r),
