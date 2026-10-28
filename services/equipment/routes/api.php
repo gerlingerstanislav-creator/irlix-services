@@ -5,6 +5,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\EquipmentRolePermissionsController;
 use Illuminate\Support\Facades\Validator;
 
 function equipmentRoles(Request $request): array { return $request->attributes->get('identity')['realm_roles'] ?? []; }
@@ -71,6 +72,9 @@ function equipmentAssignmentOverlap(int $itemId,string $startsOn,?string $return
 }
 
 Route::get('/health', fn()=>response()->json(['service'=>'equipment','status'=>'ok','database'=>DB::select('select 1')?'ok':'error']));
+Route::get('/role-permissions', [EquipmentRolePermissionsController::class, 'index']);
+Route::put('/role-permissions', [EquipmentRolePermissionsController::class, 'update']);
+Route::delete('/role-permissions', [EquipmentRolePermissionsController::class, 'remove']);
 Route::get('/permissions', function(Request $r){ return response()->json(['data'=>['view'=>equipmentCanView($r),'manage'=>equipmentCanManage($r),'operate'=>equipmentCanOperate($r)]]); });
 Route::get('/settings', function(Request $r){ if($g=equipmentGuard(equipmentCanView($r)))return $g; return response()->json(['data'=>equipmentSettings()]); });
 Route::patch('/settings', function(Request $r){
