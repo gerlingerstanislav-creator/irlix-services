@@ -4,6 +4,8 @@ require __DIR__.'/../app/Services/VacationsRoleAuthorization.php';
 use App\Services\VacationsRoleAuthorization as Authz;
 require __DIR__.'/../app/Services/VacationsObjectScope.php';
 use App\Services\VacationsObjectScope as ObjectScope;
+require __DIR__.'/../app/Services/VacationsActionPolicy.php';
+use App\Services\VacationsActionPolicy as ActionPolicy;
 
 $test = static function (bool $condition, string $why): void {
     if (!$condition) throw new RuntimeException($why);
@@ -119,4 +121,17 @@ foreach ($routeMatches as $route) {
     $test($required !== null && in_array($required, Authz::PERMISSIONS, true),
         "Unmapped business endpoint {$method} {$path}");
 }
+$ownPolicy = [
+    'vacations.mine.view'=>['allowed'=>true,'scope'=>'own'],
+    'vacations.mine.manage'=>['allowed'=>false,'scope'=>'none'],
+    'vacations.documents.view'=>['allowed'=>false,'scope'=>'none'],
+    'vacations.approvals.manage'=>['allowed'=>false,'scope'=>'none'],
+];
+$test(ActionPolicy::visible(['view','edit','submit','approve','view_attachments'],
+    $ownPolicy) === ['view'], 'UI must hide actions denied by local policy');
+$test(ActionPolicy::visible(['view','edit'],null) === ['view','edit'],
+    'Legacy UI projections must be preserved');
+$test(ActionPolicy::visible(['view','reject','approve'],
+    ['vacations.approvals.manage'=>['allowed'=>true,'scope'=>'own']])
+    === ['view','reject','approve'], 'Assigned approver actions lost');
 echo "Vacations local roles: PASS\n";
