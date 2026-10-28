@@ -25,4 +25,20 @@ $check(Authz::evaluate(['special:platform-admin'], [])['finance.salary.view'], '
 $check(!Authz::evaluate(['org:accounting'], [
     ['role'=>'org:accounting','permission'=>'finance.salary.view','allowed'=>true,'scope'=>'own']
 ])['finance.salary.view'], 'Unsupported own scope must fail closed');
+$v2Signed=['employee-id:44','org:irlix','org:accounting','head:accounting','special:personnel-officer'];
+$live=['employee_id'=>44,'roles'=>['personnel-officer'],
+    'role_claims'=>['org:irlix','org:accounting','head:accounting','special:personnel-officer']];
+$check(Authz::currentIdentityMatches($v2Signed,$live),'Current signed identity roles denied');
+$live['role_claims']=['org:irlix','special:personnel-officer'];
+$check(!Authz::currentIdentityMatches($v2Signed,$live),
+    'Revoked organizational head did not revoke Finance access');
+$live['role_claims']=['org:irlix','org:accounting','head:accounting','special:personnel-officer'];
+$live['employee_id']=45;
+$check(!Authz::currentIdentityMatches($v2Signed,$live),'Other employee role data accepted');
+$live['employee_id']=44;
+$check(!Authz::currentIdentityMatches([...$v2Signed,'platform-admin'],$live),
+    'Signed but revoked platform administrator retained Finance access');
+$live['roles']=['personnel-officer','platform-admin'];
+$check(Authz::currentIdentityMatches([...$v2Signed,'platform-admin'],$live),
+    'Current administrator was incorrectly rejected');
 echo "Finance V2 local authorization: PASS\n";
