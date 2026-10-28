@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS storage.grants (
  role text NOT NULL CHECK (role IN ('reader','editor')),
  granted_by_employee_id bigint NOT NULL CHECK (granted_by_employee_id > 0),
  granted_at timestamptz NOT NULL DEFAULT now(),
+ revoked_at timestamptz,
  PRIMARY KEY(object_id,employee_id)
 );
 CREATE INDEX IF NOT EXISTS storage_grant_recipient_idx ON storage.grants(employee_id,object_id);
@@ -57,6 +58,6 @@ DROP TRIGGER IF EXISTS storage_audit_immutable ON storage.audit_events;
 CREATE TRIGGER storage_audit_immutable BEFORE UPDATE OR DELETE ON storage.audit_events
  FOR EACH ROW EXECUTE FUNCTION storage.reject_audit_mutation();
 -- Runtime database role: SELECT/INSERT on audit, SELECT/INSERT/UPDATE on objects
--- and grants; no DELETE on any metadata or bytes. Dedicated migration role
+-- and grants (revocation sets revoked_at); no DELETE on any metadata or bytes. Dedicated migration role
 -- owns schema and tables; database role permissions must be provisioned separately.
 COMMIT;
