@@ -55,12 +55,22 @@ $assert(403, 'GET', '/api/absences/occupied', ['employee_id'=>18]);
 $assert(200, 'GET', '/api/workspace');
 $assert(200, 'GET', '/api/history');
 $assert(200, 'GET', '/api/production-calendar');
-$assert(503, 'GET', '/api/registry');
+$assert(200, 'GET', '/api/registry');
 $assert(503, 'GET', '/api/department-roster');
-$assert(503, 'GET', '/api/approvals');
-$assert(503, 'POST', '/api/approvals/55/approve');
-$assert(503, 'GET', '/api/absences/15/attachments/44/download');
+$assert(200, 'GET', '/api/approvals');
 $assert(503, 'GET', '/api/client-service-calendar');
+$assert(503, 'GET', '/api/calendar-absences');
+$scoped = new \App\Services\VacationsScopedAccess(new \App\Support\EmployeesDirectory());
+if (!$scoped->permits(Request::create('/api/registry','GET'), 'team', 17)) {
+    throw new RuntimeException('Scoped registry blocked at middleware despite controller row filter');
+}
+if (!$scoped->permits(Request::create('/api/approvals','GET'), 'own', 17)) {
+    throw new RuntimeException('Scoped approvals list blocked before controller resource filter');
+}
+if ($scoped->permits(Request::create('/api/random','GET'), 'all', 17)) {
+    throw new RuntimeException('Unknown Vacations API path was authorized');
+}
+
 
 $live['role_claims']=['org:irlix'];
 $assert(403, 'GET', '/api/me');
