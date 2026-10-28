@@ -43,6 +43,7 @@ final class ServiceEntitlement
                     return response()->json(['message' => 'Clients access denied by local policy'], 403);
                 }
                 $request->attributes->set('client_contour_access', $access);
+                $request->attributes->set('client_contour_verified_at_entitlement', true);
                 return $next($request);
             }
             $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
