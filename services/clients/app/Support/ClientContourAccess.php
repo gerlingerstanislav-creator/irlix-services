@@ -96,6 +96,21 @@ class ClientContourAccess
         return $alias;
     }
 
+    /** Deny a stale privileged JWT, including any old global scope grants. */
+    public static function currentSpecialsMatch(array $jwt, int $employeeId, array $live): bool
+    {
+        if ($employeeId <= 0 || (int) ($live['employee_id'] ?? 0) !== $employeeId
+            || !is_array($live['roles'] ?? null)) return false;
+        foreach ($jwt as $role) {
+            if (!is_string($role)) continue;
+            if (str_starts_with($role, 'special:')) $special = substr($role, 8);
+            elseif ($role === 'platform-admin') $special = 'platform-admin';
+            else continue;
+            if (!in_array($special, $live['roles'], true)) return false;
+        }
+        return true;
+    }
+
     public static function currentIdentityLabels(
         array $signed, int $actorId, array $departments, array $employees
     ): array {
@@ -147,6 +162,26 @@ class ClientContourAccess
         $identityIds = array_values(array_filter($jwtLabels,
             fn ($role) => is_string($role) && preg_match('/^employee-id:[1-9][0-9]*$/D', $role) === 1));
         if ($jwtMode && count($identityIds) !== 1) abort(403, 'Verified employee identity is missing or ambiguous');
+        if ($localRoleMode && array_filter($jwtLabels, static fn ($role) =>
+            is_string($role) && ($role === 'platform-admin' || str_starts_with($role, 'special:')))) {
+            // This is a privileged *identity* freshness check only. Clients
+            // permissions still come exclusively from the local matrix.
+            // Never forward role-preview headers into the real assignment check.
+            if ($request->header('X-Irlix-Role-Preview') !== null) {
+                abort(403, 'Role preview cannot authorize privileged Clients access');
+            }
+            try {
+                $live = Http::withToken((string) $token)->acceptJson()
+                    ->timeout(5)->get($base.'/access/me');
+            } catch (\Throwable) {
+                abort(503, 'Current role assignments unavailable');
+            }
+            abort_unless($live->successful() && is_array($live->json('data')), 503,
+                'Current role assignments unavailable');
+            abort_unless(self::currentSpecialsMatch($jwtLabels,
+                (int) substr($identityIds[0], strlen('employee-id:')),
+                (array) $live->json('data')), 403, 'Privileged identity roles were revoked');
+        }
         $employeeResponse = $jwtMode ? null : $http->get($base.'/self');
         $directoryResponse = $http->get($base.'/clients-directory');
         if ($directoryResponse->successful()) {
