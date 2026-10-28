@@ -15,3 +15,4 @@ Route::get('/_brandbook_access', [BrandbookGateController::class, 'check']);
 Route::get('/_design_system_access', [DesignSystemGateController::class, 'check']);
 
 Route::get('/_storage_pilot_access', [StoragePilotGateController::class, 'check']);
+Route::get('/_storage_pilot_recipient/{employee}', [StoragePilotGateController::class, 'recipient'])->whereNumber('employee');
