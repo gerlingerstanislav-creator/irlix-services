@@ -28,7 +28,7 @@ class GrantRole(str, Enum):
     EDITOR = "editor"
 
 
-READ_ACTIONS = frozenset({Permission.READ, Permission.DOWNLOAD, Permission.THUMBNAIL, Permission.LIST})
+READ_ACTIONS = frozenset({Permission.READ, Permission.DOWNLOAD, Permission.THUMBNAIL, Permission.LIST, Permission.COPY})
 EDITOR_ACTIONS = READ_ACTIONS | frozenset({Permission.UPLOAD, Permission.EDIT})
 OWNER_ACTIONS = EDITOR_ACTIONS | frozenset({Permission.SHARE, Permission.TRASH, Permission.RESTORE, Permission.AUDIT, Permission.MOVE})
 
