@@ -93,7 +93,7 @@ def list_markers(client, bucket_name: str, continuation: str | None = None) -> d
             if len(body) > 8192:
                 raise ValueError("oversize marker")
             record = json.loads(body)
-            if (not isinstance(record, dict) or record.get("kind") not in _ALLOWED_KIN
+            if (not isinstance(record, dict) or record.get("kind") not in _ALLOWED_KINDS
                     or not isinstance(record.get("identity"), str)
                     or marker_key(record["kind"], record["identity"]) != key
                     or record.get("state") not in _ALLOWED_STATES
