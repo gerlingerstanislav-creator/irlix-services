@@ -77,6 +77,25 @@ class ClientContourAccess
      * when its ancestry includes client-service; Finance Accounting stays
      * accounting. No free-text job title is used.
      */
+    private static function canonicalDepartmentAlias(array $department, array $departments): string
+    {
+        $alias = (string) ($department['alias'] ?? '');
+        if ($alias !== 'accounting') return $alias;
+        $byId = [];
+        foreach ($departments as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            if ($id > 0) $byId[$id] = $row;
+        }
+        $id = (int) ($department['id'] ?? 0);
+        $visited = [];
+        while ($id > 0 && isset($byId[$id]) && !isset($visited[$id])) {
+            $visited[$id] = true;
+            if (($byId[$id]['alias'] ?? '') === 'client-service') return 'account-management';
+            $id = (int) ($byId[$id]['parent_id'] ?? 0);
+        }
+        return $alias;
+    }
+
     public static function currentIdentityLabels(
         array $signed, int $actorId, array $departments, array $employees
     ): array {
@@ -90,30 +109,19 @@ class ClientContourAccess
         foreach ($departments as $d) {
             if ((int) ($d['id'] ?? 0) > 0) $byId[(int) $d['id']] = $d;
         }
-        $aliasFor = static function (array $department) use ($byId): string {
-            $alias = (string) ($department['alias'] ?? '');
-            if ($alias !== 'accounting') return $alias;
-            $id = (int) ($department['id'] ?? 0);
-            $visited = [];
-            while ($id > 0 && isset($byId[$id]) && !isset($visited[$id])) {
-                $visited[$id] = true;
-                if (($byId[$id]['alias'] ?? '') === 'client-service') return 'account-management';
-                $id = (int) ($byId[$id]['parent_id'] ?? 0);
-            }
-            return $alias;
-        };
+
         $valid = [];
         $id = (int) ($actor['department_id'] ?? 0);
         $seen = [];
         while ($id > 0 && isset($byId[$id]) && !isset($seen[$id])) {
             $seen[$id] = true;
-            $alias = $aliasFor($byId[$id]);
+            $alias = self::canonicalDepartmentAlias($byId[$id], $departments);
             if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $alias)) $valid['org:'.$alias] = true;
             $id = (int) ($byId[$id]['parent_id'] ?? 0);
         }
         foreach ($departments as $d) {
             if ((int) ($d['manager_id'] ?? 0) !== $actorId) continue;
-            $alias = $aliasFor($d);
+            $alias = self::canonicalDepartmentAlias($d, $departments);
             if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $alias)) $valid['head:'.$alias] = true;
         }
         $out = [];
@@ -171,7 +179,7 @@ class ClientContourAccess
             ? $departments->filter(fn ($department) =>
                 (int) ($department['manager_id'] ?? 0) > 0
                 && (int) ($department['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0)
-                && in_array('head:'.(string) ($department['alias'] ?? ''), $specialRoles, true))
+                && in_array('head:'.self::canonicalDepartmentAlias($department, $departments->all()), $specialRoles, true))
                 ->pluck('id')->map(fn ($id) => (int) $id)->all()
             : ($jwtMode
                 ? array_values(array_map(fn ($role) => (int) substr($role, strlen('scope:department-')),
@@ -198,7 +206,7 @@ class ClientContourAccess
                 && ($localRoleMode
                     ? ((int) ($department['manager_id'] ?? 0) > 0
                         && (int) $department['manager_id'] === (int) ($employee['id'] ?? 0)
-                        && in_array('head:'.(string) ($department['alias'] ?? ''), $specialRoles, true))
+                        && in_array('head:'.self::canonicalDepartmentAlias($department, $departments->all()), $specialRoles, true))
                     : ($jwtMode
                         ? in_array((string) ($department['alias'] ?? '').'-head', $specialRoles, true)
                         : (int) ($department['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0))))
@@ -305,8 +313,9 @@ class ClientContourAccess
             || ($actorDepartmentId > 0 && in_array($actorDepartmentId, $salesDepartmentIds, true));
         $managedDepartmentAliases = $localRoleMode
             ? array_values(array_map(static fn ($role) => substr($role, 5),
-                array_filter($specialRoles, static fn ($role) =>
-                    is_string($role) && str_starts_with($role, 'head:'))))
+                array_filter(self::currentIdentityLabels($jwtLabels, (int) ($employee['id'] ?? 0),
+                    $departments->all(), $directoryEmployees->all()),
+                    static fn ($role) => str_starts_with($role, 'head:'))))
             : ($jwtMode
                 ? array_values(array_map(fn ($role) => substr($role, 0, -5),
                     array_filter($specialRoles, fn ($role) => str_ends_with($role, '-head'))))
@@ -319,7 +328,7 @@ class ClientContourAccess
         $managedRoots = $departments->filter(fn ($d) =>
             (int) ($employee['id'] ?? 0) > 0
             && (int) ($d['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0)
-            && (!$localRoleMode || in_array('head:'.(string) ($d['alias'] ?? ''), $specialRoles, true)))
+            && (!$localRoleMode || in_array('head:'.self::canonicalDepartmentAlias($d, $departments->all()), $specialRoles, true)))
             ->pluck('id')->map(fn ($id) => (int) $id)->all();
         $isAccountHead = in_array('account-management', $managedDepartmentAliases, true)
             || (bool) array_intersect($managedRoots, $accountingRoots);
