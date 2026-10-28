@@ -84,6 +84,9 @@ $assert = static function (
 };
 
 $assert(200, 'GET', '/api/me');
+$assert(200, 'GET', '/api/permissions');
+$assert(200, 'PUT', '/api/permissions');
+$assert(200, 'DELETE', '/api/permissions');
 $assert(200, 'GET', '/api/absences');
 $assert(200, 'POST', '/api/absences');
 $assert(200, 'GET', '/api/absences/15/history');
@@ -118,6 +121,8 @@ $live['roles']=[];
 $live['role_claims']=['org:irlix'];
 $own=['employee-id:17','org:irlix'];
 $assert(200,'GET','/api/workspace',[],$own);
+$assert(403,'GET','/api/permissions',[],$own);
+$assert(403,'PUT','/api/permissions',[],$own);
 $assert(200,'GET','/api/absences/15',[],$own);
 $assert(403,'GET','/api/absences/16',[],$own);
 $assert(200,'GET','/api/absences/15/attachments',[],$own);
