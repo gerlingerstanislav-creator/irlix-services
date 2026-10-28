@@ -95,6 +95,23 @@ $assertCatalogAdmin = function (Request $request) use ($directoryFor): void {
 };
 
 Route::get('/health', fn () => response()->json(['service'=>'specialists','status'=>'ok','database'=>DB::select('select 1') ? 'ok' : 'error']));
+Route::get('/permissions',function(Request $request) {
+    if (filter_var(env('IRLIX_SPECIALISTS_LOCAL_AUTHZ_ENABLED',false),FILTER_VALIDATE_BOOLEAN)
+        &&filter_var(env('IRLIX_AUTHZ_JWT_ENABLED',false),FILTER_VALIDATE_BOOLEAN)) {
+        $effective=(array)$request->attributes->get('specialists_local_permissions',[]);
+        return response()->json(['data'=>[
+            'profiles_view'=>(bool)($effective['specialists.profiles.view']['allowed']??false),
+            'profiles_manage'=>(bool)($effective['specialists.profiles.manage']['allowed']??false),
+            'catalog_view'=>(bool)($effective['specialists.catalog.view']['allowed']??false),
+            'catalog_manage'=>(bool)($effective['specialists.catalog.manage']['allowed']??false),
+        ]]);
+    }
+    $roles=(array)($request->attributes->get('identity',[])['realm_roles']??[]);
+    return response()->json(['data'=>[
+        'profiles_view'=>true,'profiles_manage'=>true,'catalog_view'=>true,
+        'catalog_manage'=>in_array('platform-admin',$roles,true),
+    ]]);
+});
 Route::get('/role-permissions',[SpecialistsPermissionsController::class,'index']);
 Route::put('/role-permissions',[SpecialistsPermissionsController::class,'update']);
 Route::delete('/role-permissions',[SpecialistsPermissionsController::class,'remove']);
