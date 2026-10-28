@@ -54,6 +54,7 @@ class EmployeesAuthorization
             || $request->is('api/self/absence-approval-context')
             || $request->is('api/vacations-directory')
             || $request->is('api/clients-directory')
+            || $request->is('api/specialists-directory')
             || ($request->isMethod('GET') && $request->is('api/equipment-directory', 'api/equipment-directory/*'))
             || $request->is('api/access/me')
             || $request->is('api/access/preview')) return $next($request);
