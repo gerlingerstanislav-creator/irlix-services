@@ -28,7 +28,20 @@ function parseEffectiveSnapshot(mixed $snapshot): array
             || (!$row['allowed'] && $row['scope'] !== 'none')) {
             throw new InvalidArgumentException('Invalid permission or scope');
         }
-        $key = implode("\0", [$row['subject'], $row['service'], $row['permission']]);
+        // Optional opaque resource identity makes object-level parity
+        // possible. Do not put raw employee IDs or document names into a
+        // GitHub artifact: compute stable keyed HMAC references inside the
+        // protected read-only environment. Missing resource means aggregate
+        // action permission, deliberately a DIFFERENT key from an object.
+        $resource = '__aggregate__';
+        if (array_key_exists('resource', $row)) {
+            $resource = $row['resource'];
+            if (!is_string($resource) || trim($resource) === '' || strlen($resource) > 256
+                || $resource === '__aggregate__') {
+                throw new InvalidArgumentException('Invalid opaque resource');
+            }
+        }
+        $key = implode("\0", [$row['subject'], $row['service'], $row['permission'], $resource]);
         if (array_key_exists($key, $result)) throw new InvalidArgumentException('Duplicate effective entry');
         $result[$key] = [$row['allowed'], $row['scope']];
     }
