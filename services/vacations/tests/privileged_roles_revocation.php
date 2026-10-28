@@ -44,6 +44,10 @@ $assert(EmployeesDirectory::limitToCurrentPrivilegedRoles(['employee-id:44','org
 // real Laravel HTTP client. Never reach external hosts or production.
 $app = require __DIR__.'/../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+set_exception_handler(static function (\Throwable $error): void {
+    fwrite(STDERR, 'Vacations revoked roles FAIL: '.$error->getMessage()."\n");
+    exit(1);
+});
 $oldJwtMode = getenv('IRLIX_AUTHZ_JWT_ENABLED');
 putenv('IRLIX_AUTHZ_JWT_ENABLED=true');
 $source = ['employee_id'=>44,'roles'=>['personnel-officer']];
