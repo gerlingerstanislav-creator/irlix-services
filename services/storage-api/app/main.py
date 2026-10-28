@@ -155,7 +155,7 @@ async def upload(folder: str = Form(""), file: UploadFile = File(...)):
 @app.get("/files", dependencies=[Depends(guard)])
 def read_file(key: str = Query(...), preview: bool = False):
     key = file_key(key)
-    filename = key.rsplit("__", 1)[1]
+    filename = key.rsplit("/", 1)[-1][34:]  # preserve filenames containing double underscores
     mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
     inline = preview and mime in SAFE_INLINE
     try:
