@@ -6,6 +6,10 @@ require __DIR__.'/../app/Services/VacationsObjectScope.php';
 use App\Services\VacationsObjectScope as ObjectScope;
 require __DIR__.'/../app/Services/VacationsActionPolicy.php';
 use App\Services\VacationsActionPolicy as ActionPolicy;
+require __DIR__.'/../app/Support/EmployeesDirectory.php';
+require __DIR__.'/../app/Support/VacationsAccess.php';
+use App\Support\EmployeesDirectory;
+use App\Support\VacationsAccess;
 
 $test = static function (bool $condition, string $why): void {
     if (!$condition) throw new RuntimeException($why);
@@ -134,4 +138,24 @@ $test(ActionPolicy::visible(['view','edit'],null) === ['view','edit'],
 $test(ActionPolicy::visible(['view','reject','approve'],
     ['vacations.approvals.manage'=>['allowed'=>true,'scope'=>'own']])
     === ['view','reject','approve'], 'Assigned approver actions lost');
+$oldJwt = getenv('IRLIX_AUTHZ_JWT_ENABLED');
+$oldLocal = getenv('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED');
+putenv('IRLIX_AUTHZ_JWT_ENABLED=true');
+putenv('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED=true');
+$actorPolicy = new VacationsAccess(new EmployeesDirectory());
+$legacyPrivilege = ['roles'=>['personnel-officer','hr','manager','backend-head']];
+$test(!$actorPolicy->isPersonnelOfficer($legacyPrivilege),
+    'Legacy personnel role still authorizes local V2 staffing operations');
+$test(!$actorPolicy->isHr($legacyPrivilege),
+    'Legacy HR role still authorizes local V2 privileges');
+$test(!$actorPolicy->isManager($legacyPrivilege),
+    'Legacy manager alias still authorizes local V2 permissions');
+$test($actorPolicy->isPersonnelOfficer(['roles'=>['special:personnel-officer']]),
+    'V2 explicitly assigned personnel officer denied');
+$test($actorPolicy->isManager(['roles'=>['head:backend']]),
+    'V2 directly assigned head role denied');
+if ($oldJwt === false) putenv('IRLIX_AUTHZ_JWT_ENABLED');
+else putenv('IRLIX_AUTHZ_JWT_ENABLED='.$oldJwt);
+if ($oldLocal === false) putenv('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED');
+else putenv('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED='.$oldLocal);
 echo "Vacations local roles: PASS\n";
