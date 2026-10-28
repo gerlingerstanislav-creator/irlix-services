@@ -59,10 +59,14 @@ class EmployeesAccess
         $scope = $fullScope ? 'all' : ($manager ? 'subtree' : 'none');
         $ids = $fullScope ? array_map(fn ($d) => (int) $d->id, $departments) : $managerIds;
 
-        return $this->withMatrix($this->result(
+        $access = $this->withMatrix($this->result(
             $employee, $read, $salary, $privileged, $privileged || $accounting,
             $privileged, $scope, $roles, $ids
         ), RoleLabels::ancestorDepartmentRoles($employee, $departments));
+        // JWT V2 claims are descriptive identities, NOT additional entries
+        // in the legacy permission matrix or global service-entry rules.
+        $access['role_claims'] = RoleLabels::publishedRoleClaims($employee, $departments, $special);
+        return $access;
     }
 
 
