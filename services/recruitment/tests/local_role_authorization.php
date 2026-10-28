@@ -13,6 +13,18 @@ $check($result['recruitment.workspace.view'],'Recruiter view missing');
 $check(!$result['recruitment.candidates.manage'],'Explicit denial did not override recruiter grant');
 $check(!$result['recruitment.offers.manage'],'Unassigned offer permission became granted');
 $check(!$result['recruitment.compensation.view'],'General workspace access exposed compensation');
+$check(!$result['recruitment.compensation.manage'],
+    'General workspace and candidate management granted compensation editing');
+$check(Authz::canWriteSensitiveField($result,['full_name'=>'Sample'],'salary_expectation'),
+    'Ordinary candidate fields were denied by compensation gate');
+$check(!Authz::canWriteSensitiveField($result,
+    ['full_name'=>'Sample','salary_expectation'=>null],'salary_expectation'),
+    'Clearing sensitive expectation bypassed the separate write permission');
+$check(!Authz::canWriteSensitiveField($result,
+    ['status'=>'draft','compensation'=>'private'],'compensation'),
+    'Candidate edit permission bypassed offer compensation write scope');
+$check(Authz::canWriteSensitiveField(['recruitment.compensation.manage'=>true],
+    ['compensation'=>'private'],'compensation'), 'Explicit sensitive writer rejected');
 $check(!Authz::evaluate(['service:recruitment'],$rows)['recruitment.workspace.view'],
     'Legacy service marker bypassed Recruitment policy');
 $check(!Authz::evaluate(['special:personnel-officer'],[
