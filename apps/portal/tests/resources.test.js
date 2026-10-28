@@ -76,7 +76,7 @@ test('map follows the shared catalog and deployed frontend registry, not a stale
   const backendNodeAlias = {
     'platform-core':'platform-core','migration':'migration-api',
     'migration-ops':'migration-ops','cv-converter':'cv-api','resource-monitor':'resource-monitor',
-     'storage-api':'storage-api','storage-filestash':'storage-filestash',
+     'storage-api':'storage-api',
   };
   // Employees role reconciliation is a background worker sharing the Employees
   // backend image, not a separate backend image/component in the CI registry.

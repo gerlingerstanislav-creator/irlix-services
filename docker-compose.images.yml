@@ -66,8 +66,6 @@ services:
     image: ghcr.io/gerlingerstanislav-creator/irlix-resource-monitor:${RESOURCE_MONITOR_IMAGE_TAG:-local}
   storage-s3:
     image: ghcr.io/gerlingerstanislav-creator/irlix-storage-s3:${STORAGE_S3_IMAGE_TAG:-local}
-  storage-web:
-    image: ghcr.io/gerlingerstanislav-creator/irlix-storage-web:${STORAGE_WEB_IMAGE_TAG:-local}
   storage-api:
     image: ghcr.io/gerlingerstanislav-creator/irlix-storage-api:${STORAGE_API_IMAGE_TAG:-local}
   storage-drive:

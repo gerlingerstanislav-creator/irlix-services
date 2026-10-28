@@ -10,7 +10,7 @@ class StorageVerifyRouting(unittest.TestCase):
         source = VERIFY.read_text()
         self.assertIn("'storage-drive','storage-api'", source)
         self.assertIn("verify_storage_pilot(host)", source)
-        self.assertIn('"storage-filestash", "storage-api"', source)
+        self.assertIn('"storage-api"', source)
         self.assertIn('health = json.loads(body)', source)
 
 

@@ -1,1 +1,0 @@
-FROM machines/filestash:latest
