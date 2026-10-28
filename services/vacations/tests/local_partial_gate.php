@@ -60,6 +60,7 @@ $assert(200, 'GET', '/api/department-roster');
 $assert(200, 'GET', '/api/approvals');
 $assert(200, 'GET', '/api/client-service-calendar');
 $assert(200, 'GET', '/api/client-service-absence-alerts');
+$assert(403, 'GET', '/api/unknown-global-export');
 $assert(200, 'GET', '/api/calendar-absences');
 $scoped = new \App\Services\VacationsScopedAccess(new \App\Support\EmployeesDirectory());
 if (!$scoped->permits(Request::create('/api/registry','GET'), 'team', 17)) {
