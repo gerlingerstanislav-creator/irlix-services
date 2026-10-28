@@ -33,6 +33,11 @@ $check(RoleLabels::publishedRoleClaims((object)['id'=>100,'department_id'=>1], $
     ['head:irlix','org:irlix']);
 $check(RoleLabels::publishedRoleClaims((object)['id'=>101,'department_id'=>2], $departments,
     ['platform-tester']), ['org:accounting','org:irlix']);
+$noHead = [(object)['id'=>88,'alias'=>'finance','parent_id'=>null,'manager_id'=>null]];
+$check(RoleLabels::publishedRoleClaims((object)['id'=>0,'department_id'=>88],$noHead),
+    ['org:finance']); // missing employee id cannot turn null manager into a head grant
+$check(RoleLabels::resolve((object)['id'=>0,'department_id'=>88],$noHead), []); // legacy excludes reserved finance alias
+
 // A Backend employee inherits configurable baseline permissions from
 // Development and Irlix, but NO parent manager/JWT role.
 $engineering = [
@@ -125,6 +130,9 @@ $check(RoleLabels::resolve((object)['id'=>504,'department_id'=>16], $clientTree)
     ['sales','sales-manager']);
 $check(RoleLabels::resolve((object)['id'=>505,'department_id'=>15], $clientTree),
     ['accounting-finance']);
+$check(RoleLabels::publishedRoleClaims((object)['id'=>505,'department_id'=>15], $clientTree),
+    ['org:accounting-finance','org:finance']);
+
 $check(KeycloakAuthorizationSync::grants([
     'employee_id'=>502,
     'roles'=>RoleLabels::resolve((object)['id'=>502,'department_id'=>13],$clientTree),
