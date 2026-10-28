@@ -19,6 +19,8 @@ class Permission(str, Enum):
     TRASH = "trash"
     RESTORE = "restore"
     AUDIT = "audit"
+    MOVE = "move"
+    COPY = "copy"
 
 
 class GrantRole(str, Enum):
@@ -26,9 +28,9 @@ class GrantRole(str, Enum):
     EDITOR = "editor"
 
 
-READ_ACTIONS = frozenset({Permission.READ, Permission.DOWNLOAD, Permission.THUMBNAIL, Permission.LIST})
+READ_ACTIONS = frozenset({Permission.READ, Permission.DOWNLOAD, Permission.THUMBNAIL, Permission.LIST, Permission.COPY})
 EDITOR_ACTIONS = READ_ACTIONS | frozenset({Permission.UPLOAD, Permission.EDIT})
-OWNER_ACTIONS = EDITOR_ACTIONS | frozenset({Permission.SHARE, Permission.TRASH, Permission.RESTORE, Permission.AUDIT})
+OWNER_ACTIONS = EDITOR_ACTIONS | frozenset({Permission.SHARE, Permission.TRASH, Permission.RESTORE, Permission.AUDIT, Permission.MOVE})
 
 
 @dataclass(frozen=True)
