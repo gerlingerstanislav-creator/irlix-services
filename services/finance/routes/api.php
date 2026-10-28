@@ -43,6 +43,7 @@ Route::get('/health',function(){
 // Finance-local authorization matrix; only platform admin can edit.
 Route::get('/permissions', [FinancePermissionsController::class, 'index']);
 Route::put('/permissions', [FinancePermissionsController::class, 'update']);
+Route::delete('/permissions', [FinancePermissionsController::class, 'remove']);
 
 Route::get('/me', fn(Request $r)=>response()->json(['data'=>[
     'permissions'=>$r->attributes->get('identity')['permissions']??[],
