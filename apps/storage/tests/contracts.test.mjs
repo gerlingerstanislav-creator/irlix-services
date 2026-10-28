@@ -191,3 +191,35 @@ test('V1 is isolated from legacy files and uses shared employee picker', () => {
   assert.ok(screen.includes("mode.value === 'trash'"));
   assert.ok(screen.includes("isAdmin.value || item.owner_employee_id === currentEmployeeId.value"));
 });
+
+test('V1 operations support immutable versions, scoped search, bulk actions, and quota', () => {
+  const v1 = text('../src/StorageV1.vue');
+  const server = text('../../../services/storage-api/app/v1_api.py');
+  const versions = text('../../../services/storage-api/migrations/002_file_versions.sql');
+  const compose = text('../../../docker-compose.storage.yml');
+  assert.ok(v1.includes('searchQuery = ref('));
+  assert.ok(v1.includes("'/search?q='"));
+  assert.ok(v1.includes("'/versions'"));
+  assert.ok(v1.includes('UiCheckbox'));
+  assert.ok(v1.includes('async function submitBulkMove()'));
+  assert.ok(v1.includes("operationItem && !bulkMoving"));
+  assert.ok(v1.includes("request('/stats')"));
+  for (const route of ['/search', '/stats', '/folders/targets',
+    '/objects/{object_id}/move', '/objects/{object_id}/copy',
+    '/objects/{object_id}/versions']) {
+    assert.ok(server.includes(route), route);
+  }
+  assert.ok(server.includes('_require_capacity(repo'));
+  assert.ok(server.includes('@router.get("/preview/{object_id}")'));
+  assert.ok(server.includes('Content-Security-Policy'));
+  assert.ok(server.includes('X-Content-Type-Options'));
+  assert.ok(server.includes('Несоответствие содержимого и расширения'));
+  assert.ok(!server.includes('".html": "text/html"'));
+  assert.ok(v1.includes('async function openPreview(item)'));
+  assert.ok(v1.includes('URL.revokeObjectURL(previewUrl.value)'));
+  assert.ok(v1.includes('sandbox=""'));
+  assert.ok(compose.includes('STORAGE_V1_QUOTA_BYTES:'));
+  assert.ok(versions.includes('storage.file_versions'));
+  assert.ok(versions.includes('storage.reject_version_mutation'));
+  assert.ok(!server.includes('delete_object('));
+});

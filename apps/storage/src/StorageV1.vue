@@ -1,7 +1,7 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { UiButton, UiActionMenu, UiSearchSelect } from '@irlix/ui';
+import { UiButton, UiActionMenu, UiSearchSelect, UiCheckbox } from '@irlix/ui';
 
 const props = defineProps({
   access: { type: Object, default: null },
@@ -14,6 +14,10 @@ const mode = ref('mine');
 const entries = ref([]);
 const searchQuery = ref('');
 const searchActive = ref(false);
+const stats = ref(null);
+const selected = ref(new Set());
+const bulkMoving = ref(false);
+const bulkTarget = ref('');
 const loading = ref(false);
 const busy = ref(false);
 const error = ref('');
@@ -28,6 +32,10 @@ const grants = ref([]);
 const historyItem = ref(null);
 const historyEvents = ref([]);
 const versionsItem = ref(null);
+const previewItem = ref(null);
+const previewUrl = ref('');
+const previewMime = ref('');
+const previewText = ref('');
 const fileVersions = ref([]);
 const newVersionInput = ref(null);
 const operationItem = ref(null);
@@ -40,6 +48,21 @@ const currentEmployeeId = computed(() => Number(props.access?.employee_id || 0))
 const isAdmin = computed(() => Array.isArray(props.access?.roles) && props.access.roles.includes('platform-admin'));
 const canManage = item => isAdmin.value || item.owner_employee_id === currentEmployeeId.value;
 const canEdit = item => canManage(item) || item.can_edit === true;
+const selectedItems = computed(() => entries.value.filter(item => selected.value.has(item.id)));
+function toggleSelected(item, checked) {
+  const next = new Set(selected.value);
+  if (checked) next.add(item.id);
+  else next.delete(item.id);
+  selected.value = next;
+}
+function clearSelection() { selected.value = new Set(); }
+const readableSize = value => {
+  const bytes = Number(value || 0);
+  if (!bytes) return '0 Б';
+  const unit = Math.min(3, Math.floor(Math.log(bytes) / Math.log(1024)));
+  return (bytes / (1024 ** unit)).toFixed(unit ? 1 : 0).replace('.', ',')
+    + ' ' + ['Б','КБ','МБ','ГБ'][unit];
+};
 const targets = computed(() => [
   { value: '', label: 'Корневая папка' },
   ...targetFolders.value.filter(folder => operationKind.value !== 'move'
@@ -100,8 +123,62 @@ async function refresh() {
                                      : '?scope=mine');
     const result = await request(url);
     entries.value = Array.isArray(result.entries) ? result.entries : [];
+    clearSelection();
+    try { stats.value = await request('/stats'); } catch { stats.value = null; }
   } catch (err) { entries.value = []; error.value = err.message; }
   finally { loading.value = false; }
+}
+async function bulkAction(action) {
+  const chosen = selectedItems.value.filter(item => action === 'restore' || canManage(item));
+  if (!chosen.length || busy.value) return;
+  if (action === 'trash' && !window.confirm('Переместить выбранные объекты в корзину?')) return;
+  busy.value = true; error.value = '';
+  const failures = [];
+  let completed = 0;
+  for (const item of chosen) {
+    try {
+      await request('/objects/' + item.id + '/' + action, { method: 'POST' });
+      completed++;
+    } catch (err) { failures.push(item.name + ': ' + err.message); }
+  }
+  busy.value = false;
+  notice.value = 'Выполнено: ' + completed + ' из ' + chosen.length;
+  if (failures.length) error.value = failures.slice(0, 5).join('; ');
+  await refresh();
+}
+async function beginBulkMove() {
+  const chosen = selectedItems.value.filter(canManage);
+  if (!chosen.length || busy.value) return;
+  const owners = new Set(chosen.map(item => item.owner_employee_id));
+  if (owners.size > 1) {
+    error.value = 'Для группового перемещения выберите объекты одного владельца';
+    return;
+  }
+  operationItem.value = chosen[0]; operationKind.value = 'move';
+  bulkMoving.value = true; bulkTarget.value = '';
+  try {
+    const data = await request('/folders/targets');
+    targetFolders.value = data.entries || [];
+  } catch (err) { error.value = err.message; bulkMoving.value = false; }
+}
+async function submitBulkMove() {
+  const chosen = selectedItems.value.filter(canManage);
+  if (!chosen.length || busy.value) return;
+  busy.value = true; error.value = '';
+  const failed = [];
+  let done = 0;
+  for (const item of chosen) {
+    try {
+      await request('/objects/' + item.id + '/move', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parent_id: bulkTarget.value || null }) });
+      done++;
+    } catch (err) { failed.push(item.name + ': ' + err.message); }
+  }
+  bulkMoving.value = false; operationItem.value = null; busy.value = false;
+  notice.value = 'Перемещено: ' + done + ' из ' + chosen.length;
+  if (failed.length) error.value = failed.slice(0, 5).join('; ');
+  await refresh();
 }
 function setMode(value) {
   searchActive.value = false; searchQuery.value = '';
@@ -122,9 +199,41 @@ function open(item) {
   if (item.kind === 'folder' && mode.value !== 'trash') {
     router.push({ name: 'v1', query: { folder_id: item.id } });
   } else if (item.kind === 'file' && mode.value !== 'trash') {
-    download(item);
+    openPreview(item);
   }
 }
+function closePreview() {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
+  previewUrl.value = '';
+  previewItem.value = null;
+  previewText.value = '';
+  previewMime.value = '';
+}
+async function openPreview(item) {
+  closePreview();
+  previewItem.value = item;
+  error.value = '';
+  const extension = String(item.name).split('.').pop().toLowerCase();
+  const kinds = {
+    pdf: 'pdf', png: 'image', jpg: 'image', jpeg: 'image',
+    gif: 'image', webp: 'image', txt: 'text', csv: 'text',
+    log: 'text', mp4: 'video', webm: 'video',
+  };
+  if (!kinds[extension]) { previewMime.value = 'unsupported'; return; }
+  try {
+    const response = await authenticatedFetch('/preview/' + encodeURIComponent(item.id));
+    if (!response.ok) throw new Error('Безопасный предпросмотр не доступен');
+    const bytes = await response.blob();
+    if (previewItem.value?.id !== item.id) return;
+    previewMime.value = kinds[extension];
+    if (kinds[extension] === 'text') {
+      previewText.value = await bytes.text();
+    } else {
+      previewUrl.value = URL.createObjectURL(bytes);
+    }
+  } catch (err) { error.value = err.message; previewMime.value = 'unsupported'; }
+}
+onBeforeUnmount(closePreview);
 async function download(item) {
   error.value = '';
   try {
@@ -355,12 +464,26 @@ onMounted(() => refresh());
           :key="part.id" type="button" :variant="mode === part.id ? 'primary' : 'secondary'" @click="setMode(part.id)">{{ part.label }}</UiButton>
         <UiButton v-if="parentId" type="button" variant="secondary" @click="router.push({ name: 'v1' })">← К корню</UiButton>
       </div>
+      <div v-if="selectedItems.length" class="storage-v1-actions">
+        <span>{{ selectedItems.length }} выбрано</span>
+        <UiButton v-if="mode === 'trash'" type="button" variant="secondary" :disabled="busy" @click="bulkAction('restore')">Восстановить</UiButton>
+        <template v-else>
+          <UiButton type="button" variant="secondary" :disabled="busy" @click="bulkAction('trash')">В корзину</UiButton>
+          <UiButton type="button" variant="secondary" :disabled="busy" @click="beginBulkMove">Переместить</UiButton>
+        </template>
+        <UiButton type="button" variant="secondary" @click="clearSelection">Снять выделение</UiButton>
+      </div>
       <div class="storage-v1-actions" v-if="canCreate">
         <UiButton type="button" variant="secondary" :disabled="busy" @click="createFolderOpen = true">+ Папка</UiButton>
         <UiButton type="button" :disabled="busy" @click="uploadInput?.click()">↑ Загрузить</UiButton>
         <input ref="uploadInput" type="file" hidden multiple @change="uploadFiles($event.target.files)" />
       </div>
     </div>
+    <p v-if="stats" class="storage-v1-notice" role="status">
+      Использовано с учётом версий: {{ readableSize(stats.bytes_with_versions) }}
+      <template v-if="stats.quota_bytes"> из {{ readableSize(stats.quota_bytes) }}</template>
+      · Файлов: {{ stats.files }} · Папок: {{ stats.folders }} · В корзине: {{ stats.trashed }}
+    </p>
     <p class="storage-v1-notice">Отдельное файловое пространство V1. Ранее загруженные пилотные документы сюда не переносились и не открываются другим сотрудникам автоматически.</p>
     <p v-if="error" class="storage-v1-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="storage-v1-notice" role="status">{{ notice }}</p>
@@ -368,9 +491,11 @@ onMounted(() => refresh());
       <div v-if="loading" class="storage-empty" role="status">Загружаем файлы…</div>
       <div v-else-if="!entries.length" class="storage-empty">Здесь пока нет файлов</div>
       <table v-else class="storage-table">
-        <thead><tr><th>Название</th><th>Тип</th><th>Владелец</th><th>Действия</th></tr></thead>
+        <thead><tr><th aria-label="Выбор файлов"></th><th>Название</th><th>Тип</th><th>Владелец</th><th>Действия</th></tr></thead>
         <tbody>
           <tr v-for="item in entries" :key="item.id">
+            <td><UiCheckbox :model-value="selected.has(item.id)" :disabled="busy"
+              :aria-label="'Выбрать: ' + item.name" @update:model-value="toggleSelected(item, $event)" /></td>
             <td><button type="button" class="storage-v1-item" @click="open(item)">{{ item.kind === 'folder' ? '📁' : '📄' }} {{ item.name }}</button></td>
             <td>{{ item.kind === 'folder' ? 'Папка' : 'Файл' }}</td>
             <td>{{ item.owner_employee_id || '—' }}</td>
@@ -388,7 +513,19 @@ onMounted(() => refresh());
       </form>
     </div>
 
-    <div v-if="operationItem" class="storage-overlay" @click.self="!busy && (operationItem=null)">
+    <div v-if="bulkMoving" class="storage-overlay" @click.self="bulkMoving=false;operationItem=null">
+      <form class="storage-modal storage-small-modal" @submit.prevent="submitBulkMove">
+        <div class="storage-modal-head"><h2>Переместить выбранные объекты</h2><button type="button" @click="bulkMoving=false;operationItem=null">×</button></div>
+        <label>Папка назначения
+          <UiSearchSelect v-model="bulkTarget" :options="targets" placeholder="Корневая папка" :teleport="true" />
+        </label>
+        <div class="storage-modal-actions">
+          <UiButton type="button" variant="secondary" @click="bulkMoving=false;operationItem=null">Отмена</UiButton>
+          <UiButton :disabled="busy">Переместить</UiButton>
+        </div>
+      </form>
+    </div>
+    <div v-if="operationItem && !bulkMoving" class="storage-overlay" @click.self="!busy && (operationItem=null)">
       <form class="storage-modal storage-small-modal" @submit.prevent="submitOperation">
         <div class="storage-modal-head">
           <h2>{{ operationKind === 'rename' ? 'Переименовать' : operationKind === 'move' ? 'Переместить' : 'Создать копию' }}</h2>
@@ -406,6 +543,24 @@ onMounted(() => refresh());
           <UiButton :disabled="busy || (operationKind !== 'move' && !operationName.trim())">Сохранить</UiButton>
         </div>
       </form>
+    </div>
+    <div v-if="previewItem" class="storage-overlay" @click.self="closePreview">
+      <section class="storage-modal storage-preview-modal" role="dialog" aria-modal="true" aria-label="Просмотр файла">
+        <div class="storage-modal-head">
+          <h2>{{ previewItem.name }}</h2>
+          <div><UiButton type="button" variant="secondary" @click="download(previewItem)">Скачать</UiButton>
+            <button type="button" aria-label="Закрыть" @click="closePreview">×</button></div>
+        </div>
+        <div class="storage-preview-content">
+          <img v-if="previewUrl && previewMime === 'image'" :src="previewUrl" :alt="previewItem.name" />
+          <iframe v-else-if="previewUrl && previewMime === 'pdf'" :src="previewUrl" :title="previewItem.name" sandbox="" />
+          <video v-else-if="previewUrl && previewMime === 'video'" :src="previewUrl" controls preload="metadata" class="storage-v1-video"></video>
+          <pre v-else-if="previewMime === 'text'">{{ previewText }}</pre>
+          <div v-else class="storage-preview-fallback">
+            Просмотр этого формата не поддерживается. Файл можно безопасно скачать.
+          </div>
+        </div>
+      </section>
     </div>
     <div v-if="versionsItem" class="storage-overlay" @click.self="versionsItem=null">
       <section class="storage-modal storage-small-modal storage-v1-history" role="dialog" aria-modal="true" aria-label="Версии файла">

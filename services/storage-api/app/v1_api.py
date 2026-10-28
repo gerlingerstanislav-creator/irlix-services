@@ -285,6 +285,7 @@ async def upload(request: Request, file: UploadFile = File(...),
         repo = _repo(conn, request)
         repo.lock()
         parent, owner = _parent_for_create(repo, actor, _normalize_id(parent_id) if parent_id else None)
+        _require_capacity(repo, owner, len(data))
         try:
             # An object created in S3 but not committed to metadata is
             # intentionally unreachable; operator reconciliation, not deletion.
@@ -302,6 +303,69 @@ async def upload(request: Request, file: UploadFile = File(...),
         _register_version(repo, actor, oid, key, len(data), hashlib.sha256(data).hexdigest())
         _audit(repo, actor, oid, "file.upload")
     return {"id": oid, "name": title, "kind": "file", "size": len(data)}
+
+
+@router.get("/preview/{object_id}")
+def preview_safe(request: Request, object_id: UUID):
+    """Authenticated bounded preview. HTML/SVG/Office macros are never inline."""
+    actor = _identity(request)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        oid = _authorize(repo, actor, object_id, Permission.READ)
+        row = repo.object_summary(oid)
+        if not row or row[1] != "file" or row[6] != "active" or not row[5]:
+            raise HTTPException(404, "Файл не найден")
+        title, key = row[4], row[5]
+        if not key.startswith(S3_ROOT):
+            raise HTTPException(404, "Файл не найден")
+        extension = os.path.splitext(title)[1].lower()
+        types = {
+            ".pdf": "application/pdf", ".png": "image/png",
+            ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".gif": "image/gif", ".webp": "image/webp",
+            ".txt": "text/plain", ".csv": "text/plain", ".log": "text/plain",
+            ".mp4": "video/mp4", ".webm": "video/webm",
+        }
+        mime = types.get(extension)
+        if mime is None:
+            raise HTTPException(415, "Просмотр формата пока недоступен")
+        _audit(repo, actor, oid, "file.preview")
+    try:
+        obj = _s3().get_object(Bucket=_bucket(), Key=key)
+        stream = obj["Body"]
+        try:
+            if int(obj.get("ContentLength", LIMIT + 1)) > LIMIT:
+                raise HTTPException(413, "Файл слишком большой для просмотра")
+            raw = stream.read(LIMIT + 1)
+        finally:
+            stream.close()
+    except (ClientError, BotoCoreError):
+        raise HTTPException(503, "Не удалось прочитать файл")
+    if len(raw) > LIMIT:
+        raise HTTPException(413, "Файл слишком большой для просмотра")
+    signatures = {
+        ".pdf": raw.startswith(b"%PDF-"),
+        ".png": raw.startswith(b"\x89PNG\r\n\x1a\n"),
+        ".jpg": raw.startswith(b"\xff\xd8\xff"),
+        ".jpeg": raw.startswith(b"\xff\xd8\xff"),
+        ".gif": raw.startswith((b"GIF87a", b"GIF89a")),
+        ".webp": raw.startswith(b"RIFF") and raw[8:12] == b"WEBP",
+    }
+    if extension in signatures and not signatures[extension]:
+        raise HTTPException(415, "Несоответствие содержимого и расширения")
+    if extension in {".txt", ".csv", ".log"}:
+        try:
+            raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(415, "Текстовый предпросмотр требует UTF-8")
+        # Text is displayed as text/plain, not as active HTML or JS.
+        mime = "text/plain; charset=utf-8"
+    return Response(raw, media_type=mime, headers={
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": "inline",
+        "Content-Security-Policy": "sandbox; default-src 'none'; base-uri 'none'",
+    })
 
 
 @router.get("/files/{object_id}")
@@ -556,6 +620,11 @@ def copy_file(request: Request, object_id: UUID, data: CopyInput):
         if not source[5] or not source[5].startswith(S3_ROOT):
             raise HTTPException(404, "Недоступный файл")
         parent, owner = _parent_for_create(repo, actor, data.parent_id)
+        size_row = conn.execute("SELECT size_bytes FROM storage.file_versions WHERE s3_key=%s",
+                                (source[5],)).fetchone()
+        if not size_row:
+            raise HTTPException(503, "Размер оригинала не подтверждён")
+        _require_capacity(repo, owner, size_row[0])
         title = _name(data.name or ("Копия " + source[4]))
         new_id = str(uuid4())
         target_key = S3_ROOT + new_id
@@ -581,6 +650,56 @@ def copy_file(request: Request, object_id: UUID, data: CopyInput):
         _audit(repo, actor, new_id, "file.copy.target")
     return {"id": new_id, "name": title, "kind": "file", "copied": True}
 
+
+
+def _storage_usage(repo, owner_id):
+    row = repo.conn.execute(
+        "SELECT COALESCE(SUM(v.size_bytes),0)::bigint "
+        "FROM storage.file_versions v JOIN storage.objects o ON o.id=v.object_id "
+        "WHERE o.owner_employee_id=%s", (owner_id,)
+    ).fetchone()
+    return int(row[0] if row else 0)
+
+
+def _require_capacity(repo, owner_id, extra_bytes):
+    raw = os.environ.get("STORAGE_V1_QUOTA_BYTES", "0")
+    try:
+        cap = int(raw)
+    except ValueError:
+        raise HTTPException(503, "Некорректная конфигурация квот")
+    if cap < 0:
+        raise HTTPException(503, "Некорректная конфигурация квот")
+    if cap and _storage_usage(repo, owner_id) + extra_bytes > cap:
+        raise HTTPException(413, "Превышена квота хранилища")
+
+
+@router.get("/stats")
+def storage_statistics(request: Request, employee_id: int | None = None):
+    actor = _identity(request)
+    owner = actor.employee_id
+    if employee_id is not None:
+        if employee_id != actor.employee_id and not actor.platform_admin:
+            raise HTTPException(403, "Нет доступа к статистике сотрудника")
+        owner = employee_id
+    if owner <= 0:
+        raise HTTPException(422, "Некорректный владелец")
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        used = _storage_usage(repo, owner)
+        row = conn.execute(
+            "SELECT COUNT(*) FILTER (WHERE kind='file'), "
+            "COUNT(*) FILTER (WHERE kind='folder'), "
+            "COUNT(*) FILTER (WHERE state='trashed') "
+            "FROM storage.objects WHERE owner_employee_id=%s", (owner,)
+        ).fetchone()
+    raw = os.environ.get("STORAGE_V1_QUOTA_BYTES", "0")
+    try:
+        max_bytes = max(0, int(raw))
+    except ValueError:
+        max_bytes = 0
+    return {"owner_employee_id": owner, "bytes_with_versions": used,
+            "files": row[0], "folders": row[1], "trashed": row[2],
+            "quota_bytes": max_bytes or None}
 
 
 def _register_version(repo, actor, object_id, key, size, digest):
@@ -648,6 +767,7 @@ async def replace_version(request: Request, object_id: UUID, file: UploadFile = 
         if os.path.splitext(str(file.filename or ""))[1].lower() != os.path.splitext(old[4])[1].lower():
             raise HTTPException(422, "Расширение новой версии должно совпадать с исходным")
         _register_current_if_missing(repo, actor, oid, old[5])
+        _require_capacity(repo, old[2], len(payload))
         mime = mimetypes.guess_type(old[4])[0] or "application/octet-stream"
         try:
             _s3().put_object(Bucket=_bucket(), Key=new_key, Body=payload, ContentType=mime,
@@ -680,6 +800,7 @@ def restore_version(request: Request, object_id: UUID, version_id: UUID):
         if not version:
             raise HTTPException(404, "Версия не найдена")
         _register_current_if_missing(repo, actor, oid, old[5])
+        _require_capacity(repo, old[2], version[1])
         new_key = S3_ROOT + "versions/" + str(uuid4())
         if not version[0].startswith(S3_ROOT):
             raise HTTPException(403, "Неверное пространство хранения")

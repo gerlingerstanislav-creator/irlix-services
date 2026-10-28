@@ -51,3 +51,14 @@ A new **isolated** V1 implementation resides in `services/storage-api/app/access
 - Retention target is 30 days, but **no automated purge, physical deletion or irreversible cleanup** is enabled until backup AND restore are independently demonstrated and any legal hold policy is approved.
 - Remaining production gates: independent DB provisioning, negative role+scope integration tests including two real test users, race/revocation checks, identity offboarding, concurrent writes, backup/restore of S3 plus metadata, capacity and audit verification, and non-admin gateway + UI authorization. Do not claim these checks passed based on unit tests or CI build alone.
 - The new V1 UI shares company navigation components (`UiAppShell`, `UiButton`, `UiSearchSelect`, `UiActionMenu`). The employee directory tree uses authenticated Employees API data; the server rechecks eligibility independently.
+
+## P1/P2 extensions (candidate, not production-enabled)
+
+- P1: `/v1/objects/{id}/move` changes *metadata parent* only and disallows moving across owners or into itself; file copy creates a new S3 object and independent File ID; rename preserves original bytes and file extension.
+- P1: `/v1/objects/{id}/versions` and restore append immutable version records in `storage.file_versions` and preserve previous bytes. **No automatic version pruning**; old versions do count against quota and backup requirements.
+- P1: `/v1/search` searches filenames with server-side ownership, inherited-grant and active-state ACL rechecks. No full text extraction, no Office conversion, no unauthorized result counts.
+- P2: bulk trash/restore/move runs bounded per-object operations with individual server authorization and per-item failure messages. Physical deletion remains unavailable.
+- P2: `/v1/stats` shows owner-scoped logical size including file versions. `STORAGE_V1_QUOTA_BYTES` (default `0`, unlimited) optionally limits new version/upload/copy writes. This **does not measure actual S3 replicated bytes or physical disk usage**. Capacity and disk metrics require separate monitoring.
+- Apply `001_storage_acl_audit.sql` followed by `002_file_versions.sql` in a disposable environment after S3+metadata backup. V1 remains disabled by both service admission flags until credentials, backup/restore, ACL, security and real-user QA are verified.
+- Authenticated V1 preview supports only bounded, whitelisted PDF, PNG/JPEG/GIF/WebP, UTF-8 text, CSV/log, and short MP4/WebM using a private no-store response and client-managed blob URLs. No active HTML, SVG or Office document is rendered inline. The same server-side file ACL applies to preview and download; antivirus/quarantine is still a release prerequisite.
+- Office document preview/conversion, automated retention, full-text document indexing and integrations with business service attachment histories are **not** part of these opt-in features. Do not enable public or external links.

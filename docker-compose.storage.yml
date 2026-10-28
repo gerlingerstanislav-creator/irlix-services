@@ -45,6 +45,7 @@ services:
       # V1 is disabled until isolated Storage DB provisioning and restore rehearsal.
       STORAGE_V1_ENABLED: ${STORAGE_V1_ENABLED:-0}
       STORAGE_V1_DB_DSN: ${STORAGE_V1_DB_DSN:-}
+      STORAGE_V1_QUOTA_BYTES: ${STORAGE_V1_QUOTA_BYTES:-0}
       STORAGE_EMPLOYEES_RECIPIENT_BASE: http://employees:8000/_storage_v1_recipient/
     ports:
       - "127.0.0.1:8114:8000"
