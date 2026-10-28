@@ -17,6 +17,32 @@ final class VacationsScopedAccess
 {
     public function __construct(private readonly EmployeesDirectory $directory) {}
 
+    /**
+     * Never pass an empty team/own list to AbsenceReadService: an empty ID
+     * selection in its legacy query means "no filter", not "no matches".
+     * Return null only for an explicitly authorized ALL query with no IDs.
+     */
+    public function visibleEmployeeIds(
+        Request $request, string $scope, int $actorId, array $requested = []
+    ): ?array {
+        if ($actorId <= 0) return [];
+        $requested = array_values(array_unique(array_filter(array_map('intval', $requested),
+            static fn (int $id): bool => $id > 0)));
+        if ($scope === 'all') return $requested ?: null;
+        if ($scope === 'own') {
+            return !$requested || in_array($actorId, $requested, true) ? [$actorId] : [];
+        }
+        if ($scope !== 'team') return [];
+        $org = $this->directory->vacationsDirectory($request);
+        $people = array_values($org['employees'] ?? []);
+        $departments = array_values($org['departments'] ?? []);
+        return array_values(array_filter(array_map(
+            static fn (array $employee): int => (int) ($employee['id'] ?? 0), $people
+        ), static fn (int $id): bool => $id > 0
+            && (!$requested || in_array($id, $requested, true))
+            && VacationsObjectScope::allows('team', $actorId, $id, $departments, $people)));
+    }
+
     public function permits(Request $request, string $scope, int $actorId): bool
     {
         if ($actorId <= 0 || !in_array($scope, ['own','team','all'], true)) return false;
@@ -26,7 +52,13 @@ final class VacationsScopedAccess
 
         // The collective queue is filtered again by its controller before
         // serialization. Other mass read models require separate filtering.
-        if (in_array($path, ['api/approvals','api/registry'], true) && $method === 'GET') return true;
+        if (in_array($path, ['api/approvals','api/registry','api/calendar-absences'], true)
+            && $method === 'GET') return true;
+        if ($path === 'api/department-roster' && $method === 'GET') {
+            return in_array($scope, ['team', 'all'], true);
+        }
+        if (in_array($path, ['api/client-service-calendar','api/client-service-absence-alerts'], true)
+            && $method === 'GET') return $scope === 'all';
 
         if (in_array($path, [
             'api/me','api/workspace','api/history','api/attention',
