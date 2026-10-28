@@ -20,14 +20,68 @@ final class ServiceEntitlement
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
         if (!$token) return response()->json(['message' => 'Authentication required'], 401);
 
-        // Until Vacations enforces its local permissions AND object scopes
-        // in every workflow/attachment route, flipping the V2 switch must
-        // never silently fall through to legacy broad role authorization.
-        // Matrix configuration remains usable; all business operations fail
-        // closed on premature activation. This is deliberately not cutover.
         if (filter_var(env('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
             && !$request->is('api/permissions')) {
-            return response()->json(['message' => 'Vacations V2 authorization cutover is not ready'], 503);
+            // Conservative incremental cutover: admit only existing own-only
+            // operations whose controllers already enforce employee ownership.
+            // All broad, approval, team and sensitive attachment operations
+            // stay 503 until their exact object authorization is complete.
+            if (!filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+                return response()->json(['message' => 'Verified JWT mode required for Vacations V2'], 503);
+            }
+            if ($request->header('X-Irlix-Role-Preview') !== null) {
+                return response()->json(['message' => 'Role preview cannot authorize Vacations'], 403);
+            }
+            $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
+            $path = $request->path();
+            $method = $request->method();
+            $personal = $method === 'GET' && in_array($path, [
+                'api/me', 'api/absences', 'api/absences/occupied',
+            ], true);
+            $personal = $personal || $method === 'POST' && $path === 'api/absences'
+                || in_array($method, ['GET','PATCH'], true) &&
+                    preg_match('#^api/absences/[1-9][0-9]*(?:/history)?$#D', $path) === 1
+                    && ($method !== 'PATCH' || !str_ends_with($path, '/history'));
+            if (!$personal) {
+                return response()->json(['message' => 'Vacations V2 object authorization not yet verified'], 503);
+            }
+            $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
+            try {
+                $fresh = Http::withToken((string) $token)->acceptJson()->timeout(5)
+                    ->get($base.'/access/me');
+            } catch (\Throwable) {
+                return response()->json(['message' => 'Current Vacations identity unavailable'], 503);
+            }
+            if (!$fresh->successful() || !is_array($fresh->json('data'))) {
+                return response()->json(['message' => 'Current Vacations identity unavailable'], 503);
+            }
+            if (!\App\Services\VacationsRoleAuthorization::currentIdentityMatches(
+                $roles, (array) $fresh->json('data')
+            )) {
+                return response()->json(['message' => 'Vacations roles changed; refresh authentication'], 403);
+            }
+            try {
+                $permissions = app(\App\Services\VacationsRoleAuthorization::class)->forSignedRoles($roles);
+            } catch (\Throwable) {
+                return response()->json(['message' => 'Vacations policy unavailable'], 503);
+            }
+            $required = \App\Services\VacationsRoleAuthorization::requiredPermission($method, $path);
+            $permission = (array) ($permissions[$required ?? ''] ?? []);
+            if (($permission['allowed'] ?? false) !== true
+                || !in_array(($permission['scope'] ?? 'none'), ['own','team','all'], true)) {
+                return response()->json(['message' => 'Vacations permission denied'], 403);
+            }
+            // Even a team/all grant never changes ownership of these personal
+            // endpoints. The domain controller remains the final authority.
+            if ($path === 'api/absences/occupied') {
+                $actorId = (int) ($fresh->json('data.employee_id') ?? 0);
+                $targetId = (int) ($request->query('employee_id') ?: $actorId);
+                if ($targetId !== $actorId || $actorId <= 0) {
+                    return response()->json(['message' => 'Other employees require object-scope authorization'], 403);
+                }
+            }
+            $request->attributes->set('vacations_local_permissions', $permissions);
+            return $next($request);
         }
         if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
             $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
