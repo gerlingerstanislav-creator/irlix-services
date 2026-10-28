@@ -109,17 +109,20 @@ def verify_brandbook(host):
     print("[verify] brandbook: anonymous SSO redirect 302; origin SPA, deep links and SVG 200", flush=True)
 
 def verify_storage_pilot(host):
-    """Verify our Drive origin, API and S3; deny anonymous requests."""
+    """Verify the public, data-free Drive bootstrap and protected APIs/S3."""
     args = ["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}",
             "-H", f"Host: {host}", "--connect-timeout", "2", "--max-time", "10"]
     frontend = subprocess.check_output([*args, "http://127.0.0.1/storage/"], text=True).strip()
-    assert frontend == "302", f"Storage canonical anonymous entry expected 302; got {frontend}"
+    assert frontend == "200", f"Storage public SPA bootstrap unavailable: {frontend}"
     gate = subprocess.check_output([*args, "http://127.0.0.1/_storage_pilot_gate"], text=True).strip()
     assert gate == "404", f"internal storage gate exposed: {gate}"
-    asset = subprocess.check_output([*args, "http://127.0.0.1/storage/assets/missing.js"], text=True).strip()
-    assert asset == "302", f"Storage static assets must be gated: {asset}"
+    v1_gate = subprocess.check_output([*args, "http://127.0.0.1/_storage_v1_gate"], text=True).strip()
+    assert v1_gate == "404", f"internal Storage V1 gate exposed: {v1_gate}"
+    # Static UI may load before login; file data must NEVER be available without a session.
     api_external = subprocess.check_output([*args, "http://127.0.0.1/api/storage/items"], text=True).strip()
     assert api_external == "302", f"Storage external API must require SSO: {api_external}"
+    v1_external = subprocess.check_output([*args, "http://127.0.0.1/api/storage/v1/"], text=True).strip()
+    assert v1_external == "401", f"Storage V1 API must require a session: {v1_external}"
     old_port = subprocess.check_output([*args, "http://127.0.0.1:8110/"], text=True).strip()
     assert old_port == "302", f"Legacy port must redirect to /storage/: {old_port}"
     # Own Drive must serve its app, not the fallback Portal.
