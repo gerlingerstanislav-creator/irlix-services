@@ -24,7 +24,7 @@ class ClientContourPermissionsController extends Controller
             'roles' => collect(ClientContourAccess::ROLE_LABELS)->map(fn ($label, $key) => ['key' => $key, 'label' => $label, 'locked' => $key === 'platform-admin'])->values(),
             'permissions' => collect(ClientContourAccess::PERMISSION_LABELS)->map(fn ($label, $key) => ['key' => $key, 'label' => $label])->values(),
             'matrix' => $matrix,
-            'scopes' => [['key' => 'none', 'label' => 'Нет доступа'], ['key' => 'own', 'label' => 'Только свои'], ['key' => 'team', 'label' => 'Своё направление'], ['key' => 'all', 'label' => 'Все']],
+            'scopes' => [['key' => 'none', 'label' => 'Не назначено'], ['key' => 'own', 'label' => 'Только свои'], ['key' => 'team', 'label' => 'Своё направление'], ['key' => 'all', 'label' => 'Все']],
         ]]);
     }
 
@@ -36,10 +36,14 @@ class ClientContourPermissionsController extends Controller
             'role' => ['required', 'string', Rule::in(array_values(array_diff(array_keys(ClientContourAccess::ROLE_LABELS), ['platform-admin']))),],
             'permission' => ['required', 'string', Rule::in(array_keys(ClientContourAccess::PERMISSION_LABELS))],
             'allowed' => ['required', 'boolean'],
+            'denied' => ['sometimes', 'boolean'],
             'scope' => ['required', 'string', Rule::in(['none', 'own', 'team', 'all'])],
         ]);
         if (str_starts_with($data['permission'], 'permissions.') && $data['allowed'] && $data['scope'] !== 'all') return response()->json(['message' => 'Для управления глобальной матрицей разрешён только scope all.'], 422);
         if ($data['permission'] === 'specialists.view' && $data['allowed'] && $data['scope'] !== 'all') return response()->json(['message' => 'Общий календарь содержит даты отсутствий по всей компании. Для него разрешён только scope all.'], 422);
+        if (($data['denied'] ?? false) && $data['allowed']) {
+            return response()->json(['message' => 'Нельзя одновременно разрешить и запретить действие.'], 422);
+        }
         if (!$data['allowed']) $data['scope'] = 'none';
         if ($data['allowed'] && $data['scope'] === 'none') return response()->json(['message' => 'Для разрешённого действия укажите область данных.'], 422);
 
