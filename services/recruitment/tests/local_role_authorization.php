@@ -4,18 +4,18 @@ require __DIR__.'/../app/Services/RecruitmentRoleAuthorization.php';
 use App\Services\RecruitmentRoleAuthorization as Authz;
 $check=static function(bool $ok,string $error):void{if(!$ok)throw new RuntimeException($error);};
 $rows=[
-    ['role'=>'special:recruiter','permission'=>'recruitment.workspace.view','allowed'=>true,'scope'=>'all'],
-    ['role'=>'special:recruiter','permission'=>'recruitment.candidates.manage','allowed'=>true,'scope'=>'all'],
+    ['role'=>'special:personnel-officer','permission'=>'recruitment.workspace.view','allowed'=>true,'scope'=>'all'],
+    ['role'=>'special:personnel-officer','permission'=>'recruitment.candidates.manage','allowed'=>true,'scope'=>'all'],
     ['role'=>'org:irlix','permission'=>'recruitment.candidates.manage','allowed'=>false,'scope'=>'none'],
 ];
-$result=Authz::evaluate(['org:irlix','special:recruiter'],$rows);
+$result=Authz::evaluate(['org:irlix','special:personnel-officer'],$rows);
 $check($result['recruitment.workspace.view'],'Recruiter view missing');
 $check(!$result['recruitment.candidates.manage'],'Explicit denial did not override recruiter grant');
 $check(!$result['recruitment.offers.manage'],'Unassigned offer permission became granted');
 $check(!Authz::evaluate(['service:recruitment'],$rows)['recruitment.workspace.view'],
     'Legacy service marker bypassed Recruitment policy');
-$check(!Authz::evaluate(['special:recruiter'],[
-    ['role'=>'special:recruiter','permission'=>'recruitment.workspace.view','allowed'=>true,'scope'=>'team']
+$check(!Authz::evaluate(['special:personnel-officer'],[
+    ['role'=>'special:personnel-officer','permission'=>'recruitment.workspace.view','allowed'=>true,'scope'=>'team']
 ])['recruitment.workspace.view'],'Team scope without row filtering was trusted');
 $check(Authz::evaluate(['platform-admin'],[])['recruitment.offers.manage'],'Admin override missing');
 $check(Authz::requiredPermission('POST','api/offers')==='recruitment.offers.manage','Offer guard missing');
