@@ -10,6 +10,7 @@ import MyAbsencesPage from './pages/MyAbsencesPage.vue';
 import DepartmentAbsencesPage from './pages/DepartmentAbsencesPage.vue';
 import ManageAbsencesPage from './pages/ManageAbsencesPage.vue';
 import ActionHistoryPage from './pages/ActionHistoryPage.vue';
+import PermissionsPage from './pages/PermissionsPage.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -26,6 +27,7 @@ const menuItems=computed(()=>[
   {id:'mine',icon:'calendar',label:'Мои отпуска',visible:true},
   {id:'department',icon:'team',label:'Отсутствия подразделения',visible:isElevated.value},
   {id:'manage',icon:'manage',label:'Управление отсутствиями',visible:isElevated.value},
+  {id:'permissions',icon:'settings',label:'Разрешения',visible:isAdmin.value},
 ].filter(i=>i.visible));
 const availableSections=computed(()=>new Set([...menuItems.value.map(item=>item.id),'history']));
 
@@ -123,7 +125,7 @@ onMounted(loadWorkspace);
         <template #breadcrumb-extra><span id="vacations-breadcrumb-extra" class="irlix-breadcrumbs__extra"></span></template>
         <template #actions>
           <div class="vacations-topbar-controls">
-            <UiPeriodPicker v-model="year" mode="year"/>
+            <UiPeriodPicker v-if="section !== 'permissions'" v-model="year" mode="year"/>
             <div id="vacations-topbar-actions" class="vacations-topbar-actions"></div>
           </div>
         </template>
@@ -140,6 +142,7 @@ onMounted(loadWorkspace);
         <DepartmentAbsencesPage v-else-if="section==='department'" :year="year" :departments="workspace.departments||[]" :employees="workspace.employees||[]" :can-create-for-employee="isManager" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged('Отсутствие сотрудника создано')"/>
         <ManageAbsencesPage v-else-if="section==='manage'" :year="year" :departments="workspace.departments||[]" :employees="workspace.employees||[]" :can-create-for-employee="isManager||isPersonnelOfficer" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged('Отсутствие сотрудника создано')"/>
         <ActionHistoryPage v-else-if="section==='history'" :year="year" :employees="workspace.employees||[]" :refresh-token="refreshToken" @action="handleAction" @error="notifyError"/>
+        <PermissionsPage v-else-if="section==='permissions'"/>
       </template>
     </main>
 
