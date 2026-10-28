@@ -2,6 +2,8 @@
 
 require __DIR__.'/../app/Services/VacationsRoleAuthorization.php';
 use App\Services\VacationsRoleAuthorization as Authz;
+require __DIR__.'/../app/Services/VacationsObjectScope.php';
+use App\Services\VacationsObjectScope as ObjectScope;
 
 $test = static function (bool $condition, string $why): void {
     if (!$condition) throw new RuntimeException($why);
@@ -48,4 +50,37 @@ $test(Authz::requiredPermission('POST','api/absences/5/attachments/7/download')=
     'Document download with wrong HTTP method inherited access');
 $test(Authz::requiredPermission('GET','api/permissions')===null,
     'Matrix administration must remain a separate protected endpoint');
+$org = [
+    ['id'=>1,'parent_id'=>null,'manager_id'=>null],
+    ['id'=>2,'parent_id'=>1,'manager_id'=>72],
+    ['id'=>3,'parent_id'=>2,'manager_id'=>73],
+    ['id'=>4,'parent_id'=>1,'manager_id'=>99],
+    ['id'=>5,'parent_id'=>4,'manager_id'=>null],
+    ['id'=>6,'parent_id'=>2,'manager_id'=>null],
+];
+$members = [
+    ['id'=>72,'department_id'=>2],
+    ['id'=>73,'department_id'=>3],
+    ['id'=>74,'department_id'=>3],
+    ['id'=>75,'department_id'=>5],
+    ['id'=>76,'department_id'=>6],
+];
+$test(ObjectScope::managedDepartments(72,$org)===[2,3,6],
+    'Direct management and inherited descendants must be stable by IDs');
+$test(ObjectScope::allows('team',72,74,$org,$members),
+    'A manager cannot see a member of its managed subtree');
+$test(!ObjectScope::allows('team',72,75,$org,$members),
+    'A manager received unrelated department access');
+$test(!ObjectScope::allows('team',75,74,$org,$members),
+    'A regular employee inherited team rights without manager assignment');
+$test(!ObjectScope::allows('own',72,74,$org,$members),
+    'Own scope leaked another employee');
+$test(ObjectScope::allows('own',72,72,$org,$members),
+    'Own scope must include current actor');
+$test(!ObjectScope::allows('team',72,444,$org,$members),
+    'Missing trusted employee target cannot be treated as a team member');
+$test(!ObjectScope::allows('all',0,74,$org,$members),
+    'Anonymous actor must never get a global scope grant');
+$test(ObjectScope::requiresCollectiveScope('api/registry'),
+    'Global registry must not treat own scope as organization-wide');
 echo "Vacations local roles: PASS\n";
