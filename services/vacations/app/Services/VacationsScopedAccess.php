@@ -37,7 +37,6 @@ final class VacationsScopedAccess
 
         $targetId = 0;
         $approverId = 0;
-        $absenceStartsOn = null;
         if ($path === 'api/absences/occupied' && $method === 'GET') {
             $targetId = (int) ($request->query('employee_id') ?: $actorId);
         } elseif ($path === 'api/absences/for-employee' && $method === 'POST') {
@@ -48,11 +47,9 @@ final class VacationsScopedAccess
             $approverId = (int) $approval->approver_employee_id;
             $absence = Absence::query()->find((int) $approval->absence_id);
             $targetId = (int) ($absence?->employee_id ?? 0);
-            $absenceStartsOn = $absence?->starts_on;
         } elseif (preg_match('#^api/absences/([1-9][0-9]*)(?:/.*)?$#D', $path, $m)) {
             $absence = Absence::query()->find((int) $m[1]);
             $targetId = (int) ($absence?->employee_id ?? 0);
-            $absenceStartsOn = $absence?->starts_on;
         } else {
             return false;
         }
@@ -66,13 +63,11 @@ final class VacationsScopedAccess
         if ($scope === 'all') return true;
         if ($scope === 'own') return false;
 
-        // Historical membership must be evaluated as of the absence date.
-        // Employees current manager tree alone cannot prove that. Until
-        // verified dated segments are integrated, deny older team objects.
-        if ($absenceStartsOn !== null
-            && substr((string) $absenceStartsOn, 0, 10) < now()->toDateString()) {
-            return false;
-        }
+        // Team means current verified organizational subordinates. A sick
+        // leave can start in the past and still require today's manager to
+        // approve it; its start date must not silently revoke that workflow.
+        // Former employees are excluded because only the current Employees
+        // directory can establish current team membership.
         $org = $this->directory->vacationsDirectory($request);
         return VacationsObjectScope::allows(
             'team', $actorId, $targetId,
