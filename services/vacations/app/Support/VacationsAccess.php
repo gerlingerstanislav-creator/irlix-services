@@ -22,25 +22,39 @@ final class VacationsAccess
         )));
     }
 
+    private function localV2(): bool
+    {
+        return filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+            && filter_var(env('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+    }
+
     public function isAdmin(array $access): bool
     {
-        return in_array('platform-admin', $this->roles($access), true);
+        $roles = $this->roles($access);
+        return in_array('platform-admin', $roles, true)
+            || ($this->localV2() && in_array('special:platform-admin', $roles, true));
     }
 
     public function isHr(array $access): bool
     {
-        return $this->isAdmin($access) || in_array('hr', $this->roles($access), true);
+        return $this->isAdmin($access)
+            || in_array('hr', $this->roles($access), true)
+            || ($this->localV2() && in_array('org:hr', $this->roles($access), true));
     }
 
     public function isPersonnelOfficer(array $access): bool
     {
-        return $this->isAdmin($access) || in_array('personnel-officer', $this->roles($access), true);
+        return $this->isAdmin($access)
+            || in_array('personnel-officer', $this->roles($access), true)
+            || ($this->localV2() && in_array('special:personnel-officer', $this->roles($access), true));
     }
 
     public function isManager(array $access): bool
     {
         return $this->isAdmin($access) || in_array('manager', $this->roles($access), true)
-            || count(array_filter($this->roles($access), fn ($role) => str_ends_with($role, '-head'))) > 0;
+            || count(array_filter($this->roles($access), fn ($role) => str_ends_with($role, '-head'))) > 0
+            || ($this->localV2() && count(array_filter($this->roles($access),
+                fn ($role) => str_starts_with($role, 'head:'))) > 0);
     }
 
     /**
