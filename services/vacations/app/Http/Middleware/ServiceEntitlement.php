@@ -60,6 +60,17 @@ final class ServiceEntitlement
             } catch (\Throwable) {
                 return response()->json(['message' => 'Vacations policy unavailable'], 503);
             }
+            if ($path === 'api/permissions/me') {
+                $request->attributes->set('vacations_local_permissions', $permissions);
+                return $next($request);
+            }
+            if ($path === 'api/workspace'
+                && \App\Services\VacationsRoleAuthorization::canOpenWorkspace($permissions)) {
+                $request->attributes->set('vacations_local_employee_id',
+                    (int) $fresh->json('data.employee_id'));
+                $request->attributes->set('vacations_local_permissions', $permissions);
+                return $next($request);
+            }
             $required = \App\Services\VacationsRoleAuthorization::requiredPermission($method, $path);
             $permission = (array) ($permissions[$required ?? ''] ?? []);
             if (($permission['allowed'] ?? false) !== true
