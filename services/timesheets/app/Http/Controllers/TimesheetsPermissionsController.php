@@ -29,8 +29,10 @@ final class TimesheetsPermissionsController
         $local = $jwt && filter_var(env('IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
         if ($local) {
             $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
-            $permissions = (array) $request->attributes->get('timesheets_local_permissions',
-                app(TimesheetsRoleAuthorization::class)->forVerifiedRoles($roles));
+            $permissions = $request->attributes->get('timesheets_local_permissions');
+            if (!is_array($permissions)) {
+                $permissions = app(TimesheetsRoleAuthorization::class)->forVerifiedRoles($roles);
+            }
             return response()->json(['data' => ['permissions' => $permissions, 'mode' => 'local']]);
         }
 
