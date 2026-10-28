@@ -292,7 +292,15 @@ class ClientContourAccess
             // Generic managers retain the configurable Timesheets grants of the
             // department-manager matrix role, without gaining its Clients grants.
             $matrixRoles = in_array('manager', $specialRoles, true) ? [...$roles, 'department-manager'] : $roles;
-            foreach (ClientContourPermission::query()->whereIn('role', $matrixRoles)->where('allowed', true)->get() as $row) {
+            $explicitDenies = [];
+            foreach (ClientContourPermission::query()->whereIn('role', $matrixRoles)->get() as $row) {
+                // A default false row does not deny grants from another role.
+                // Only the administrator's opt-in "denied" flag vetoes them.
+                if ((bool) ($row->denied ?? false)) {
+                    $explicitDenies[$row->permission] = true;
+                    continue;
+                }
+                if (!(bool) $row->allowed) continue;
                 if ($row->role === 'department-manager' && !$managedProductionRoots && !str_starts_with($row->permission, 'timesheets.')) continue;
                 $current = $permissions[$row->permission]['scope'] ?? 'none';
                 if (($rank[$row->scope] ?? 0) >= ($rank[$current] ?? 0)) $permissions[$row->permission] = ['allowed' => true, 'scope' => $row->scope];
@@ -300,6 +308,9 @@ class ClientContourAccess
                     $current = $clientServicePermissions[$row->permission]['scope'] ?? 'none';
                     if (($rank[$row->scope] ?? 0) >= ($rank[$current] ?? 0)) $clientServicePermissions[$row->permission] = ['allowed' => true, 'scope' => $row->scope];
                 }
+            }
+            foreach (array_keys($explicitDenies) as $permission) {
+                unset($permissions[$permission], $clientServicePermissions[$permission]);
             }
         }
 
