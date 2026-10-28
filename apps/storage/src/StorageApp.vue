@@ -19,7 +19,7 @@ const error = ref('');
 const items = [
   { id: 'files', label: 'Мои файлы', icon: 'file-text', href: '/storage/' },
   { id: 'available', label: 'Доступные мне', icon: 'users', href: '/storage/available' },
-  { id: 'trash', label: 'Корзина', icon: 'archive', href: '/storage/trash' },
+  { id: 'trash', label: 'Корзина', icon: 'reset', href: '/storage/trash' },
 ];
 const route = useRoute();
 const router = useRouter();
