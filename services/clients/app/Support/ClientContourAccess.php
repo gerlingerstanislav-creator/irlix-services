@@ -67,6 +67,64 @@ class ClientContourAccess
         ));
     }
 
+    /**
+     * Filter signed V2 identity labels against CURRENT Employees directory
+     * facts. An old token must not keep department/head grants after a move.
+     * Explicit special roles are still bound to token TTL and require the
+     * separate emergency-revocation control before production cutover.
+     *
+     * Legacy Client Service / Accounting maps to account-management only
+     * when its ancestry includes client-service; Finance Accounting stays
+     * accounting. No free-text job title is used.
+     */
+    public static function currentIdentityLabels(
+        array $signed, int $actorId, array $departments, array $employees
+    ): array {
+        if ($actorId <= 0) return [];
+        $actor = null;
+        foreach ($employees as $employee) {
+            if ((int) ($employee['id'] ?? 0) === $actorId) { $actor = $employee; break; }
+        }
+        if (!$actor) return [];
+        $byId = [];
+        foreach ($departments as $d) {
+            if ((int) ($d['id'] ?? 0) > 0) $byId[(int) $d['id']] = $d;
+        }
+        $aliasFor = static function (array $department) use ($byId): string {
+            $alias = (string) ($department['alias'] ?? '');
+            if ($alias !== 'accounting') return $alias;
+            $id = (int) ($department['id'] ?? 0);
+            $visited = [];
+            while ($id > 0 && isset($byId[$id]) && !isset($visited[$id])) {
+                $visited[$id] = true;
+                if (($byId[$id]['alias'] ?? '') === 'client-service') return 'account-management';
+                $id = (int) ($byId[$id]['parent_id'] ?? 0);
+            }
+            return $alias;
+        };
+        $valid = [];
+        $id = (int) ($actor['department_id'] ?? 0);
+        $seen = [];
+        while ($id > 0 && isset($byId[$id]) && !isset($seen[$id])) {
+            $seen[$id] = true;
+            $alias = $aliasFor($byId[$id]);
+            if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $alias)) $valid['org:'.$alias] = true;
+            $id = (int) ($byId[$id]['parent_id'] ?? 0);
+        }
+        foreach ($departments as $d) {
+            if ((int) ($d['manager_id'] ?? 0) !== $actorId) continue;
+            $alias = $aliasFor($d);
+            if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $alias)) $valid['head:'.$alias] = true;
+        }
+        $out = [];
+        foreach ($signed as $role) {
+            if (!is_string($role) ||
+                preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $role) !== 1) continue;
+            if (str_starts_with($role, 'special:') || isset($valid[$role])) $out[$role] = true;
+        }
+        return array_keys($out);
+    }
+
     public function resolve(Request $request): array
     {
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
@@ -313,9 +371,8 @@ class ClientContourAccess
             // functional projections remain available for object relationships
             // but never grant permissions implicitly in this mode.
             $matrixRoles = $localRoleMode
-                ? array_values(array_filter($jwtLabels, static fn ($role) =>
-                    is_string($role)
-                    && preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $role) === 1))
+                ? self::currentIdentityLabels($jwtLabels, (int) ($employee['id'] ?? 0),
+                    $departments->all(), $directoryEmployees->all())
                 : (in_array('manager', $specialRoles, true) ? [...$roles, 'department-manager'] : $roles);
             $explicitDenies = [];
             foreach (ClientContourPermission::query()->whereIn('role', $matrixRoles)->get() as $row) {
