@@ -139,6 +139,12 @@ def list_items(request: Request, parent_id: UUID | None = None):
                 "FROM storage.objects WHERE parent_id=%s AND state='active' "
                 "ORDER BY display_name LIMIT 200", (parent,)
             ).fetchall()
+        elif actor.platform_admin:
+            rows = conn.execute(
+                "SELECT id::text,kind,owner_employee_id,parent_id::text,display_name,state "
+                "FROM storage.objects WHERE parent_id IS NULL AND state='active' "
+                "ORDER BY display_name LIMIT 200"
+            ).fetchall()
         else:
             # Root documents are personal, plus explicit grants on shared roots.
             rows = conn.execute(
@@ -245,6 +251,7 @@ def download(request: Request, object_id: UUID):
         title, key = row[4], row[5]
         if not key.startswith(S3_ROOT):
             raise HTTPException(404, "Неверная область хранения")
+        _audit(repo, actor, oid, "file.download")
     try:
         obj = _s3().get_object(Bucket=_bucket(), Key=key)
     except (BotoCoreError, ClientError):
@@ -261,6 +268,21 @@ def download(request: Request, object_id: UUID):
                              headers={"Content-Disposition": "attachment; filename*=UTF-8''" + quote(title, safe=""),
                                       "Cache-Control": "private, no-store",
                                       "X-Content-Type-Options": "nosniff"})
+
+
+@router.get("/objects/{object_id}/grants")
+def list_grants(request: Request, object_id: UUID):
+    actor = _identity(request)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        oid = _authorize(repo, actor, object_id, Permission.SHARE)
+        rows = conn.execute(
+            "SELECT employee_id,role FROM storage.grants "
+            "WHERE object_id=%s AND revoked_at IS NULL ORDER BY employee_id LIMIT 200",
+            (oid,)
+        ).fetchall()
+    return {"entries": [{"employee_id": employee, "role": role}
+                        for employee, role in rows]}
 
 
 @router.post("/objects/{object_id}/grants")
