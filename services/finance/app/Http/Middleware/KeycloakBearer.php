@@ -69,6 +69,47 @@ class KeycloakBearer
             // The token was verified above. Global entry and local Finance
             // capabilities are mapped from synchronized Keycloak labels.
             $roles = (array) ($claims['realm_access']['roles'] ?? []);
+            // V2 is switched on only after existing grants/denies are
+            // migrated and reconciled with this service-owned matrix.
+            if (filter_var(env('IRLIX_FINANCE_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+                // Sensitive finance data must not remain available after an
+                // employee transfer or revoked role while an old JWT lives.
+                if ($request->header('X-Irlix-Role-Preview') !== null) {
+                    return response()->json(['message' => 'Role preview cannot authorize Finance data'], 403);
+                }
+                $employeesBase = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
+                try {
+                    $currentResponse = Http::withToken((string) $token)->acceptJson()
+                        ->timeout(5)->get($employeesBase.'/access/me');
+                } catch (\Throwable) {
+                    return response()->json(['message' => 'Finance role freshness unavailable'], 503);
+                }
+                if (!$currentResponse->successful() || !is_array($currentResponse->json('data'))) {
+                    return response()->json(['message' => 'Finance role freshness unavailable'], 503);
+                }
+                if (!\App\Services\FinanceRoleAuthorization::currentIdentityMatches(
+                    $roles, (array) $currentResponse->json('data')
+                )) {
+                    return response()->json(['message' => 'Finance roles changed; refresh authentication'], 403);
+                }
+                try {
+                    $permissions = app(\App\Services\FinanceRoleAuthorization::class)->forVerifiedRoles($roles);
+                } catch (\Throwable) {
+                    return response()->json(['message' => 'Finance local authorization unavailable'], 503);
+                }
+                if (!($permissions['finance.view'] ?? false)) {
+                    return response()->json(['message' => 'Finance access is not granted'], 403);
+                }
+                $request->attributes->set('identity', [
+                    'sub' => $claims['sub'] ?? null,
+                    'preferred_username' => $claims['preferred_username'] ?? null,
+                    'email' => $claims['email'] ?? null,
+                    'realm_roles' => $roles,
+                    'service_access_granted' => true,
+                    'permissions' => $permissions,
+                ]);
+                return $next($request);
+            }
             if (!in_array('service:finance', $roles, true)) {
                 return response()->json(['message' => 'Finance access is not granted'], 403);
             }

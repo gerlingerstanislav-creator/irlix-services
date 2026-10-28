@@ -10,6 +10,11 @@ COPY database/migrations /app/database/migrations
 COPY bin /app/bin
 COPY tests /app/tests
 RUN find /app/app /app/routes /app/bootstrap /app/database/migrations /app/bin -name '*.php' -print0 | xargs -0 -n1 php -l \
+    && php /app/tests/local_role_authorization.php \
+    && php /app/tests/local_flag_fail_closed.php \
+    && ( ! env IRLIX_SECURITY_TEST_PROBE=1 php /app/tests/local_partial_gate.php >/dev/null 2>&1 ) \
+    && php /app/tests/local_partial_gate.php \
+    && php /app/tests/privileged_roles_revocation.php \
     && php /app/tests/domain_smoke.php \
     && php /app/tests/workflow_sequence_smoke.php \
     && php /app/tests/status_normalization_smoke.php \

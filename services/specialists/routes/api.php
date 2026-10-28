@@ -5,6 +5,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\SpecialistsPermissionsController;
 
 $directoryFor = function (Request $request): array {
     try { return app(EmployeesDirectory::class)->resolve($request); }
@@ -69,6 +70,14 @@ $assertTechnologyParent = function (?int $parentId, ?int $technologyId = null): 
 // The Employees access service is the source of truth for special platform roles.
 // Resolve the directory first to validate the caller, then fail closed on access lookup errors.
 $assertCatalogAdmin = function (Request $request) use ($directoryFor): void {
+    if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+        && filter_var(env('IRLIX_SPECIALISTS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+        $policy = (array) $request->attributes->get('specialists_local_permissions', []);
+        abort_unless(($policy['specialists.catalog.manage']['allowed'] ?? false) === true
+            && ($policy['specialists.catalog.manage']['scope'] ?? '') === 'all',
+            403, 'Только явно разрешённая роль может изменять каталог технологий.');
+        return;
+    }
     if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
         $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
         abort_unless(in_array('platform-admin', $roles, true)
@@ -86,6 +95,26 @@ $assertCatalogAdmin = function (Request $request) use ($directoryFor): void {
 };
 
 Route::get('/health', fn () => response()->json(['service'=>'specialists','status'=>'ok','database'=>DB::select('select 1') ? 'ok' : 'error']));
+Route::get('/permissions',function(Request $request) {
+    if (filter_var(env('IRLIX_SPECIALISTS_LOCAL_AUTHZ_ENABLED',false),FILTER_VALIDATE_BOOLEAN)
+        &&filter_var(env('IRLIX_AUTHZ_JWT_ENABLED',false),FILTER_VALIDATE_BOOLEAN)) {
+        $effective=(array)$request->attributes->get('specialists_local_permissions',[]);
+        return response()->json(['data'=>[
+            'profiles_view'=>(bool)($effective['specialists.profiles.view']['allowed']??false),
+            'profiles_manage'=>(bool)($effective['specialists.profiles.manage']['allowed']??false),
+            'catalog_view'=>(bool)($effective['specialists.catalog.view']['allowed']??false),
+            'catalog_manage'=>(bool)($effective['specialists.catalog.manage']['allowed']??false),
+        ]]);
+    }
+    $roles=(array)($request->attributes->get('identity',[])['realm_roles']??[]);
+    return response()->json(['data'=>[
+        'profiles_view'=>true,'profiles_manage'=>true,'catalog_view'=>true,
+        'catalog_manage'=>in_array('platform-admin',$roles,true),
+    ]]);
+});
+Route::get('/role-permissions',[SpecialistsPermissionsController::class,'index']);
+Route::put('/role-permissions',[SpecialistsPermissionsController::class,'update']);
+Route::delete('/role-permissions',[SpecialistsPermissionsController::class,'remove']);
 
 Route::get('/workspace', function (Request $request) use ($directoryFor,$syncSnapshots,$catalogPayload) {
     $directory=$directoryFor($request); $employees=$directory['employees'] ?? []; $syncSnapshots($employees);
@@ -93,7 +122,10 @@ Route::get('/workspace', function (Request $request) use ($directoryFor,$syncSna
     $profiles=DB::table('specialist_profiles')->whereIn('employee_id',$ids)->get()->keyBy('employee_id');
     $techMap=DB::table('specialist_technologies as st')->join('technologies as t','t.id','=','st.technology_id')->whereIn('st.employee_id',$ids)->select(['st.employee_id','t.id','t.name'])->orderBy('t.name')->get()->groupBy('employee_id');
     $people=collect($employees)->map(function($employee)use($profiles,$techMap){$id=(int)$employee['id'];$profile=$profiles->get($id);return [...$employee,'grade'=>$profile?->grade,'manager_note'=>$profile?->manager_note,'technologies'=>($techMap->get($id)??collect())->values()];})->values();
-    return response()->json(['data'=>['actor'=>$directory['actor']??null,'scope'=>$directory['scope']??null,'managed_department_ids'=>$directory['managed_department_ids']??[],'departments'=>$directory['departments']??[],'people'=>$people,'catalog'=>$catalogPayload()]]);
+    return response()->json(['data'=>['actor'=>$directory['actor']??null,'scope'=>$directory['scope']??null,'managed_department_ids'=>$directory['managed_department_ids']??[],'departments'=>$directory['departments']??[],'people'=>$people,'catalog'=>(filter_var(env('IRLIX_SPECIALISTS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+        && filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+        && !($request->attributes->get('specialists_local_permissions', [])['specialists.catalog.view']['allowed'] ?? false))
+            ? ['technologies'=>[], 'competencies'=>[]] : $catalogPayload()]]);
 });
 
 Route::get('/people/{employee}', function(Request $request,int $employee)use($directoryFor,$visibleEmployee,$syncSnapshots,$profilePayload){$directory=$directoryFor($request);$target=$visibleEmployee($directory,$employee);if(!$target)return response()->json(['message'=>'Specialist not found in your scope'],404);$syncSnapshots([$target]);return response()->json(['data'=>$profilePayload($target)]);})->whereNumber('employee');

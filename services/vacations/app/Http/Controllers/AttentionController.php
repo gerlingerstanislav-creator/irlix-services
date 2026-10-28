@@ -43,10 +43,19 @@ final class AttentionController extends Controller
                 ];
             }
 
-            // Reuse the same permission/scope and delegate logic as the Vacations UI.
-            $response = $this->approvals->index($request);
-            if ($response->getStatusCode() !== 200) return $response;
-            foreach (($response->getData(true)['data'] ?? []) as $approval) {
+            // Attention must not leak approval tasks simply because the
+            // employee may read their own absences. Local permission is an
+            // independent gate even for internally delegated controller calls.
+            $grants = $request->attributes->get('vacations_local_permissions');
+            $mayReadApprovals = !is_array($grants)
+                || (($grants['vacations.approvals.view']['allowed'] ?? false) === true);
+            $approvals = [];
+            if ($mayReadApprovals) {
+                $response = $this->approvals->index($request);
+                if ($response->getStatusCode() !== 200) return $response;
+                $approvals = $response->getData(true)['data'] ?? [];
+            }
+            foreach ($approvals as $approval) {
                 $items[] = [
                     'id' => 'approval:'.$approval['id'],
                     'title' => 'Согласовать отсутствие'.(!empty($approval['employee_name']) ? ': '.$approval['employee_name'] : ''),

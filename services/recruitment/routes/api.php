@@ -3,15 +3,21 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\RecruitmentPermissionsController;
+use App\Http\Controllers\RecruitmentAccessController;
 
 Route::get('/health', fn () => ['data' => ['status' => 'ok', 'service' => 'recruitment']]);
+Route::get('/permissions/me',[RecruitmentAccessController::class,'me']);
+Route::get('/role-permissions',[RecruitmentPermissionsController::class,'index']);
+Route::put('/role-permissions',[RecruitmentPermissionsController::class,'update']);
+Route::delete('/role-permissions',[RecruitmentPermissionsController::class,'remove']);
 
 $actor = static function (Request $request): string {
     $identity = $request->attributes->get('identity', []);
     return (string)($identity['preferred_username'] ?? $identity['email'] ?? 'unknown');
 };
 
-Route::get('/workspace', function () {
+Route::get('/workspace', function (Request $request) {
     $candidates = DB::table('candidates')->orderByDesc('updated_at')->get()->map(function ($candidate) {
         $candidate->stack = json_decode($candidate->stack_json ?: '[]', true) ?: [];
         unset($candidate->stack_json);
@@ -33,14 +39,33 @@ Route::get('/workspace', function () {
     $interviews = DB::table('interviews as i')->join('hiring_processes as h','h.id','=','i.hiring_process_id')->join('candidates as c','c.id','=','h.candidate_id')->select('i.*','c.full_name as candidate_name')->orderBy('i.scheduled_at')->get();
     $offers = DB::table('offers as o')->join('hiring_processes as h','h.id','=','o.hiring_process_id')->join('candidates as c','c.id','=','h.candidate_id')->select('o.*','c.full_name as candidate_name')->orderByDesc('o.updated_at')->get();
     $funnel = DB::table('hiring_processes')->selectRaw('stage_type, count(*) as count')->groupBy('stage_type')->pluck('count', 'stage_type');
+    // Reading candidate cards does not implicitly grant compensation details.
+    $local=filter_var(env('IRLIX_AUTHZ_JWT_ENABLED',false),FILTER_VALIDATE_BOOLEAN)
+        &&filter_var(env('IRLIX_RECRUITMENT_LOCAL_AUTHZ_ENABLED',false),FILTER_VALIDATE_BOOLEAN);
+    $policy=(array)$request->attributes->get('recruitment_local_permissions',[]);
+    if($local&&!($policy['recruitment.compensation.view']??false)){
+        $candidates=$candidates->map(function($candidate){
+            $candidate->salary_expectation=null;
+            return $candidate;
+        });
+        $offers=$offers->map(function($offer){
+            $offer->compensation=null;
+            return $offer;
+        });
+    }
     return ['data' => compact('candidates','requests','pools','employment','onboarding','tasks','interviews','offers','funnel')];
 });
 
-Route::get('/candidates/{id}', function (int $id) {
+Route::get('/candidates/{id}', function (Request $request, int $id) {
     $candidate = DB::table('candidates')->find($id);
     abort_if(!$candidate, 404, 'Candidate not found');
     $candidate->stack = json_decode($candidate->stack_json ?: '[]', true) ?: [];
     unset($candidate->stack_json);
+    if(filter_var(env('IRLIX_AUTHZ_JWT_ENABLED',false),FILTER_VALIDATE_BOOLEAN)
+        &&filter_var(env('IRLIX_RECRUITMENT_LOCAL_AUTHZ_ENABLED',false),FILTER_VALIDATE_BOOLEAN)
+        &&!($request->attributes->get('recruitment_local_permissions',[])['recruitment.compensation.view']??false)){
+        $candidate->salary_expectation=null;
+    }
     $activities = DB::table('activities')->where('candidate_id', $id)->orderByDesc('occurred_at')->get();
     $processes = DB::table('hiring_processes')->where('candidate_id', $id)->orderByDesc('created_at')->get();
     $pools = DB::table('candidate_talent_pool as cp')->join('talent_pools as p','p.id','=','cp.talent_pool_id')->where('cp.candidate_id',$id)->select('p.id','p.name')->get();
@@ -53,12 +78,17 @@ Route::post('/candidates', function (Request $request) {
         'salary_expectation'=>['nullable','string','max:128'],'source'=>['nullable','string','max:128'],'recruiter_name'=>['nullable','string','max:255'],'email'=>['nullable','email','max:255'],
         'phone'=>['nullable','string','max:64'],'stack'=>['array'],'stack.*'=>['string','max:128'],
     ]);
+    app(\App\Services\RecruitmentCompensationPolicy::class)
+        ->assertWrite($request, $data, 'salary_expectation');
     $id = DB::table('candidates')->insertGetId([
         'full_name'=>$data['full_name'],'role'=>$data['role']??null,'grade'=>$data['grade']??null,'city'=>$data['city']??null,'salary_expectation'=>$data['salary_expectation']??null,
         'source'=>$data['source']??null,'recruiter_name'=>$data['recruiter_name']??null,'email'=>$data['email']??null,'phone'=>$data['phone']??null,
         'stack_json'=>json_encode($data['stack']??[], JSON_UNESCAPED_UNICODE),'created_at'=>now(),'updated_at'=>now(),
     ]);
-    return response()->json(['data'=>DB::table('candidates')->find($id)], 201);
+    $created = DB::table('candidates')->find($id);
+    $created = app(\App\Services\RecruitmentCompensationPolicy::class)
+        ->redact($request, $created, 'salary_expectation');
+    return response()->json(['data'=>$created], 201);
 });
 
 Route::post('/requests', function (Request $request) {
@@ -106,18 +136,28 @@ Route::post('/interviews/{id}/evaluations', function (Request $request, int $id)
 Route::post('/offers', function (Request $request) {
     $data = $request->validate(['hiring_process_id'=>['required','integer'],'role'=>['required','string','max:255'],'compensation'=>['nullable','string','max:255'],'planned_start_date'=>['nullable','date']]);
     abort_if(!DB::table('hiring_processes')->where('id',$data['hiring_process_id'])->exists(),422,'Hiring process not found');
+    app(\App\Services\RecruitmentCompensationPolicy::class)
+        ->assertWrite($request, $data, 'compensation');
     $id = DB::table('offers')->insertGetId([...$data,'status'=>'draft','created_at'=>now(),'updated_at'=>now()]);
-    return response()->json(['data'=>DB::table('offers')->find($id)],201);
+    $created = DB::table('offers')->find($id);
+    $created = app(\App\Services\RecruitmentCompensationPolicy::class)
+        ->redact($request, $created, 'compensation');
+    return response()->json(['data'=>$created],201);
 });
 
 Route::patch('/offers/{id}', function (Request $request, int $id) {
     $data = $request->validate(['status'=>['required','in:draft,approval,ready,sent,accepted,rejected,withdrawn'],'compensation'=>['sometimes','nullable','string','max:255'],'planned_start_date'=>['sometimes','nullable','date']]);
+    app(\App\Services\RecruitmentCompensationPolicy::class)
+        ->assertWrite($request, $data, 'compensation');
     abort_if(!DB::table('offers')->where('id',$id)->exists(),404,'Offer not found');
     $update = [...$data,'updated_at'=>now()];
     if (($data['status']??null)==='sent') $update['sent_at']=now();
     if (in_array(($data['status']??null),['accepted','rejected'],true)) $update['decision_at']=now();
     DB::table('offers')->where('id',$id)->update($update);
-    return ['data'=>DB::table('offers')->find($id)];
+    $updated = DB::table('offers')->find($id);
+    $updated = app(\App\Services\RecruitmentCompensationPolicy::class)
+        ->redact($request, $updated, 'compensation');
+    return ['data'=>$updated];
 });
 
 Route::post('/talent-pools', function (Request $request) {

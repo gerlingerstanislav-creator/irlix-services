@@ -67,6 +67,41 @@ class KeycloakBearer
 
         if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
             $roles = (array) ($claims['realm_access']['roles'] ?? []);
+            if (filter_var(env('IRLIX_EQUIPMENT_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+                if ($request->header('X-Irlix-Role-Preview') !== null) {
+                    return response()->json(['message'=>'Role preview does not authorize equipment'],403);
+                }
+                $employeesBase=rtrim((string)env('EMPLOYEES_URL','http://employees:8000/api'),'/');
+                try {
+                    $current=Http::withToken((string)$token)->acceptJson()->timeout(5)
+                        ->get($employeesBase.'/access/me');
+                } catch (\Throwable) {
+                    return response()->json(['message'=>'Current Equipment identities unavailable'],503);
+                }
+                if (!$current->successful() || !is_array($current->json('data'))) {
+                    return response()->json(['message'=>'Current Equipment identities unavailable'],503);
+                }
+                if (!\App\Services\EquipmentRoleAuthorization::currentIdentityMatches(
+                    $roles,(array)$current->json('data')
+                )) return response()->json(['message'=>'Equipment roles changed'],403);
+                try {
+                    $permissions=app(\App\Services\EquipmentRoleAuthorization::class)->forVerifiedRoles($roles);
+                } catch (\Throwable) {
+                    return response()->json(['message'=>'Equipment policy unavailable'],503);
+                }
+                if (!($permissions['equipment.view']??false)) {
+                    return response()->json(['message'=>'Equipment access denied by local matrix'],403);
+                }
+                $request->attributes->set('identity',[
+                    'sub'=>$claims['sub']??null,
+                    'preferred_username'=>$claims['preferred_username']??null,
+                    'email'=>$claims['email']??null,
+                    'realm_roles'=>$roles,
+                    'service_access_granted'=>true,
+                    'equipment_permissions'=>$permissions,
+                ]);
+                return $next($request);
+            }
             if (!in_array('service:equipment', $roles, true)) {
                 return response()->json(['message' => 'Equipment access is not granted'], 403);
             }

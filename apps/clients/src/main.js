@@ -17,15 +17,22 @@ const start = async () => {
     const authenticated = await auth.init();
     if (!authenticated) return;
     const response = await auth.fetch('/api/clients/permissions/me', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    if (response.status === 401 || response.status === 403) {
+      showForbidden();
+      return;
+    }
     if (!response.ok) throw new Error(`Clients access lookup failed (${response.status})`);
     const initialAccess = (await response.json())?.data;
     if (initialAccess?.clients_service_blocked) {
       showForbidden();
       return;
     }
-    const admission = await auth.fetch('/api/employees/access/me', { headers: { Accept: 'application/json' }, cache: 'no-store' });
-    if (!admission.ok) throw new Error('Service entitlement lookup failed');
-    if ((await admission.json())?.data?.services?.['clients'] !== true) {
+    // Server-verified Clients permissions determine service admission.
+    // Backend retains the old Employees entitlement until V2 cutover.
+    const effective = initialAccess?.permissions || {};
+    const hasClientPermission = Object.entries(effective).some(([name, grant]) =>
+      !name.startsWith('timesheets.') && grant?.allowed === true);
+    if (!hasClientPermission && !initialAccess?.platform_admin) {
       showForbidden();
       return;
     }

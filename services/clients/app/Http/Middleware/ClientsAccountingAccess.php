@@ -20,7 +20,12 @@ class ClientsAccountingAccess
     public function handle(Request $request, Closure $next): Response
     {
         if ($request->is('api/health')) return $next($request);
-        $access = $this->accessResolver->resolve($request);
+        // Reuse only this request's fresh entitlement projection, never a
+        // stale previous middleware result on a reused Request object.
+        $access = $request->attributes->get('client_contour_verified_at_entitlement') === true
+            ? $request->attributes->get('client_contour_access') : null;
+        $request->attributes->remove('client_contour_verified_at_entitlement');
+        if (!is_array($access)) $access = $this->accessResolver->resolve($request);
         $request->attributes->set('client_contour_access', $access);
         if ($access['clients_service_blocked'] ?? false) {
             // Minimal read contracts used by Timesheets and Vacations, without client cards,

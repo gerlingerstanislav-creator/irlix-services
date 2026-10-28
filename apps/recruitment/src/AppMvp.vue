@@ -4,8 +4,10 @@ import { useRoute, useRouter } from 'vue-router';
 import { UiAppSidebar, UiAppTopbar, UiRegistryTable, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 import { recruitmentApi } from './api';
+import RecruitmentRolePermissionsView from './RecruitmentRolePermissionsView.vue';
+import { canRecruitment, candidateCreatePayload, offerCreatePayload } from './authorization.js';
 
-const navItems = [
+const standardNavItems = [
   { id: 'dashboard', label: 'Обзор', icon: 'dashboard' },
   { id: 'requests', label: 'Заявки', icon: 'briefcase' },
   { id: 'candidates', label: 'Кандидаты', icon: 'users' },
@@ -18,6 +20,15 @@ const navItems = [
   { id: 'tasks', label: 'Задачи', icon: 'tasks' },
   { id: 'analytics', label: 'Аналитика', icon: 'assessment' },
 ];
+
+const roleMatrixAdmin=ref(false);
+const authorizationMode=ref('unknown');
+const effectivePermissions=ref({});
+const can = permission => canRecruitment(authorizationMode.value, effectivePermissions.value, permission);
+const navItems=computed(()=>[
+  ...standardNavItems,
+  ...(roleMatrixAdmin.value?[{id:'role-permissions',label:'Разрешения',icon:'settings'}]:[]),
+]);
 
 const stageDefinitions = [
   ['new', 'Новый'], ['outreach', 'Поиск контакта'], ['contact', 'Контакт'], ['hr_interview', 'HR интервью'],
@@ -69,6 +80,18 @@ function offerLabel(type) { return offerStatuses.find(([id]) => id === type)?.[1
 async function reload() {
   loading.value = true; error.value = '';
   try {
+    try {
+      const access = await auth.fetch('/api/recruitment/role-permissions', {cache:'no-store'});
+      roleMatrixAdmin.value = access.ok && (await access.json()).data?.can_manage === true;
+    } catch { roleMatrixAdmin.value = false; }
+    const granted = await auth.fetch('/api/recruitment/permissions/me', {cache:'no-store'});
+    if (!granted.ok) throw new Error('Не удалось проверить права Recruitment');
+    const rights = (await granted.json()).data;
+    if (!rights || !['legacy','local'].includes(rights.mode)) {
+      throw new Error('Некорректный ответ сервиса авторизации Recruitment');
+    }
+    authorizationMode.value = rights.mode;
+    effectivePermissions.value = rights.permissions || {};
     const data = await recruitmentApi.workspace();
     Object.assign(workspace, data);
     workspace.interviews ||= []; workspace.offers ||= []; workspace.tasks ||= [];
@@ -78,39 +101,50 @@ async function reload() {
 }
 
 async function createCandidate() {
-  await recruitmentApi.createCandidate({ ...candidateForm, stack: candidateForm.stack.split(',').map(v=>v.trim()).filter(Boolean) });
+  if (!can('recruitment.candidates.manage')) return;
+  const payload = candidateCreatePayload(candidateForm, authorizationMode.value, effectivePermissions.value);
+  await recruitmentApi.createCandidate(payload);
   Object.keys(candidateForm).forEach(k => candidateForm[k] = k === 'stack' ? '' : '');
   modal.value = null; await reload();
 }
 async function createRequest() {
+  if (!can('recruitment.requests.manage')) return;
   await recruitmentApi.createRequest({ ...requestForm, positions_count:Number(requestForm.positions_count) });
   modal.value = null; await reload();
 }
-async function createPool() { await recruitmentApi.createPool(poolForm); poolForm.name=''; poolForm.description=''; modal.value=null; await reload(); }
-async function createTask() { await recruitmentApi.createTask({ ...taskForm, entity_id: taskForm.entity_id ? Number(taskForm.entity_id) : null, due_at: taskForm.due_at || null }); modal.value=null; await reload(); }
-async function moveStage(process, stage_type, stage_label) { await recruitmentApi.moveStage(process.id, { stage_type, stage_label }); await reload(); }
-async function completeTask(task) { await recruitmentApi.completeTask(task.id); await reload(); }
+async function createPool() { if (!can('recruitment.pools.manage')) return; await recruitmentApi.createPool(poolForm); poolForm.name=''; poolForm.description=''; modal.value=null; await reload(); }
+async function createTask() { if (!can('recruitment.tasks.manage')) return; await recruitmentApi.createTask({ ...taskForm, entity_id: taskForm.entity_id ? Number(taskForm.entity_id) : null, due_at: taskForm.due_at || null }); modal.value=null; await reload(); }
+async function moveStage(process, stage_type, stage_label) { if (!can('recruitment.hiring.manage')) return; await recruitmentApi.moveStage(process.id, { stage_type, stage_label }); await reload(); }
+async function completeTask(task) { if (!can('recruitment.tasks.manage')) return; await recruitmentApi.completeTask(task.id); await reload(); }
 async function advanceEmployment(item) {
+  if (!can('recruitment.employment.manage')) return;
   const index = employmentStages.findIndex(([id]) => id === item.stage); if (index < 0 || index === employmentStages.length - 1) return;
   await recruitmentApi.updateEmployment(item.id, { stage: employmentStages[index+1][0] }); await reload();
 }
 async function advanceOffer(item) {
+  if (!can('recruitment.offers.manage')) return;
   const index = offerStatuses.findIndex(([id]) => id === item.status); if (index < 0 || index === offerStatuses.length - 1) return;
   await recruitmentApi.updateOffer(item.id, { status: offerStatuses[index+1][0] }); await reload();
 }
 async function addCandidateToPool(pool) {
+  if (!can('recruitment.pools.manage')) return;
   const raw = window.prompt('ID кандидата для добавления в Talent Pool'); if (!raw) return;
   await recruitmentApi.addToPool(pool.id, Number(raw)); await reload();
 }
 async function scheduleInterview(process) {
+  if (!can('recruitment.interviews.manage')) return;
   const when = window.prompt('Дата и время интервью, например 2026-10-01 14:00'); if (!when) return;
   const type = window.prompt('Тип интервью', process.stage_type === 'manager_interview' ? 'manager' : 'hr') || 'hr';
   await recruitmentApi.createInterview({ hiring_process_id:process.id, type, scheduled_at:when, participants:'' }); await reload();
 }
 async function createOffer(process) {
-  await recruitmentApi.createOffer({ hiring_process_id:process.id, role:process.candidate.role || 'Специалист', compensation:process.candidate.salary_expectation || '', planned_start_date:null }); await reload();
+  if (!can('recruitment.offers.manage')) return;
+  const payload = offerCreatePayload(process, authorizationMode.value, effectivePermissions.value);
+  await recruitmentApi.createOffer(payload);
+  await reload();
 }
 async function startEmployment(process) {
+  if (!can('recruitment.employment.manage')) return;
   const c = process.candidate;
   const department_name = window.prompt('Направление / подразделение', '') || 'Не указано';
   const manager_name = window.prompt('Руководитель', '') || 'Не указан';
@@ -132,33 +166,35 @@ onMounted(reload);
       <div v-else-if="error" class="panel"><h2>Не удалось загрузить данные</h2><p>{{ error }}</p><button class="primary" @click="reload">Повторить</button></div>
 
       <UiErrorState v-else-if="route.section === 'not-found'" :status="404" back-href="/recruitment/" back-label="На главную Recruitment" />
+      <UiErrorState v-else-if="route.section==='role-permissions' && !roleMatrixAdmin" :status="403" />
+      <RecruitmentRolePermissionsView v-else-if="route.section==='role-permissions' && roleMatrixAdmin"/>
       <template v-else-if="route.section === 'dashboard'">
-        <header class="page-head"><div><div class="eyebrow">Recruitment</div><h1>Обзор найма</h1><p>Заявки, кандидаты, интервью, офферы и подготовка выхода.</p></div><button class="primary" @click="modal='request'">+ Новая заявка</button></header>
+        <header class="page-head"><div><div class="eyebrow">Recruitment</div><h1>Обзор найма</h1><p>Заявки, кандидаты, интервью, офферы и подготовка выхода.</p></div><button v-if="can('recruitment.requests.manage')" class="primary" @click="modal='request'">+ Новая заявка</button></header>
         <section class="metric-grid"><article v-for="[label,value] in dashboardStats" :key="label" class="metric"><span>{{ label }}</span><strong>{{ value }}</strong><small>Актуально сейчас</small></article></section>
         <section class="panel"><div class="panel-head"><div><h2>Воронка</h2><p>Нормализованные этапы HiringProcess</p></div><button class="ghost" @click="navigate('analytics')">Аналитика →</button></div><div class="funnel"><div v-for="[id,label] in stageDefinitions" :key="id" class="funnel-step"><strong>{{ workspace.funnel[id] || 0 }}</strong><span>{{ label }}</span></div></div></section>
-        <section class="dashboard-grid"><article class="panel"><h2>Ближайшие интервью</h2><div class="timeline"><div v-for="item in workspace.interviews.slice(0,5)" :key="item.id"><time>{{ fmtDateTime(item.scheduled_at) }}</time><b>{{ item.candidate_name || 'Кандидат' }}</b><span>{{ item.type }}</span></div><p v-if="!workspace.interviews.length">Интервью пока нет.</p></div></article><article class="panel"><h2>Задачи</h2><div class="task-list"><label v-for="task in workspace.tasks.slice(0,5)" :key="task.id"><input type="checkbox" @change="completeTask(task)"> {{ task.title }}</label><p v-if="!workspace.tasks.length">Открытых задач нет.</p></div></article></section>
+        <section class="dashboard-grid"><article class="panel"><h2>Ближайшие интервью</h2><div class="timeline"><div v-for="item in workspace.interviews.slice(0,5)" :key="item.id"><time>{{ fmtDateTime(item.scheduled_at) }}</time><b>{{ item.candidate_name || 'Кандидат' }}</b><span>{{ item.type }}</span></div><p v-if="!workspace.interviews.length">Интервью пока нет.</p></div></article><article class="panel"><h2>Задачи</h2><div class="task-list"><label v-for="task in workspace.tasks.slice(0,5)" :key="task.id"><input type="checkbox" :disabled="!can('recruitment.tasks.manage')" @change="completeTask(task)"> {{ task.title }}</label><p v-if="!workspace.tasks.length">Открытых задач нет.</p></div></article></section>
       </template>
 
       <template v-else-if="route.section === 'requests'">
-        <header class="page-head"><div><div class="eyebrow">Потребность бизнеса</div><h1>Заявки на подбор</h1><p>Доступны Recruitment и руководителям направлений в рамках scope.</p></div><button class="primary" @click="modal='request'">+ Создать заявку</button></header>
+        <header class="page-head"><div><div class="eyebrow">Потребность бизнеса</div><h1>Заявки на подбор</h1><p>Доступны Recruitment и руководителям направлений в рамках scope.</p></div><button v-if="can('recruitment.requests.manage')" class="primary" @click="modal='request'">+ Создать заявку</button></header>
         <section class="table-card table-card--registry"><UiRegistryTable class="shared-registry-content" :columns="['24%','17%','17%','17%','11%','14%']" min-width="960px" aria-label="Заявки на подбор" density="compact"><template #head><tr><th>Заявка</th><th>Направление</th><th>Руководитель</th><th>Recruiter</th><th>Кандидаты</th><th>Статус</th></tr></template><tr v-for="item in workspace.requests" :key="item.id"><td><b>{{ item.title }}</b><small>{{ item.positions_count }} поз. · {{ item.priority }}</small></td><td>{{ item.department_name }}</td><td>{{ item.manager_name }}</td><td>{{ item.recruiter_name || '—' }}</td><td>{{ item.candidates_count }}</td><td><span class="status">{{ item.status }}</span></td></tr></UiRegistryTable></section>
       </template>
 
       <template v-else-if="route.section === 'candidates'">
-        <header class="page-head"><div><div class="eyebrow">Recruiting CRM</div><h1>Кандидаты</h1><p>Единая база людей независимо от количества попыток найма.</p></div><button class="primary" @click="modal='candidate'">+ Кандидат</button></header>
+        <header class="page-head"><div><div class="eyebrow">Recruiting CRM</div><h1>Кандидаты</h1><p>Единая база людей независимо от количества попыток найма.</p></div><button v-if="can('recruitment.candidates.manage')" class="primary" @click="modal='candidate'">+ Кандидат</button></header>
         <section class="table-card table-card--registry"><UiRegistryTable class="shared-registry-content" :columns="['29%','25%','15%','16%','15%']" min-width="950px" aria-label="Кандидаты" density="compact"><template #head><tr><th>Кандидат</th><th>Стек</th><th>Локация</th><th>Этап</th><th>Recruiter</th></tr></template><tr v-for="c in workspace.candidates" :key="c.id" @click="navigate(`candidates/${c.id}`)"><td><div class="person-cell"><span class="avatar">{{ initials(c.full_name) }}</span><span><b>{{ c.full_name }}</b><small>{{ c.role || 'Роль не указана' }} · {{ c.grade || '—' }}</small></span></div></td><td><div class="chips"><span v-for="skill in c.stack" :key="skill">{{ skill }}</span></div></td><td>{{ c.city || '—' }}</td><td><span class="status">{{ c.hiring_process?.stage_label || 'В базе' }}</span></td><td>{{ c.recruiter_name || '—' }}</td></tr></UiRegistryTable></section>
       </template>
 
       <template v-else-if="route.section === 'candidate'">
         <button class="back" @click="navigate('candidates')">← К кандидатам</button>
         <section v-if="!selectedCandidate" class="panel" role="alert"><h1>404 — Кандидат не найден</h1><p>Кандидат отсутствует среди доступных записей.</p><a href="/recruitment/candidates">К кандидатам</a></section>
-        <template v-else><section class="profile-head"><span class="avatar xl">{{ initials(selectedCandidate.full_name) }}</span><div><h1>{{ selectedCandidate.full_name }}</h1><p>{{ selectedCandidate.role }} · {{ selectedCandidate.grade }}</p></div><span class="stage-pill">{{ selectedCandidate.hiring_process?.stage_label || 'В базе' }}</span></section><section class="profile-grid"><article class="panel"><h2>Профиль</h2><div class="details"><div><span>Email</span><b>{{ selectedCandidate.email || '—' }}</b></div><div><span>Телефон</span><b>{{ selectedCandidate.phone || '—' }}</b></div><div><span>Локация</span><b>{{ selectedCandidate.city || '—' }}</b></div><div><span>Ожидания</span><b>{{ selectedCandidate.salary_expectation || '—' }}</b></div></div><h3>Стек</h3><div class="chips large"><span v-for="skill in selectedCandidate.stack" :key="skill">{{ skill }}</span></div></article><article class="panel"><h2>Talent Pools</h2><div class="pool-box" v-for="pool in selectedCandidate.pools" :key="pool">{{ pool }}</div><p v-if="!selectedCandidate.pools?.length">Кандидат пока не состоит в пулах.</p></article></section></template>
+        <template v-else><section class="profile-head"><span class="avatar xl">{{ initials(selectedCandidate.full_name) }}</span><div><h1>{{ selectedCandidate.full_name }}</h1><p>{{ selectedCandidate.role }} · {{ selectedCandidate.grade }}</p></div><span class="stage-pill">{{ selectedCandidate.hiring_process?.stage_label || 'В базе' }}</span></section><section class="profile-grid"><article class="panel"><h2>Профиль</h2><div class="details"><div><span>Email</span><b>{{ selectedCandidate.email || '—' }}</b></div><div><span>Телефон</span><b>{{ selectedCandidate.phone || '—' }}</b></div><div><span>Локация</span><b>{{ selectedCandidate.city || '—' }}</b></div><div v-if="can('recruitment.compensation.view')"><span>Ожидания</span><b>{{ selectedCandidate.salary_expectation || '—' }}</b></div></div><h3>Стек</h3><div class="chips large"><span v-for="skill in selectedCandidate.stack" :key="skill">{{ skill }}</span></div></article><article class="panel"><h2>Talent Pools</h2><div class="pool-box" v-for="pool in selectedCandidate.pools" :key="pool">{{ pool }}</div><p v-if="!selectedCandidate.pools?.length">Кандидат пока не состоит в пулах.</p></article></section></template>
       </template>
 
       <template v-else-if="route.section === 'hiring'">
         <header class="page-head"><div><div class="eyebrow">Hiring pipeline</div><h1>Найм</h1><p>Движение конкретных попыток найма по нормализованным этапам.</p></div></header>
         <section class="kanban"><article v-for="[id,label] in stageDefinitions" :key="id" class="kanban-col"><header><b>{{ label }}</b><span>{{ processes.filter(p=>p.stage_type===id).length }}</span></header><button v-for="p in processes.filter(p=>p.stage_type===id)" :key="p.id" class="candidate-card" @click="navigate(`candidates/${p.candidate.id}`)"><b>{{ p.candidate.full_name }}</b><span>{{ p.candidate.role }}</span><small>{{ p.recruiter_name || p.candidate.recruiter_name || '—' }}</small></button></article></section>
-        <section class="panel"><h2>Действия с процессами</h2><div class="task-list"><label v-for="p in processes" :key="p.id"><b>{{ p.candidate.full_name }}</b> · {{ p.stage_label }} <button class="ghost" @click="scheduleInterview(p)">Интервью</button> <button class="ghost" @click="createOffer(p)">Оффер</button> <button class="ghost" @click="startEmployment(p)">Трудоустройство</button><select @change="e=>moveStage(p,e.target.value,stageLabel(e.target.value))"><option value="">Перевести…</option><option v-for="[id,label] in stageDefinitions" :key="id" :value="id">{{ label }}</option></select></label></div></section>
+        <section class="panel"><h2>Действия с процессами</h2><div class="task-list"><label v-for="p in processes" :key="p.id"><b>{{ p.candidate.full_name }}</b> · {{ p.stage_label }} <button v-if="can('recruitment.interviews.manage')" class="ghost" @click="scheduleInterview(p)">Интервью</button> <button v-if="can('recruitment.offers.manage')" class="ghost" @click="createOffer(p)">Оффер</button> <button v-if="can('recruitment.employment.manage')" class="ghost" @click="startEmployment(p)">Трудоустройство</button><select v-if="can('recruitment.hiring.manage')" @change="e=>moveStage(p,e.target.value,stageLabel(e.target.value))"><option value="">Перевести…</option><option v-for="[id,label] in stageDefinitions" :key="id" :value="id">{{ label }}</option></select></label></div></section>
       </template>
 
       <template v-else-if="route.section === 'interviews'">
@@ -166,15 +202,15 @@ onMounted(reload);
       </template>
 
       <template v-else-if="route.section === 'offers'">
-        <header class="page-head"><div><div class="eyebrow">Offer workflow</div><h1>Офферы</h1><p>Подготовка, согласование, отправка и решение кандидата.</p></div></header><section class="offer-grid"><article v-for="o in workspace.offers" :key="o.id" class="panel offer"><h2>{{ o.candidate_name || o.role }}</h2><span class="status">{{ offerLabel(o.status) }}</span><dl><div><dt>Роль</dt><dd>{{ o.role }}</dd></div><div><dt>Условия</dt><dd>{{ o.compensation || '—' }}</dd></div><div><dt>Выход</dt><dd>{{ fmtDate(o.planned_start_date) }}</dd></div></dl><button class="primary full" @click="advanceOffer(o)">Следующий этап</button></article></section>
+        <header class="page-head"><div><div class="eyebrow">Offer workflow</div><h1>Офферы</h1><p>Подготовка, согласование, отправка и решение кандидата.</p></div></header><section class="offer-grid"><article v-for="o in workspace.offers" :key="o.id" class="panel offer"><h2>{{ o.candidate_name || o.role }}</h2><span class="status">{{ offerLabel(o.status) }}</span><dl><div><dt>Роль</dt><dd>{{ o.role }}</dd></div><div v-if="can('recruitment.compensation.view')"><dt>Условия</dt><dd>{{ o.compensation || '—' }}</dd></div><div><dt>Выход</dt><dd>{{ fmtDate(o.planned_start_date) }}</dd></div></dl><button v-if="can('recruitment.offers.manage')" class="primary full" @click="advanceOffer(o)">Следующий этап</button></article></section>
       </template>
 
       <template v-else-if="route.section === 'talent-pools'">
-        <header class="page-head"><div><div class="eyebrow">Recruiting CRM</div><h1>Talent Pools</h1><p>Пулы кандидатов для повторной работы с базой.</p></div><button class="primary" @click="modal='pool'">+ Создать пул</button></header><section class="pool-grid"><article v-for="p in workspace.pools" :key="p.id" class="panel pool-card"><span class="pool-count">{{ p.count }}</span><h2>{{ p.name }}</h2><p>{{ p.description }}</p><button class="ghost" @click="addCandidateToPool(p)">+ Кандидат</button></article></section>
+        <header class="page-head"><div><div class="eyebrow">Recruiting CRM</div><h1>Talent Pools</h1><p>Пулы кандидатов для повторной работы с базой.</p></div><button v-if="can('recruitment.pools.manage')" class="primary" @click="modal='pool'">+ Создать пул</button></header><section class="pool-grid"><article v-for="p in workspace.pools" :key="p.id" class="panel pool-card"><span class="pool-count">{{ p.count }}</span><h2>{{ p.name }}</h2><p>{{ p.description }}</p><button v-if="can('recruitment.pools.manage')" class="ghost" @click="addCandidateToPool(p)">+ Кандидат</button></article></section>
       </template>
 
       <template v-else-if="route.section === 'employment'">
-        <header class="page-head"><div><div class="eyebrow">После принятого оффера</div><h1>Трудоустройство</h1><p>Отдельный workflow до создания Employee.</p></div></header><div class="workflow"><template v-for="([id,label],index) in employmentStages" :key="id"><span>{{ label }}</span><i v-if="index<employmentStages.length-1">→</i></template></div><section class="table-card table-card--registry"><UiRegistryTable class="shared-registry-content" :columns="['24%','16%','19%','16%','15%','10%']" min-width="960px" aria-label="Трудоустройство" density="compact"><template #head><tr><th>Кандидат</th><th>Роль</th><th>Руководитель</th><th>Дата выхода</th><th>Этап</th><th></th></tr></template><tr v-for="e in workspace.employment" :key="e.id"><td>{{ e.candidate_name || `#${e.candidate_id}` }}</td><td>{{ e.role }}</td><td>{{ e.manager_name }}</td><td>{{ fmtDate(e.planned_start_date) }}</td><td><span class="status">{{ employmentLabel(e.stage) }}</span></td><td><button class="ghost" @click.stop="advanceEmployment(e)">Следующий этап</button></td></tr></UiRegistryTable></section>
+        <header class="page-head"><div><div class="eyebrow">После принятого оффера</div><h1>Трудоустройство</h1><p>Отдельный workflow до создания Employee.</p></div></header><div class="workflow"><template v-for="([id,label],index) in employmentStages" :key="id"><span>{{ label }}</span><i v-if="index<employmentStages.length-1">→</i></template></div><section class="table-card table-card--registry"><UiRegistryTable class="shared-registry-content" :columns="['24%','16%','19%','16%','15%','10%']" min-width="960px" aria-label="Трудоустройство" density="compact"><template #head><tr><th>Кандидат</th><th>Роль</th><th>Руководитель</th><th>Дата выхода</th><th>Этап</th><th></th></tr></template><tr v-for="e in workspace.employment" :key="e.id"><td>{{ e.candidate_name || `#${e.candidate_id}` }}</td><td>{{ e.role }}</td><td>{{ e.manager_name }}</td><td>{{ fmtDate(e.planned_start_date) }}</td><td><span class="status">{{ employmentLabel(e.stage) }}</span></td><td><button v-if="can('recruitment.employment.manage')" class="ghost" @click.stop="advanceEmployment(e)">Следующий этап</button></td></tr></UiRegistryTable></section>
       </template>
 
       <template v-else-if="route.section === 'onboarding'">
@@ -191,7 +227,7 @@ onMounted(reload);
       </div>
     </main>
 
-    <div v-if="modal" class="modal-backdrop" @click.self="modal=null"><form v-if="modal==='candidate'" class="modal-card" @submit.prevent="createCandidate"><h2>Новый кандидат</h2><input v-model="candidateForm.full_name" required placeholder="ФИО"><input v-model="candidateForm.role" placeholder="Роль"><input v-model="candidateForm.grade" placeholder="Grade"><input v-model="candidateForm.city" placeholder="Город"><input v-model="candidateForm.salary_expectation" placeholder="Ожидания"><input v-model="candidateForm.source" placeholder="Источник"><input v-model="candidateForm.recruiter_name" placeholder="Recruiter"><input v-model="candidateForm.email" type="email" placeholder="Email"><input v-model="candidateForm.phone" placeholder="Телефон"><input v-model="candidateForm.stack" placeholder="Стек через запятую"><div><button class="ghost" type="button" @click="modal=null">Отмена</button><button class="primary">Создать</button></div></form><form v-else-if="modal==='request'" class="modal-card" @submit.prevent="createRequest"><h2>Новая заявка</h2><input v-model="requestForm.title" required placeholder="Позиция"><input v-model="requestForm.department_name" required placeholder="Направление"><input v-model="requestForm.manager_name" required placeholder="Руководитель"><input v-model="requestForm.recruiter_name" placeholder="Recruiter"><input v-model.number="requestForm.positions_count" type="number" min="1"><select v-model="requestForm.priority"><option value="low">Низкий</option><option value="medium">Средний</option><option value="high">Высокий</option></select><textarea v-model="requestForm.description" placeholder="Описание"></textarea><div><button class="ghost" type="button" @click="modal=null">Отмена</button><button class="primary">Создать</button></div></form><form v-else-if="modal==='pool'" class="modal-card" @submit.prevent="createPool"><h2>Новый Talent Pool</h2><input v-model="poolForm.name" required placeholder="Название"><textarea v-model="poolForm.description" placeholder="Описание"></textarea><div><button class="ghost" type="button" @click="modal=null">Отмена</button><button class="primary">Создать</button></div></form><form v-else-if="modal==='task'" class="modal-card" @submit.prevent="createTask"><h2>Новая задача</h2><input v-model="taskForm.title" required placeholder="Что сделать"><input v-model="taskForm.assignee" placeholder="Исполнитель"><input v-model="taskForm.entity_type" placeholder="Тип объекта"><input v-model="taskForm.entity_id" type="number" placeholder="ID объекта"><input v-model="taskForm.due_at" type="datetime-local"><div><button class="ghost" type="button" @click="modal=null">Отмена</button><button class="primary">Создать</button></div></form></div>
+    <div v-if="modal" class="modal-backdrop" @click.self="modal=null"><form v-if="modal==='candidate'" class="modal-card" @submit.prevent="createCandidate"><h2>Новый кандидат</h2><input v-model="candidateForm.full_name" required placeholder="ФИО"><input v-model="candidateForm.role" placeholder="Роль"><input v-model="candidateForm.grade" placeholder="Grade"><input v-model="candidateForm.city" placeholder="Город"><input v-if="can('recruitment.compensation.manage')" v-model="candidateForm.salary_expectation" placeholder="Ожидания"><input v-model="candidateForm.source" placeholder="Источник"><input v-model="candidateForm.recruiter_name" placeholder="Recruiter"><input v-model="candidateForm.email" type="email" placeholder="Email"><input v-model="candidateForm.phone" placeholder="Телефон"><input v-model="candidateForm.stack" placeholder="Стек через запятую"><div><button class="ghost" type="button" @click="modal=null">Отмена</button><button class="primary">Создать</button></div></form><form v-else-if="modal==='request'" class="modal-card" @submit.prevent="createRequest"><h2>Новая заявка</h2><input v-model="requestForm.title" required placeholder="Позиция"><input v-model="requestForm.department_name" required placeholder="Направление"><input v-model="requestForm.manager_name" required placeholder="Руководитель"><input v-model="requestForm.recruiter_name" placeholder="Recruiter"><input v-model.number="requestForm.positions_count" type="number" min="1"><select v-model="requestForm.priority"><option value="low">Низкий</option><option value="medium">Средний</option><option value="high">Высокий</option></select><textarea v-model="requestForm.description" placeholder="Описание"></textarea><div><button class="ghost" type="button" @click="modal=null">Отмена</button><button class="primary">Создать</button></div></form><form v-else-if="modal==='pool'" class="modal-card" @submit.prevent="createPool"><h2>Новый Talent Pool</h2><input v-model="poolForm.name" required placeholder="Название"><textarea v-model="poolForm.description" placeholder="Описание"></textarea><div><button class="ghost" type="button" @click="modal=null">Отмена</button><button class="primary">Создать</button></div></form><form v-else-if="modal==='task'" class="modal-card" @submit.prevent="createTask"><h2>Новая задача</h2><input v-model="taskForm.title" required placeholder="Что сделать"><input v-model="taskForm.assignee" placeholder="Исполнитель"><input v-model="taskForm.entity_type" placeholder="Тип объекта"><input v-model="taskForm.entity_id" type="number" placeholder="ID объекта"><input v-model="taskForm.due_at" type="datetime-local"><div><button class="ghost" type="button" @click="modal=null">Отмена</button><button class="primary">Создать</button></div></form></div>
   </div>
 </template>
 

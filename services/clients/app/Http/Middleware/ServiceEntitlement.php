@@ -24,6 +24,28 @@ final class ServiceEntitlement
         // user has been backfilled into Keycloak. In JWT mode this guard has
         // zero dependency on Employees at request time.
         if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+            if (filter_var(env('IRLIX_CLIENTS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+                try {
+                    $access = app(\App\Support\ClientContourAccess::class)->resolve($request);
+                } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $error) {
+                    return response()->json(['message' => 'Clients authorization denied'], $error->getStatusCode());
+                } catch (\Throwable) {
+                    return response()->json(['message' => 'Clients authorization unavailable'], 503);
+                }
+                $granted = (bool) ($access['platform_admin'] ?? false);
+                foreach ((array) ($access['permissions'] ?? []) as $permission => $effect) {
+                    if (str_starts_with((string) $permission, 'timesheets.')) continue;
+                    if (($effect['allowed'] ?? false) === true) { $granted = true; break; }
+                }
+                // Do not leak a full Employees directory via /permissions/me
+                // to users with zero Clients permissions. Frontend handles 403.
+                if (!$granted) {
+                    return response()->json(['message' => 'Clients access denied by local policy'], 403);
+                }
+                $request->attributes->set('client_contour_access', $access);
+                $request->attributes->set('client_contour_verified_at_entitlement', true);
+                return $next($request);
+            }
             $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
             if (!in_array('service:clients', $roles, true)) {
                 return response()->json(['message' => 'Service access denied'], 403);

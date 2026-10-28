@@ -28,7 +28,10 @@ final class CurrentEmployee
 
         $employee = $response->json('data');
         if (!is_array($employee) || empty($employee['id'])) throw new RuntimeException('Employees profile lookup returned invalid data');
-
+        $verifiedId = $request->attributes->get('vacations_local_employee_id');
+        if ($verifiedId !== null && (int) $employee['id'] !== (int) $verifiedId) {
+            throw new RuntimeException('Employees profile identity differs from signed actor');
+        }
         return $employee;
     }
 }

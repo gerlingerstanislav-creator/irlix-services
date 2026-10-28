@@ -99,7 +99,13 @@ final class ClientServiceCalendarController extends Controller
         if ($jwt) {
             $ids = array_values(array_filter($roles, static fn ($role) =>
                 is_string($role) && preg_match('/^employee-id:[1-9][0-9]*$/D', $role)));
-            abort_unless(count($ids) === 1 && in_array('service:clients', $roles, true), 403);
+            $local = filter_var(env('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+            // The legacy Clients service entitlement is not a business
+            // authorization input in V2. Vacations already checked the
+            // signed actor and its own client-calendar permission; Clients
+            // independently enforces specialists.view where required.
+            abort_unless(count($ids) === 1
+                && ($local || in_array('service:clients', $roles, true)), 403);
             $verifiedId = (int) substr($ids[0], strlen('employee-id:'));
         } else {
             $verifiedId = null;
@@ -133,7 +139,10 @@ final class ClientServiceCalendarController extends Controller
         }
         // The signed Keycloak bearer has been verified by KeycloakBearer.
         // A role preview, when present, is verified by Employees before replacement.
-        $platformAdmin = in_array('platform-admin', $roles, true);
+        $platformAdmin = in_array('platform-admin', $roles, true)
+            || ($jwt && filter_var(env('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED', false),
+                FILTER_VALIDATE_BOOLEAN)
+                && in_array('special:platform-admin', $roles, true));
         if ($requireSpecialistsPermission) {
             $this->checkClientsSpecialistsPermission($request, $actorId);
         } else {

@@ -11,6 +11,8 @@ export const resolveSectionAccess = (section, permissionsPhase, allowed) => {
 // first permitted page. Never assign permissions or elevate a data scope here.
 export const chooseTimesheetsLanding = (permissions = {}) => {
   for (const section of ['mine', 'management', 'analytics', 'audit']) {
+    if (section === 'management'
+      && permissions['timesheets.partner-hours.view']?.allowed === true) return section;
     if (permissions[`timesheets.${section}.view`]?.allowed === true) return section;
   }
   return null;

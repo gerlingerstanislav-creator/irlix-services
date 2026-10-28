@@ -18,6 +18,7 @@ final class ClientContourPermissionService
             $matrix[$row->role][$row->permission] = [
                 'allowed' => (bool) $row->allowed,
                 'scope' => $row->scope,
+                'denied' => (bool) ($row->denied ?? false),
             ];
         }
         $matrix['platform-admin'] = [];
@@ -38,8 +39,13 @@ final class ClientContourPermissionService
             $before = [
                 'allowed' => (bool) ($row?->allowed ?? false),
                 'scope' => $row?->scope ?? 'none',
+                'denied' => (bool) ($row?->denied ?? false),
             ];
-            $after = ['allowed' => $data['allowed'], 'scope' => $data['scope']];
+            $after = [
+                'allowed' => $data['allowed'],
+                'scope' => $data['scope'],
+                'denied' => (bool) ($data['denied'] ?? false),
+            ];
             ClientContourPermission::query()->updateOrInsert(
                 ['role' => $data['role'], 'permission' => $data['permission']],
                 [...$after, 'updated_at' => now(), ...(!$row ? ['created_at' => now()] : [])]

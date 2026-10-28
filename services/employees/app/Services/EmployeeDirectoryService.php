@@ -241,9 +241,22 @@ final class EmployeeDirectoryService
         if (!$platformAdmin && !$managedDepartmentIds) return [
             'status' => 403, 'message' => 'Specialists is available to production department managers only',
         ];
+        // The directory provides current organizational facts. Specialists
+        // owns its business permission matrix, independently of Employees.read.
+        $allDepartments = Department::query()->get(['id','parent_id']);
         $departmentIds = $platformAdmin
-            ? Department::query()->pluck('id')->map(fn ($id) => (int) $id)->all()
-            : array_values(array_unique(array_map('intval', $access['department_ids'] ?? [])));
+            ? $allDepartments->pluck('id')->map(fn ($id) => (int) $id)->all()
+            : $managedDepartmentIds;
+        if (!$platformAdmin) {
+            do {
+                $before = count($departmentIds);
+                foreach ($allDepartments as $department) {
+                    $id = (int) $department->id;
+                    if ($id > 0 && in_array((int) ($department->parent_id ?? 0), $departmentIds, true)
+                        && !in_array($id, $departmentIds, true)) $departmentIds[] = $id;
+                }
+            } while (count($departmentIds) !== $before);
+        }
         if (!$platformAdmin && !$departmentIds) return [
             'status' => 403, 'message' => 'No managed department scope available',
         ];

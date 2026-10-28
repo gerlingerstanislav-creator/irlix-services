@@ -249,6 +249,7 @@ services:
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_CLIENT_ID: irlix-services-web
       IRLIX_AUTHZ_JWT_ENABLED: ${IRLIX_AUTHZ_JWT_ENABLED:-false}
+      IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED: ${IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED:-false}
       EMPLOYEES_URL: http://employees:8000/api
       CLIENTS_URL: http://clients:8000/api
       PLATFORM_CORE_URL: http://platform-core:8000/api
@@ -283,6 +284,7 @@ services:
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost/keycloak/auth/realms/irlix}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_CLIENT_ID: irlix-services-web
+      IRLIX_CLIENTS_LOCAL_AUTHZ_ENABLED: ${IRLIX_CLIENTS_LOCAL_AUTHZ_ENABLED:-false}
       IRLIX_AUTHZ_JWT_ENABLED: ${IRLIX_AUTHZ_JWT_ENABLED:-false}
       EMPLOYEES_URL: http://employees:8000/api
       VACATIONS_URL: http://vacations:8000/api
@@ -320,6 +322,7 @@ services:
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_CLIENT_ID: irlix-services-web
       IRLIX_AUTHZ_JWT_ENABLED: ${IRLIX_AUTHZ_JWT_ENABLED:-false}
+      IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED: ${IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED:-false}
       EMPLOYEES_URL: http://employees:8000/api
       CLIENTS_URL: http://clients:8000/api
       VACATIONS_URL: http://vacations:8000/api

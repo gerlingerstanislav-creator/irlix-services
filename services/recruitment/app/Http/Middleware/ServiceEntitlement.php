@@ -25,6 +25,48 @@ final class ServiceEntitlement
         // zero dependency on Employees at request time.
         if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
             $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
+            if (filter_var(env('IRLIX_RECRUITMENT_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+                if ($request->header('X-Irlix-Role-Preview') !== null) {
+                    return response()->json(['message'=>'Role preview cannot authorize Recruitment'],403);
+                }
+                $base=rtrim((string)env('EMPLOYEES_URL','http://employees:8000/api'),'/');
+                try {
+                    $live=Http::withToken((string)$token)->acceptJson()->timeout(5)
+                        ->get($base.'/access/me');
+                } catch (\Throwable) {
+                    return response()->json(['message'=>'Recruitment identity freshness unavailable'],503);
+                }
+                if (!$live->successful() || !is_array($live->json('data'))) {
+                    return response()->json(['message'=>'Recruitment identity freshness unavailable'],503);
+                }
+                if (!\App\Services\RecruitmentRoleAuthorization::currentIdentityMatches(
+                    $roles,(array)$live->json('data'))) {
+                    return response()->json(['message'=>'Recruitment roles changed'],403);
+                }
+                try {
+                    $permissions=app(\App\Services\RecruitmentRoleAuthorization::class)->forVerifiedRoles($roles);
+                } catch (\Throwable) {
+                    return response()->json(['message'=>'Recruitment permission policy unavailable'],503);
+                }
+                $path=$request->path();
+                if ($path === 'api/permissions/me') {
+                    $request->attributes->set('recruitment_local_permissions', $permissions);
+                    return $next($request);
+                }
+                $administrator=in_array('platform-admin',$roles,true)
+                    ||in_array('special:platform-admin',$roles,true);
+                if ($path==='api/role-permissions') {
+                    if (!$administrator) return response()->json(['message'=>'Forbidden'],403);
+                } else {
+                    $required=\App\Services\RecruitmentRoleAuthorization::requiredPermission(
+                        $request->method(),$path);
+                    if ($required===null || !($permissions[$required]??false)) {
+                        return response()->json(['message'=>'Recruitment permission denied'],403);
+                    }
+                }
+                $request->attributes->set('recruitment_local_permissions',$permissions);
+                return $next($request);
+            }
             if (!in_array('service:recruitment', $roles, true)) {
                 return response()->json(['message' => 'Service access denied'], 403);
             }

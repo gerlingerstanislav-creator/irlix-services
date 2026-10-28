@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router';
 import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPeriodPicker, UiViewSelect, UiRegistryTable, UiErrorState, UiLoader } from '@irlix/ui';
 import { auth } from './auth';
+import TimesheetsPermissionsView from './components/TimesheetsPermissionsView.vue';
 import { api } from './api';
 import { clientPeriodApproved } from './approval-state.js';
 import { buildManagementGroups } from './management-grouping.js';
@@ -60,6 +61,8 @@ const accountFilter = ref('');
 const clientFilter = ref(initialParams.get('client_id') || '');
 const employeeFilter = ref(initialParams.get('employee_id') || '');
 const contourPermissions = ref({});
+const localAuthorization = ref(false);
+const canManageLocalMatrix = ref(false);
 const dayEditor = ref(null);
 const drafts = ref({});
 const draftSignatures = ref({});
@@ -67,12 +70,22 @@ const savingProjects = ref(new Set());
 const savePromises = new Map();
 
 const can = key => !!contourPermissions.value?.[key]?.allowed;
+const canViewPartnerHours = () => !localAuthorization.value || can('timesheets.partner-hours.view');
+const canManagePartnerHours = () => !localAuthorization.value
+  ? can('timesheets.management.manage') : can('timesheets.partner-hours.manage');
+const canApprovePartnerHours = () => !localAuthorization.value
+  ? can('timesheets.management.manage') : can('timesheets.partner-hours.approve');
 const menuItems = computed(() => [
   { id: 'mine', icon: 'calendar', label: 'Мои таймшиты' },
   { id: 'management', icon: 'manage', label: 'Управление' },
   { id: 'analytics', icon: 'chart', label: 'Коммерческая загрузка' },
-].filter(item => item.id === 'mine' ? can('timesheets.mine.view') : can(`timesheets.${item.id}.view`)));
-const bottomItems = computed(() => can('timesheets.audit.view') ? [{ id: 'audit', icon: 'audit', label: 'История действий' }] : []);
+].filter(item => item.id === 'mine' ? can('timesheets.mine.view')
+  : item.id === 'management' ? (can('timesheets.management.view') || (localAuthorization.value && can('timesheets.partner-hours.view')))
+  : can(`timesheets.${item.id}.view`)));
+const bottomItems = computed(() => [
+  ...(can('timesheets.audit.view') ? [{ id: 'audit', icon: 'audit', label: 'История действий' }] : []),
+  ...(canManageLocalMatrix.value ? [{ id: 'permissions', icon: 'settings', label: 'Разрешения' }] : []),
+]);
 const entryDestination = computed(() => chooseTimesheetsLanding(contourPermissions.value));
 const sectionAllowed = computed(() => section.value === 'entry'
   ? !!entryDestination.value
@@ -181,8 +194,13 @@ const loadManagement = async () => {
     } catch (e) { toast(`Не удалось загрузить производственный календарь: ${e.message}`, true); }
   }
   const [staffResponse, partnersResponse] = await Promise.all([
-    api(`/api/timesheets/management?month=${month.value}`),
-    api(`/api/timesheets/partner-hours?month=${month.value}`),
+    can('timesheets.management.view')
+      ? api(`/api/timesheets/management?month=${month.value}`)
+      : Promise.resolve({ data: { assignments: [], entries: [], final_approvals: [],
+        final_approval_exceptions: [], employees: [], departments: [] } }),
+    canViewPartnerHours()
+      ? api(`/api/timesheets/partner-hours?month=${month.value}`)
+      : Promise.resolve({ data: { members: [], entries: [], confirmations: [], final_approvals: [], final_approval_exceptions: [], locked_reporting_periods: [] } }),
   ]);
   management.value = staffResponse.data;
   partnerManagement.value = partnersResponse.data;
@@ -204,7 +222,8 @@ const refresh = async () => {
     if (section.value === 'mine') await loadMine();
     else if (section.value === 'management') await loadManagement();
     else if (section.value === 'analytics') await loadAnalytics();
-    else await loadAudit();
+    else if (section.value === 'audit') await loadAudit();
+    // Permissions editor performs its own read and needs no audit grant.
   } catch (e) {
     toast(e.message, true);
   } finally {
@@ -235,8 +254,10 @@ const loadPermissions = async () => {
   permissionsPhase.value = 'loading';
   error.value = '';
   try {
-    const response = await api('/api/clients/permissions/me');
+    const response = await api('/api/timesheets/permissions/me');
     contourPermissions.value = response.data?.permissions || {};
+    localAuthorization.value = response.data?.mode === 'local';
+    canManageLocalMatrix.value = !!(await api('/api/timesheets/permissions').catch(() => null))?.data?.can_manage;
     permissionsPhase.value = 'ready';
     if (route.name === 'entry') {
       // Every service launcher links to /timesheets/. Resolve that URL using
@@ -576,6 +597,7 @@ const projectMonthApprovalState = (employeeId, clientId, projectId) => {
   };
 };
 const finalApprove = async (row, approved) => {
+  if (row.isPartner ? !canApprovePartnerHours() : !can('timesheets.management.manage')) return;
   try {
     const url = row.isPartner ? '/api/timesheets/partner-hours/final-approval' : '/api/timesheets/management/final-approval';
     await api(url, {
@@ -592,7 +614,8 @@ const finalApprove = async (row, approved) => {
   }
 };
 const openManagerEdit = async (row, date) => {
-  if (!can('timesheets.management.manage') || !rowActive(row, date)) return;
+  if ((row.isPartner ? !canManagePartnerHours() : !can('timesheets.management.manage'))
+      || !rowActive(row, date)) return;
   cancelSelection();
   if (row.isPartner) {
     const member = (partnerManagement.value?.members || []).find((a) =>
@@ -634,6 +657,7 @@ const saveManagerEdit = async () => {
   try {
     const edit = editModal.value;
     if (edit.isPartner) {
+      if (!canManagePartnerHours()) return;
       const record = edit.projects[0];
       await api('/api/timesheets/partner-hours', {
         method: 'PUT',
@@ -667,7 +691,7 @@ const saveManagerEdit = async () => {
 };
 const togglePartnerConfirm = async () => {
   const edit = editModal.value;
-  if (!edit?.isPartner || savingManagerEdit.value || partnerPeriodLocked(edit.clientId, edit.date)
+  if (!edit?.isPartner || !canManagePartnerHours() || savingManagerEdit.value || partnerPeriodLocked(edit.clientId, edit.date)
       || rowFinal({ isPartner: true, memberId: edit.memberId, clientId: edit.clientId }, edit.date)) return;
   const saved = partnerEntryFor(edit.memberId, edit.date);
   if (Number(saved?.hours || 0) !== Number(edit.projects[0]?.hours || 0)
@@ -886,7 +910,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
           />
         </template>
         <template #actions>
-          <UiPeriodPicker v-if="section !== 'audit'" v-model="month" />
+          <UiPeriodPicker v-if="section !== 'audit' && section !== 'permissions'" v-model="month" />
         </template>
       </UiAppTopbar>
       <UiErrorState v-if="pageAccess === 'not-found'" :status="404" back-href="/timesheets/" back-label="Таймшиты" />
@@ -899,6 +923,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
 
       <UiLoader v-if="pageLoading" page label="Загрузка таймшитов" />
 
+      <TimesheetsPermissionsView v-else-if="pageAccess === 'allowed' && section === 'permissions'" />
       <section v-else-if="pageAccess === 'allowed' && section === 'mine' && workspace" class="mine-grid">
         <div class="panel calendar-panel">
           <div class="legend">
@@ -1100,14 +1125,14 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
                         class="icon-btn ok"
                         title="Финально подтвердить специалиста за месяц"
                         aria-label="Финально подтвердить специалиста за месяц"
-                        :disabled="!can('timesheets.management.manage') || !row.memberId || row.monthApproval.all"
+                        :disabled="(row.isPartner ? !canApprovePartnerHours() : !can('timesheets.management.manage')) || !row.memberId || row.monthApproval.all"
                         @click="finalApprove(row, true)"
                       >✓</button>
                       <button
                         class="icon-btn danger"
                         title="Снять финальное подтверждение специалиста за месяц"
                         aria-label="Снять финальное подтверждение специалиста за месяц"
-                        :disabled="!can('timesheets.management.manage') || !row.memberId || !row.monthApproval.any"
+                        :disabled="(row.isPartner ? !canApprovePartnerHours() : !can('timesheets.management.manage')) || !row.memberId || !row.monthApproval.any"
                         @click="finalApprove(row, false)"
                       >×</button>
                     </div>

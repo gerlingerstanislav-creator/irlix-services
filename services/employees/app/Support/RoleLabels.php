@@ -26,7 +26,8 @@ final class RoleLabels
 
         foreach ($departments as $department) {
             $alias = (string) ($department->alias ?? '');
-            if ((int) ($department->manager_id ?? 0) !== (int) $employee->id || !self::valid($alias)) continue;
+            if ((int) ($employee->id ?? 0) <= 0 || (int) ($department->manager_id ?? 0) <= 0
+                || (int) $department->manager_id !== (int) $employee->id || !self::valid($alias)) continue;
             if ($alias === 'accounting' && in_array('account-manager',
                 self::functionalClientRoles((object) ['department_id' => $department->id], $departments), true)) {
                 $labels[] = 'account-management-head';
@@ -40,6 +41,68 @@ final class RoleLabels
         $labels = array_values(array_unique([...$labels, ...$functional]));
         sort($labels, SORT_STRING);
         return $labels;
+    }
+
+    /**
+     * Canonical V2 identity roles published alongside legacy direct labels.
+     *
+     * "org:" means membership in the employee's own department OR one of its
+     * ancestors, never management of that department. "head:" is assigned
+     * only by an explicit manager_id relationship. "special:" requires an
+     * explicit Employees special-role assignment.
+     *
+     * These claims are deliberately separate from EmployeesAccess::roles:
+     * publishing an ancestor MUST NOT implicitly change legacy permissions,
+     * service admission, salaries or scope during the staged cutover.
+     */
+    public static function publishedRoleClaims(?object $employee, array $departments, array $specialRoles = []): array
+    {
+        if (!$employee) return [];
+
+        $byId = [];
+        foreach ($departments as $department) $byId[(int) $department->id] = $department;
+
+        $claims = [];
+        $visited = [];
+        $id = (int) ($employee->department_id ?? 0);
+        while ($id > 0 && isset($byId[$id]) && !isset($visited[$id])) {
+            $visited[$id] = true;
+            $department = $byId[$id];
+            $alias = self::canonicalOrganizationAlias($department, $departments);
+            if ($alias !== null) $claims[] = 'org:'.$alias;
+            $id = (int) ($department->parent_id ?? 0);
+        }
+
+        foreach ($departments as $department) {
+            if ((int) ($employee->id ?? 0) <= 0 || (int) ($department->manager_id ?? 0) <= 0
+                || (int) $department->manager_id !== (int) $employee->id) continue;
+            $alias = self::canonicalOrganizationAlias($department, $departments);
+            if ($alias !== null) $claims[] = 'head:'.$alias;
+        }
+
+        foreach ($specialRoles as $role) {
+            if (!is_string($role) || $role === SpecialRoles::PlatformTester
+                || !SpecialRoles::exists($role)) continue;
+            $claims[] = 'special:'.$role;
+        }
+
+        $claims = array_values(array_unique($claims));
+        sort($claims, SORT_STRING);
+        return $claims;
+    }
+
+    private static function canonicalOrganizationAlias(object $department, array $departments): ?string
+    {
+        $alias = (string) ($department->alias ?? '');
+        if (!preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $alias)) return null;
+
+        // Legacy Client Service / Accounting is account management, not
+        // Finance Accounting. Do not publish an ambiguous finance identity.
+        if ($alias === 'accounting' && in_array('account-manager',
+            self::functionalClientRoles((object) ['department_id' => $department->id], $departments), true)) {
+            return 'account-management';
+        }
+        return $alias;
     }
 
     /**

@@ -107,6 +107,8 @@ final class TimesheetsContext
     public function accessInfo(Request $request, array $employee, array $assignments, $departments): array
     {
         $jwtMode = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+        $localEnabled = $jwtMode
+            && filter_var(env('IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
         $assignedAccess = $jwtMode ? [] : $this->dependencyGet($request,
             'EMPLOYEES_URL', 'http://employees:8000/api', '/access/me');
         $roles = array_values(array_unique(array_merge(
@@ -114,13 +116,19 @@ final class TimesheetsContext
             $assignedAccess['roles'] ?? [],
         )));
         $employeeId = (int) $employee['id'];
-        $platformAdmin = in_array('platform-admin', $roles, true);
-        $managedDepartmentIds = $jwtMode
-            ? array_values(array_map(static fn ($role) => (int) substr($role, strlen('scope:department-')),
-                array_filter($roles, static fn ($role) =>
-                    is_string($role) && preg_match('/^scope:department-[1-9][0-9]*$/D', $role))))
-            : $departments->filter(static fn ($d) => (int) ($d['manager_id'] ?? 0) === $employeeId)
-                ->pluck('id')->map(static fn ($id) => (int) $id)->values()->all();
+        $platformAdmin = in_array('platform-admin', $roles, true)
+            || ($localEnabled && in_array('special:platform-admin', $roles, true));
+        // V2 derives leadership scope from CURRENT trusted Employees manager
+        // relationships, never from the legacy global scope:* JWT grant.
+        $managedDepartmentIds = $localEnabled
+            ? $departments->filter(static fn ($d) => (int) ($d['manager_id'] ?? 0) === $employeeId)
+                ->pluck('id')->map(static fn ($id) => (int) $id)->values()->all()
+            : ($jwtMode
+                ? array_values(array_map(static fn ($role) => (int) substr($role, strlen('scope:department-')),
+                    array_filter($roles, static fn ($role) =>
+                        is_string($role) && preg_match('/^scope:department-[1-9][0-9]*$/D', $role))))
+                : $departments->filter(static fn ($d) => (int) ($d['manager_id'] ?? 0) === $employeeId)
+                    ->pluck('id')->map(static fn ($id) => (int) $id)->values()->all());
         do {
             $previousCount = count($managedDepartmentIds);
             foreach ($departments as $department) {
@@ -134,15 +142,26 @@ final class TimesheetsContext
         $isAccountManager = collect($assignments)->contains(static fn (array $a) =>
             (int) ($a['account_employee_id'] ?? 0) === $employeeId
             || in_array($employeeId, $a['delegated_account_employee_ids'] ?? [], true));
-        $contour = $this->dependencyGet($request, 'CLIENTS_URL',
-            'http://clients:8000/api', '/permissions/me');
-        $contourPermissions = (array) ($contour['permissions'] ?? []);
+        // Local policy uses the SAME verified roles and supports the existing
+        // per-permission own/team/all object checks in this service. Clients
+        // remains authoritative for connections, not Timesheets permissions.
+        if ($localEnabled) {
+            $contourPermissions = (array) $request->attributes->get('timesheets_local_permissions', []);
+        } else {
+            $contour = $this->dependencyGet($request, 'CLIENTS_URL',
+                'http://clients:8000/api', '/permissions/me');
+            $contourPermissions = (array) ($contour['permissions'] ?? []);
+        }
         $canLock = $platformAdmin || (bool) ($contourPermissions['timesheets.management.manage']['allowed'] ?? false);
         $path = $request->path();
         $scopePermission = str_contains($path, '/analytics') ? 'timesheets.analytics.view'
             : (str_contains($path, '/audit') ? 'timesheets.audit.view'
             : (in_array($request->method(), ['POST', 'PUT', 'PATCH', 'DELETE'], true)
                 ? 'timesheets.management.manage' : 'timesheets.management.view'));
+        if ($localEnabled && $path === 'api/workspace') $scopePermission = 'timesheets.mine.view';
+        if ($localEnabled && in_array($path, ['api/entries','api/confirm','api/unconfirm'], true)) {
+            $scopePermission = 'timesheets.mine.manage';
+        }
         $scope = $platformAdmin ? 'all' : (string) ($contourPermissions[$scopePermission]['scope'] ?? 'none');
         return compact('roles', 'platformAdmin', 'managedDepartmentIds', 'isAccountManager',
             'canLock', 'contourPermissions', 'scope');

@@ -10,6 +10,8 @@ import MyAbsencesPage from './pages/MyAbsencesPage.vue';
 import DepartmentAbsencesPage from './pages/DepartmentAbsencesPage.vue';
 import ManageAbsencesPage from './pages/ManageAbsencesPage.vue';
 import ActionHistoryPage from './pages/ActionHistoryPage.vue';
+import PermissionsPage from './pages/PermissionsPage.vue';
+import { canVacations, visibleVacationsSections } from './authorization.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -17,17 +19,32 @@ const section = computed(() => route.meta.section || 'not-found');
 const year=ref(new Date().getFullYear());
 const workspace=ref(null),loadingWorkspace=ref(true),error=ref(''),success=ref(''),refreshToken=ref(0),drawerOpen=ref(false),drawerLoading=ref(false),detail=ref(null),showEdit=ref(false),editSaving=ref(false),editForm=ref({id:null,type:'paid_vacation',starts_on:'',ends_on:'',comment:''});
 const roles=computed(()=>workspace.value?.access?.roles||[]);
-const isAdmin=computed(()=>roles.value.includes('platform-admin'));
-const isPersonnelOfficer=computed(()=>isAdmin.value||roles.value.includes('personnel-officer'));
-const isHr=computed(()=>isAdmin.value||roles.value.includes('hr'));
-const isManager=computed(()=>isAdmin.value||roles.value.includes('manager')||roles.value.some(role=>role.endsWith('-head')));
+const isAdmin=computed(()=>roles.value.includes('platform-admin')||roles.value.includes('special:platform-admin'));
+const mode=computed(()=>workspace.value?.authorization?.mode||'legacy');
+const isPersonnelOfficer=computed(()=>isAdmin.value||(mode.value==='local'
+  ? roles.value.includes('special:personnel-officer')
+  : roles.value.includes('personnel-officer')));
+const isHr=computed(()=>isAdmin.value||(mode.value==='local'
+  ? roles.value.includes('org:hr')
+  : roles.value.includes('hr')));
+const isManager=computed(()=>isAdmin.value||(mode.value==='local'
+  ? roles.value.some(role=>role.startsWith('head:'))
+  : roles.value.includes('manager')||roles.value.some(role=>role.endsWith('-head'))));
 const isElevated=computed(()=>isPersonnelOfficer.value||isHr.value||isManager.value);
+const effectivePermissions=computed(()=>workspace.value?.authorization?.permissions||{});
+const can=(key, legacy=false)=>canVacations(mode.value,effectivePermissions.value,key,legacy);
+const visible=computed(()=>visibleVacationsSections(mode.value,effectivePermissions.value,{
+  admin:isAdmin.value,elevated:isElevated.value,
+}));
 const menuItems=computed(()=>[
-  {id:'mine',icon:'calendar',label:'Мои отпуска',visible:true},
-  {id:'department',icon:'team',label:'Отсутствия подразделения',visible:isElevated.value},
-  {id:'manage',icon:'manage',label:'Управление отсутствиями',visible:isElevated.value},
+  {id:'mine',icon:'calendar',label:'Мои отпуска',visible:visible.value.mine},
+  {id:'department',icon:'team',label:'Отсутствия подразделения',visible:visible.value.department},
+  {id:'manage',icon:'manage',label:'Управление отсутствиями',visible:visible.value.manage},
+  {id:'permissions',icon:'settings',label:'Разрешения',visible:visible.value.permissions},
 ].filter(i=>i.visible));
-const availableSections=computed(()=>new Set([...menuItems.value.map(item=>item.id),'history']));
+const availableSections=computed(()=>new Set([
+  ...menuItems.value.map(item=>item.id),...(visible.value.history?['history']:[]),
+]));
 
 const selectSection = (next) => {
   if (!router.hasRoute(next)) return;
@@ -42,6 +59,13 @@ const loadWorkspace=async()=>{
   try{
     const payload=await api('/api/vacations/workspace');
     workspace.value=payload.data;
+    // A user may have Manage/Department access but no "My vacations"
+    // grant. Do not open a forbidden default section after login.
+    if (!availableSections.value.has(section.value)) {
+      const first = menuItems.value[0]?.id
+        || (visible.value.history ? 'history' : null);
+      if (first && router.hasRoute(first)) await router.replace({name:first});
+    }
     const attentionId=Number(new URLSearchParams(location.search).get('absence')||0);
     if(Number.isSafeInteger(attentionId)&&attentionId>0)await loadDetail(attentionId);
   }catch(e){notifyError(e.message)}
@@ -83,7 +107,7 @@ const handleAction=async({action,item})=>{
   if(['view','history','view_attachments','upload_attachment'].includes(action)){await loadDetail(absenceId);return}
   if(action==='edit'){await openEdit(item);return}
   if(action==='delete'){
-    if(!isAdmin.value)return;
+    if(!isAdmin.value||!can('vacations.manage.manage',true))return;
     const employeeName=item.employee_name||detail.value?.absence?.employee_name||'сотрудника';
     const period=`${String(item.starts_on||'').slice(0,10)} — ${String(item.ends_on||'').slice(0,10)||'без даты окончания'}`;
     if(!window.confirm(`Безвозвратно удалить отсутствие ${employeeName} (${period})?\nБудут удалены согласования, история и прикреплённые документы. Восстановление через интерфейс невозможно.`))return;
@@ -123,7 +147,7 @@ onMounted(loadWorkspace);
         <template #breadcrumb-extra><span id="vacations-breadcrumb-extra" class="irlix-breadcrumbs__extra"></span></template>
         <template #actions>
           <div class="vacations-topbar-controls">
-            <UiPeriodPicker v-model="year" mode="year"/>
+            <UiPeriodPicker v-if="section !== 'permissions'" v-model="year" mode="year"/>
             <div id="vacations-topbar-actions" class="vacations-topbar-actions"></div>
           </div>
         </template>
@@ -137,9 +161,10 @@ onMounted(loadWorkspace);
 
       <template v-else-if="workspace && availableSections.has(section)">
         <MyAbsencesPage v-if="section==='mine'" :year="year" :profile="workspace.employee" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged()"/>
-        <DepartmentAbsencesPage v-else-if="section==='department'" :year="year" :departments="workspace.departments||[]" :employees="workspace.employees||[]" :can-create-for-employee="isManager" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged('Отсутствие сотрудника создано')"/>
-        <ManageAbsencesPage v-else-if="section==='manage'" :year="year" :departments="workspace.departments||[]" :employees="workspace.employees||[]" :can-create-for-employee="isManager||isPersonnelOfficer" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged('Отсутствие сотрудника создано')"/>
+        <DepartmentAbsencesPage v-else-if="section==='department'" :year="year" :departments="workspace.departments||[]" :employees="workspace.employees||[]" :can-create-for-employee="can('vacations.department.manage',isManager) && isManager" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged('Отсутствие сотрудника создано')"/>
+        <ManageAbsencesPage v-else-if="section==='manage'" :year="year" :departments="workspace.departments||[]" :employees="workspace.employees||[]" :can-create-for-employee="can('vacations.department.manage',isManager||isPersonnelOfficer) && (isManager||isPersonnelOfficer)" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged('Отсутствие сотрудника создано')"/>
         <ActionHistoryPage v-else-if="section==='history'" :year="year" :employees="workspace.employees||[]" :refresh-token="refreshToken" @action="handleAction" @error="notifyError"/>
+        <PermissionsPage v-else-if="section==='permissions'"/>
       </template>
     </main>
 

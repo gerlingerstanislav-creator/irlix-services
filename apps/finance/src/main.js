@@ -20,10 +20,18 @@ const errorPage = (text) => {
 const start = async () => {
   try {
     if (!await auth.init()) return;
-    const response = await auth.fetch('/api/employees/access/me', { cache: 'no-store' });
-    if (!response.ok) throw new Error('Employees access lookup failed');
+    // Finance backend owns admission and effective permissions. It keeps
+    // historical Employees-derived grants only until its local cutover.
+    const response = await auth.fetch('/api/finance/me', { cache: 'no-store' });
+    if (!response.ok) {
+      if (response.status === 403) {
+        errorPage('Доступ к сервису «Финансы» запрещён.');
+        return;
+      }
+      throw new Error('Finance access lookup failed');
+    }
     const payload = await response.json();
-    if (payload?.data?.services?.finance !== true) {
+    if (payload?.data?.permissions?.['finance.view'] !== true) {
       errorPage('Доступ к сервису «Финансы» запрещён.');
       return;
     }

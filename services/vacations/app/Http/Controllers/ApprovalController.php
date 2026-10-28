@@ -51,11 +51,32 @@ final class ApprovalController extends Controller
                     $filtered[] = $item;
                     continue;
                 }
-                try {
-                    $this->employees->employeeApprovalContext($request, (int) $item['employee_id']);
+                if ($this->managerInCurrentScope($request, $employeeId, (int) $item['employee_id'])) {
                     $filtered[] = $item;
-                } catch (DomainException) {
-                    // Employees permission+scope remains the source of truth for manager visibility.
+                }
+            }
+
+            $localPermissions = $request->attributes->get('vacations_local_permissions');
+            if (is_array($localPermissions)) {
+                // A general HR/manager/personnel role must not turn an OWN
+                // approvals grant into a cross-employee task list. Personnel
+                // still needs an explicit per-action scope in this service.
+                $scope = (string) ($localPermissions['vacations.approvals.view']['scope'] ?? 'none');
+                if ($scope === 'own') {
+                    $filtered = array_values(array_filter($filtered, static fn (array $item): bool =>
+                        (int) ($item['approver_employee_id'] ?? 0) === $employeeId
+                        && (int) ($item['employee_id'] ?? 0) !== $employeeId));
+                } elseif ($scope === 'team') {
+                    $org = $this->employees->vacationsDirectory($request);
+                    $departments = array_values($org['departments'] ?? []);
+                    $people = array_values($org['employees'] ?? []);
+                    $filtered = array_values(array_filter($filtered, static fn (array $item): bool =>
+                        ((int) ($item['approver_employee_id'] ?? 0) === $employeeId
+                            && (int) ($item['employee_id'] ?? 0) !== $employeeId)
+                        || \App\Services\VacationsObjectScope::allows('team', $employeeId,
+                            (int) ($item['employee_id'] ?? 0), $departments, $people)));
+                } elseif ($scope !== 'all') {
+                    $filtered = [];
                 }
             }
 
@@ -78,6 +99,10 @@ final class ApprovalController extends Controller
                 $item['available_actions'][] = ($item['stage'] ?? null) === 'hr_final_review' && $isPersonnelOfficer ? 'provide' : 'approve';
                 if ($isAdmin || $isPersonnelOfficer || $isManager) $item['available_actions'][] = 'return_to_planned';
                 if (($isAdmin || $isPersonnelOfficer) && $item['attachment_count'] > 0) $item['available_actions'][] = 'view_attachments';
+                $item['available_actions'] = \App\Services\VacationsActionPolicy::visible(
+                    $item['available_actions'],
+                    is_array($localPermissions) ? $localPermissions : null
+                );
                 $item['pending_approval_id'] = (int) $item['id'];
             }
             unset($item);
@@ -123,12 +148,9 @@ final class ApprovalController extends Controller
                     if (($task['required_role'] ?? null) === 'manager'
                         && $this->authorization->isManager($access)
                         && (int) ($task['approver_employee_id'] ?? 0) !== $employeeId) {
-                        try {
-                            $this->employees->employeeApprovalContext($request, (int) $absence['employee_id']);
-                            $managerInScope = true;
-                        } catch (DomainException) {
-                            $managerInScope = false;
-                        }
+                        $managerInScope = $this->managerInCurrentScope(
+                            $request, $employeeId, (int) $absence['employee_id']
+                        );
                     }
                     return $this->authorization->canApproveTask($access, $employeeId, $task, $absence, $managerInScope);
                 }
@@ -155,12 +177,9 @@ final class ApprovalController extends Controller
             }
             $managerInScope = false;
             if (($task->required_role ?? null) === 'manager' && $this->authorization->isManager($access)) {
-                try {
-                    $this->employees->employeeApprovalContext($request, (int) $absence['employee_id']);
-                    $managerInScope = true;
-                } catch (DomainException) {
-                    $managerInScope = false;
-                }
+                $managerInScope = $this->managerInCurrentScope(
+                    $request, $actorId, (int) $absence['employee_id']
+                );
             }
             if (!$this->authorization->canApproveTask($access, $actorId, $task->getRawOriginal(), $absence, $managerInScope)) {
                 throw new DomainException('Недостаточно прав для отклонения');
@@ -181,12 +200,9 @@ final class ApprovalController extends Controller
             if (!$allowed && (int) $target['employee_id'] === $employeeId
                 && !in_array($target['status'], ['confirmed', 'cancelled', 'rejected'], true)) $allowed = true;
             if (!$allowed && $this->authorization->isManager($access)) {
-                try {
-                    $this->employees->employeeApprovalContext($request, (int) $target['employee_id']);
-                    $allowed = true;
-                } catch (DomainException) {
-                    $allowed = false;
-                }
+                $allowed = $this->managerInCurrentScope(
+                    $request, $employeeId, (int) $target['employee_id']
+                );
             }
 
             if (!$allowed) throw new DomainException('Недостаточно прав для возврата отсутствия в «Запланировано»');
@@ -197,6 +213,30 @@ final class ApprovalController extends Controller
                 $this->subject($request),
             )]);
         });
+    }
+
+    /**
+     * Local V2 uses the actual Employees manager assignment by stable IDs.
+     * A legacy Employees permission response must never expand a local
+     * Vacations approval grant. Legacy mode keeps existing behavior.
+     */
+    private function managerInCurrentScope(Request $request, int $actorId, int $targetId): bool
+    {
+        if ($actorId <= 0 || $targetId <= 0 || $actorId === $targetId) return false;
+        if (is_array($request->attributes->get('vacations_local_permissions'))) {
+            $payload = $this->employees->vacationsDirectory($request);
+            return \App\Services\VacationsObjectScope::allows(
+                'team', $actorId, $targetId,
+                array_values($payload['departments'] ?? []),
+                array_values($payload['employees'] ?? [])
+            );
+        }
+        try {
+            $this->employees->employeeApprovalContext($request, $targetId);
+            return true;
+        } catch (DomainException) {
+            return false;
+        }
     }
 
     private function handle(Request $request, callable $callback): JsonResponse

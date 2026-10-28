@@ -19,6 +19,7 @@ PASSWORD = secrets.token_urlsafe(22)
 ROLES = [
     "accounting", "accounting-head", "personnel-officer", "service:finance",
     "permission:finance-view", "employee-id:42",
+    "org:irlix", "org:accounting", "head:accounting", "special:personnel-officer",
 ]
 
 def request(url, method="GET", value=None, bearer=None, form=False):
@@ -123,6 +124,8 @@ new_roles = token_roles()
 require("service:finance" not in new_roles, "revoked service grant remains in newly issued JWT")
 require("permission:finance-view" not in new_roles, "revoked fine-grained grant remains in newly issued JWT")
 require("accounting" in new_roles, "revocation removed unrelated department label")
+require({"org:irlix", "org:accounting", "head:accounting", "special:personnel-officer"}.issubset(new_roles),
+        "Legacy grant revocation unexpectedly removed V2 identity claims")
 _, effective_after, _ = request(API + f"/users/{user_id}/role-mappings/realm/composite", bearer=admin)
 require("service:finance" not in {r["name"] for r in effective_after},
         "Composite read-back failed to detect revoked finance service grant")

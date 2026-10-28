@@ -19,12 +19,17 @@ class ClientContourPermissionsController extends Controller
         $access = $resolver->resolve($request);
         abort_unless($access['platform_admin'] || ($resolver->allows($access, 'permissions.view') && $resolver->scope($access, 'permissions.view') === 'all'), 403, 'Недостаточно прав на просмотр матрицы разрешений.');
         $matrix = app(ClientContourPermissionService::class)->matrix();
+        $labels = ClientContourAccess::ROLE_LABELS;
+        foreach (array_keys($matrix) as $role) {
+            if (preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $role)
+                && $role !== 'special:platform-admin') $labels[$role] = $role;
+        }
         return response()->json(['data' => [
             'can_manage' => $access['platform_admin'] || ($resolver->allows($access, 'permissions.manage') && $resolver->scope($access, 'permissions.manage') === 'all'),
-            'roles' => collect(ClientContourAccess::ROLE_LABELS)->map(fn ($label, $key) => ['key' => $key, 'label' => $label, 'locked' => $key === 'platform-admin'])->values(),
+            'roles' => collect($labels)->map(fn ($label, $key) => ['key' => $key, 'label' => $label, 'locked' => $key === 'platform-admin'])->values(),
             'permissions' => collect(ClientContourAccess::PERMISSION_LABELS)->map(fn ($label, $key) => ['key' => $key, 'label' => $label])->values(),
             'matrix' => $matrix,
-            'scopes' => [['key' => 'none', 'label' => 'Нет доступа'], ['key' => 'own', 'label' => 'Только свои'], ['key' => 'team', 'label' => 'Своё направление'], ['key' => 'all', 'label' => 'Все']],
+            'scopes' => [['key' => 'none', 'label' => 'Не назначено'], ['key' => 'own', 'label' => 'Только свои'], ['key' => 'team', 'label' => 'Своё направление'], ['key' => 'all', 'label' => 'Все']],
         ]]);
     }
 
@@ -33,13 +38,22 @@ class ClientContourPermissionsController extends Controller
         $access = $resolver->resolve($request);
         abort_unless($access['platform_admin'] || ($resolver->allows($access, 'permissions.manage') && $resolver->scope($access, 'permissions.manage') === 'all'), 403, 'Недостаточно прав на изменение матрицы разрешений.');
         $data = $request->validate([
-            'role' => ['required', 'string', Rule::in(array_values(array_diff(array_keys(ClientContourAccess::ROLE_LABELS), ['platform-admin']))),],
+            'role' => ['required', 'string', 'max:120', static function ($attribute, $value, $fail): void {
+                if (is_string($value) && $value !== 'platform-admin' && $value !== 'special:platform-admin'
+                    && (array_key_exists($value, ClientContourAccess::ROLE_LABELS)
+                        || preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $value))) return;
+                $fail('Недопустимый идентификатор роли.');
+            }],
             'permission' => ['required', 'string', Rule::in(array_keys(ClientContourAccess::PERMISSION_LABELS))],
             'allowed' => ['required', 'boolean'],
+            'denied' => ['sometimes', 'boolean'],
             'scope' => ['required', 'string', Rule::in(['none', 'own', 'team', 'all'])],
         ]);
         if (str_starts_with($data['permission'], 'permissions.') && $data['allowed'] && $data['scope'] !== 'all') return response()->json(['message' => 'Для управления глобальной матрицей разрешён только scope all.'], 422);
         if ($data['permission'] === 'specialists.view' && $data['allowed'] && $data['scope'] !== 'all') return response()->json(['message' => 'Общий календарь содержит даты отсутствий по всей компании. Для него разрешён только scope all.'], 422);
+        if (($data['denied'] ?? false) && $data['allowed']) {
+            return response()->json(['message' => 'Нельзя одновременно разрешить и запретить действие.'], 422);
+        }
         if (!$data['allowed']) $data['scope'] = 'none';
         if ($data['allowed'] && $data['scope'] === 'none') return response()->json(['message' => 'Для разрешённого действия укажите область данных.'], 422);
 

@@ -27,7 +27,7 @@ namespace {
     });
     $schema = \Illuminate\Support\Facades\DB::connection()->getSchemaBuilder();
     $schema->create('client_contour_permissions', function ($t) {
-        $t->id(); $t->string('role'); $t->string('permission'); $t->boolean('allowed'); $t->string('scope'); $t->timestamps();
+        $t->id(); $t->string('role'); $t->string('permission'); $t->boolean('allowed'); $t->boolean('denied')->default(false); $t->string('scope'); $t->timestamps();
         $t->unique(['role', 'permission']);
     });
     // Old tester permission grants must remain ineffective after privilege removal.
@@ -83,9 +83,53 @@ namespace {
         \App\Support\ClientContourAccess::importedMatrixLabels([
             'accounting', 'accounting-head', 'sales', 'account-management-head',
             'service:clients', 'permission:finance-view', 'scope:all', 'employee-id:42',
+            'org:irlix', 'org:accounting', 'head:accounting', 'special:personnel-officer',
         ]) === ['sales', 'account-management-head'],
         'Finance accountant leaked into Clients account-head permission matrix'
     );
+    $check(\App\Support\ClientContourAccess::currentSpecialsMatch(
+        ['employee-id:77','org:irlix','special:personnel-officer'],77,
+        ['employee_id'=>77,'roles'=>['personnel-officer']]),
+        'Live explicitly assigned special role unexpectedly denied');
+    $check(!\App\Support\ClientContourAccess::currentSpecialsMatch(
+        ['employee-id:77','special:personnel-officer'],77,
+        ['employee_id'=>77,'roles'=>[]]),
+        'Revoked personnel role persisted in Clients JWT');
+    $check(!\App\Support\ClientContourAccess::currentSpecialsMatch(
+        ['employee-id:77','platform-admin','scope:all'],77,
+        ['employee_id'=>77,'roles'=>[]]),
+        'Revoked Clients administrator kept stale global scope');
+    $check(!\App\Support\ClientContourAccess::currentSpecialsMatch(
+        ['employee-id:77','special:personnel-officer'],77,
+        ['employee_id'=>78,'roles'=>['personnel-officer']]),
+        'Another employee supplied authorization for actor');
+    $v2Departments = [
+        ['id'=>1,'alias'=>'irlix','parent_id'=>null,'manager_id'=>null],
+        ['id'=>2,'alias'=>'client-service','parent_id'=>1,'manager_id'=>null],
+        ['id'=>3,'alias'=>'accounting','parent_id'=>2,'manager_id'=>77],
+        ['id'=>4,'alias'=>'finance','parent_id'=>1,'manager_id'=>null],
+        ['id'=>5,'alias'=>'accounting','parent_id'=>4,'manager_id'=>88],
+    ];
+    $identityLabels = ['org:irlix','org:client-service','org:account-management',
+        'head:account-management','head:accounting','special:personnel-officer'];
+    $asAccountHead = \App\Support\ClientContourAccess::currentIdentityLabels(
+        $identityLabels, 77, $v2Departments, [['id'=>77,'department_id'=>3]]);
+    $check($asAccountHead === ['org:irlix','org:client-service','org:account-management',
+        'head:account-management','special:personnel-officer'],
+        'V2 account-management leaked Finance head authority or lost client hierarchy');
+    $afterTransfer = \App\Support\ClientContourAccess::currentIdentityLabels(
+        $identityLabels, 77, $v2Departments, [['id'=>77,'department_id'=>5]]);
+    $check($afterTransfer === ['org:irlix','head:account-management','special:personnel-officer'],
+        'V2 org role was not revoked on a department change');
+    $v2Departments[2]['manager_id'] = null;
+    $afterRemoval = \App\Support\ClientContourAccess::currentIdentityLabels(
+        $identityLabels, 77, $v2Departments, [['id'=>77,'department_id'=>3]]);
+    $check(!in_array('head:account-management', $afterRemoval, true),
+        'V2 head role was not revoked on manager change');
+    $check(\App\Support\ClientContourAccess::currentIdentityLabels(
+        $identityLabels, 77, $v2Departments, []) === [],
+        'Missing verified employee was permitted to use signed organizational roles');
+
     $request = fn ($path, $method = 'GET', $data = []) => \Illuminate\Http\Request::create('/'.$path, $method, $data, [], [], ['HTTP_AUTHORIZATION' => 'Bearer synthetic-token']);
     foreach ([['platform-tester'], [' PLATFORM_TESTER ', 'sales-manager', 'department-manager']] as $roles) {
         $access = $resolver->resolve($request('api/permissions/me'));
@@ -177,6 +221,17 @@ namespace {
     $check(in_array('account-manager', $nestedAccount['roles'], true), 'Nested account employee lost Account Manager role');
     $check(($nestedAccount['permissions']['clients.view']['scope'] ?? 'none') === 'all', 'Account Manager matrix permission missing');
     $check(($nestedAccount['permissions']['timesheets.management.view']['allowed'] ?? false) === true, 'Account Manager Timesheets right missing');
+    // Legacy disabled cells are not hard denials; only an explicitly marked
+    // deny may override another organizational role's positive grant.
+    $db->where('role','client-service')->where('permission','clients.view')->update(['denied'=>true]);
+    $deniedAccount = $resolver->resolve($request('api/permissions/me'));
+    $check(!($deniedAccount['permissions']['clients.view']['allowed'] ?? false),
+        'Explicit Clients denial failed to override Account Manager grant');
+    $db->where('role','client-service')->where('permission','clients.view')->update(['denied'=>false]);
+    $restoredAccount = $resolver->resolve($request('api/permissions/me'));
+    $check(($restoredAccount['permissions']['clients.view']['allowed'] ?? false) === true,
+        'Removing an explicit deny did not restore the independent grant');
+
     $check(in_array(501, $nestedAccount['account_employee_ids'], true) && !in_array(502, $nestedAccount['account_employee_ids'], true), 'Finance employee mixed into account directory');
     $actorStub = ['id'=>502,'position'=>'Finance specialist'];
     $financeAccount = $resolver->resolve($request('api/permissions/me'));
@@ -316,6 +371,35 @@ namespace {
     $jwtFinanceRequest->attributes->set('identity', ['realm_roles'=>['employee-id:502','service:timesheets','accounting']]);
     $jwtFinance = $resolver->resolve($jwtFinanceRequest);
     $check(!in_array('account-manager', $jwtFinance['roles'], true), 'JWT finance accounting inherited account role');
+    // Staged Clients V2 must ignore legacy role->permission shortcuts, but
+    // allow explicitly configured namespaced rules from signed role claims.
+    $oldLocalClients = getenv('IRLIX_CLIENTS_LOCAL_AUTHZ_ENABLED');
+    putenv('IRLIX_CLIENTS_LOCAL_AUTHZ_ENABLED=true');
+    $v2Matrix = \Illuminate\Support\Facades\DB::table('client_contour_permissions');
+    foreach ([
+        ['role'=>'org:client-service','permission'=>'clients.view','scope'=>'own'],
+        ['role'=>'head:account-management','permission'=>'reports.view','scope'=>'team'],
+    ] as $grant) $v2Matrix->insert($grant + ['allowed'=>true,'denied'=>false]);
+    $actorStub = ['id'=>513,'position'=>'Account Manager','functional_roles'=>['account-manager']];
+    $v2Request = $request('api/permissions/me');
+    $v2Request->attributes->set('identity', ['realm_roles'=>[
+        'employee-id:513','org:client-service','org:account-management',
+        'head:account-management','service:clients','account-manager',
+    ]]);
+    $v2Access = $resolver->resolve($v2Request);
+    $check(($v2Access['permissions']['clients.view']['scope'] ?? 'none') === 'own',
+        'V2 client-service explicit baseline missing');
+    $check(($v2Access['permissions']['reports.view']['scope'] ?? 'none') === 'team',
+        'V2 verified account-management head matrix scope missing');
+    $check(!($v2Access['permissions']['cashflow.view']['allowed'] ?? false),
+        'V2 incorrectly imported broad legacy account-manager permissions');
+    $departmentsStub[1]['manager_id'] = null;
+    $revokeAccess = $resolver->resolve($v2Request);
+    $check(!($revokeAccess['permissions']['reports.view']['allowed'] ?? false),
+        'Stale V2 head JWT label survived removal of manager assignment');
+    $departmentsStub[1]['manager_id'] = 513;
+    if ($oldLocalClients === false) putenv('IRLIX_CLIENTS_LOCAL_AUTHZ_ENABLED');
+    else putenv('IRLIX_CLIENTS_LOCAL_AUTHZ_ENABLED='.$oldLocalClients);
     if ($oldJwtMode === false) putenv('IRLIX_AUTHZ_JWT_ENABLED');
     else putenv('IRLIX_AUTHZ_JWT_ENABLED='.$oldJwtMode);
 
