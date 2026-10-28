@@ -16,6 +16,56 @@ final class VacationsRoleAuthorization
     ];
 
     /**
+     * Target permission contract only. A matching permission NEVER proves
+     * access to a particular absence: the controller must additionally
+     * enforce scope, current employee relationship, approver assignments,
+     * document confidentiality and status. Do not enable V2 before that.
+     */
+    public static function requiredPermission(string $method, string $path): ?string
+    {
+        $path = ltrim($path, '/');
+        return match (true) {
+            $method === 'GET' && in_array($path, [
+                'api/me', 'api/workspace', 'api/attention', 'api/absences',
+                'api/absences/occupied', 'api/production-calendar',
+            ], true) => 'vacations.mine.view',
+            $method === 'GET' && preg_match('#^api/absences/[1-9][0-9]*(?:/workspace|/history)?$#D', $path) === 1
+                => 'vacations.mine.view',
+            $method === 'POST' && $path === 'api/absences'
+                => 'vacations.mine.manage',
+            $method === 'PATCH' && preg_match('#^api/absences/[1-9][0-9]*$#D', $path) === 1
+                => 'vacations.mine.manage',
+            $method === 'POST' && preg_match('#^api/absences/[1-9][0-9]*/submit$#D', $path) === 1
+                => 'vacations.mine.manage',
+            $method === 'GET' && $path === 'api/department-roster'
+                => 'vacations.department.view',
+            $method === 'POST' && $path === 'api/absences/for-employee'
+                => 'vacations.department.manage',
+            $method === 'GET' && $path === 'api/registry'
+                => 'vacations.manage.view',
+            $method === 'DELETE' && preg_match('#^api/absences/[1-9][0-9]*$#D', $path) === 1
+                => 'vacations.manage.manage',
+            $method === 'GET' && $path === 'api/approvals'
+                => 'vacations.approvals.view',
+            $method === 'POST' && preg_match('#^api/approvals/[1-9][0-9]*/(?:approve|reject)$#D', $path) === 1
+                => 'vacations.approvals.manage',
+            $method === 'POST' && preg_match('#^api/absences/[1-9][0-9]*/return-to-planned$#D', $path) === 1
+                => 'vacations.approvals.manage',
+            $method === 'GET' && preg_match('#^api/absences/[1-9][0-9]*/attachments(?:/[1-9][0-9]*/download)?$#D', $path) === 1
+                => 'vacations.documents.view',
+            in_array($method, ['POST','DELETE'], true)
+                && preg_match('#^api/absences/[1-9][0-9]*/attachments(?:/[1-9][0-9]*)?$#D', $path) === 1
+                => 'vacations.documents.manage',
+            $method === 'GET' && $path === 'api/history'
+                => 'vacations.history.view',
+            $method === 'GET' && in_array($path, [
+                'api/calendar-absences','api/client-service-calendar','api/client-service-absence-alerts',
+            ], true) => 'vacations.client-calendar.view',
+            default => null,
+        };
+    }
+
+    /**
      * Local permission ceiling ONLY, never an override of absence status,
      * document confidentiality, specific task approvers, or employee scope.
      * The active business rules in Vacations remain a mandatory intersection.
