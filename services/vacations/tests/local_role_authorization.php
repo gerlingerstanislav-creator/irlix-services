@@ -101,4 +101,22 @@ $test(!Authz::canOpenWorkspace(['vacations.mine.manage'=>['allowed'=>true,'scope
     'Mutation grant alone must not expose the service');
 $test(Authz::canOpenWorkspace(['vacations.manage.view'=>['allowed'=>true,'scope'=>'team']]),
     'Manager with independent read grant must be admitted without mine permission');
+// Every business API route, including attachments, must declare a local
+// permission. A new endpoint cannot accidentally become an unguarded route
+// simply because someone forgot to update the V2 matrix.
+$api = file_get_contents(__DIR__.'/../routes/api.php');
+preg_match_all("~Route::(get|post|patch|delete|put)\\(\\s*'([^']+)'~",
+    $api, $routeMatches, PREG_SET_ORDER);
+$test(count($routeMatches) >= 20, 'Vacations route test did not parse the real API');
+foreach ($routeMatches as $route) {
+    $method = strtoupper($route[1]);
+    $path = 'api'.preg_replace('/\\{[a-zA-Z_]+\\}/', '17', $route[2]);
+    if (in_array($path, ['api/health','api/permissions','api/permissions/me'], true)) {
+        // Separate authenticated health / admin / current-actor paths.
+        continue;
+    }
+    $required = Authz::requiredPermission($method,$path);
+    $test($required !== null && in_array($required, Authz::PERMISSIONS, true),
+        "Unmapped business endpoint {$method} {$path}");
+}
 echo "Vacations local roles: PASS\n";
