@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router';
 import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPeriodPicker, UiViewSelect, UiRegistryTable, UiErrorState, UiLoader } from '@irlix/ui';
 import { auth } from './auth';
+import TimesheetsPermissionsView from './components/TimesheetsPermissionsView.vue';
 import { api } from './api';
 import { clientPeriodApproved } from './approval-state.js';
 import { buildManagementGroups } from './management-grouping.js';
@@ -60,6 +61,7 @@ const accountFilter = ref('');
 const clientFilter = ref(initialParams.get('client_id') || '');
 const employeeFilter = ref(initialParams.get('employee_id') || '');
 const contourPermissions = ref({});
+const canManageLocalMatrix = ref(false);
 const dayEditor = ref(null);
 const drafts = ref({});
 const draftSignatures = ref({});
@@ -72,7 +74,10 @@ const menuItems = computed(() => [
   { id: 'management', icon: 'manage', label: 'Управление' },
   { id: 'analytics', icon: 'chart', label: 'Коммерческая загрузка' },
 ].filter(item => item.id === 'mine' ? can('timesheets.mine.view') : can(`timesheets.${item.id}.view`)));
-const bottomItems = computed(() => can('timesheets.audit.view') ? [{ id: 'audit', icon: 'audit', label: 'История действий' }] : []);
+const bottomItems = computed(() => [
+  ...(can('timesheets.audit.view') ? [{ id: 'audit', icon: 'audit', label: 'История действий' }] : []),
+  ...(canManageLocalMatrix.value ? [{ id: 'permissions', icon: 'settings', label: 'Разрешения' }] : []),
+]);
 const entryDestination = computed(() => chooseTimesheetsLanding(contourPermissions.value));
 const sectionAllowed = computed(() => section.value === 'entry'
   ? !!entryDestination.value
@@ -235,8 +240,9 @@ const loadPermissions = async () => {
   permissionsPhase.value = 'loading';
   error.value = '';
   try {
-    const response = await api('/api/clients/permissions/me');
+    const response = await api('/api/timesheets/permissions/me');
     contourPermissions.value = response.data?.permissions || {};
+    canManageLocalMatrix.value = !!(await api('/api/timesheets/permissions').catch(() => null))?.data?.can_manage;
     permissionsPhase.value = 'ready';
     if (route.name === 'entry') {
       // Every service launcher links to /timesheets/. Resolve that URL using
@@ -886,7 +892,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
           />
         </template>
         <template #actions>
-          <UiPeriodPicker v-if="section !== 'audit'" v-model="month" />
+          <UiPeriodPicker v-if="section !== 'audit' && section !== 'permissions'" v-model="month" />
         </template>
       </UiAppTopbar>
       <UiErrorState v-if="pageAccess === 'not-found'" :status="404" back-href="/timesheets/" back-label="Таймшиты" />
@@ -899,6 +905,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
 
       <UiLoader v-if="pageLoading" page label="Загрузка таймшитов" />
 
+      <TimesheetsPermissionsView v-else-if="pageAccess === 'allowed' && section === 'permissions'" />
       <section v-else-if="pageAccess === 'allowed' && section === 'mine' && workspace" class="mine-grid">
         <div class="panel calendar-panel">
           <div class="legend">
