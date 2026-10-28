@@ -83,14 +83,48 @@ final class WorkspaceController extends Controller
     public function departmentRoster(Request $request): JsonResponse
     {
         return $this->handle($request, function (array $employee, array $access) use ($request) {
-            if (!$this->authorization->isElevated($access)) {
+            $local = $request->attributes->get('vacations_local_permissions');
+            if (!is_array($local) && !$this->authorization->isElevated($access)) {
                 throw new DomainException('Недостаточно прав для просмотра отпусков подразделения');
             }
             $year = filter_var($request->query('year'), FILTER_VALIDATE_INT);
             if ($year === false || $year < 2000 || $year > 2100) {
                 return response()->json(['message' => 'Invalid historical year'], 422);
             }
-            return response()->json(['data' => $this->employees->vacationsHistoricalDirectory($request, $year)]);
+            $historical = $this->employees->vacationsHistoricalDirectory($request, $year);
+            if (is_array($local)) {
+                $scope = (string) ($local['vacations.department.view']['scope'] ?? 'none');
+                if ($scope !== 'all') {
+                    // Historical directory is only a presentation model.
+                    // The CURRENT manager-ID relations determine which of
+                    // its employees can be shown under a team grant.
+                    $org = $this->employees->vacationsDirectory($request);
+                    $departments = array_values($org['departments'] ?? []);
+                    $allowedDepartments = array_fill_keys(
+                        \App\Services\VacationsObjectScope::managedDepartments(
+                            (int) $employee['id'], $departments
+                        ), true);
+                    $allowedEmployees = [];
+                    foreach (($org['employees'] ?? []) as $person) {
+                        if (isset($allowedDepartments[(int) ($person['department_id'] ?? 0)])) {
+                            $allowedEmployees[(int) $person['id']] = true;
+                        }
+                    }
+                    $historical = [
+                        'employees' => array_values(array_filter(
+                            (array) ($historical['employees'] ?? []),
+                            static fn (array $person): bool =>
+                                isset($allowedEmployees[(int) ($person['id'] ?? 0)])
+                        )),
+                        'departments' => array_values(array_filter(
+                            (array) ($historical['departments'] ?? []),
+                            static fn (array $dept): bool =>
+                                isset($allowedDepartments[(int) ($dept['id'] ?? 0)])
+                        )),
+                    ];
+                }
+            }
+            return response()->json(['data' => $historical]);
         });
     }
 
