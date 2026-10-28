@@ -215,7 +215,7 @@ def main():
     # Read-only cutover evidence on every production release, even a
     # script-only rollout. Never log DSNs, passwords or employee metadata.
     if not selected or selected.intersection({'employees', 'storage-s3', 'storage-drive', 'storage-api'}):
-        subprocess.run([*sudo, "python3", str(ROOT / "scripts/storage/inspect-v1-readiness.py")],
+        subprocess.run([*sudo, "python3", str(ROOT / "scripts/storage/inspect-v1-readiness.py"), *compose],
                        check=True, cwd=ROOT, timeout=90)
     for service in sorted(selected):
         assert re.fullmatch(r"[a-z0-9][a-z0-9-]*", service)

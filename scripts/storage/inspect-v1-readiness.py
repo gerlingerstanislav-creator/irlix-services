@@ -7,6 +7,7 @@ printed. This checks deployment prerequisites; it is NOT restore evidence.
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path("/opt/irlix-services")
@@ -37,9 +38,9 @@ CHECK_EMPLOYEES = (
 )
 
 
-def main():
+def main(compose_args=None):
     sudo = [] if os.geteuid() == 0 else ["sudo", "-n"]
-    compose = (["docker", "compose"] if subprocess.run(
+    compose = list(compose_args) if compose_args else (["docker", "compose"] if subprocess.run(
         [*sudo, "docker", "compose", "version"], capture_output=True, check=False
     ).returncode == 0 else ["docker-compose"])
     results = {}
@@ -99,4 +100,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
