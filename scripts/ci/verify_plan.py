@@ -109,17 +109,14 @@ def verify_brandbook(host):
     print("[verify] brandbook: anonymous SSO redirect 302; origin SPA, deep links and SVG 200", flush=True)
 
 def verify_storage_pilot(host):
-    """Ensure the private Filestash origin is live and anonymous traffic cannot bypass Employees."""
+    """Verify our Drive origin, API and S3; deny anonymous requests."""
     args = ["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}",
             "-H", f"Host: {host}", "--connect-timeout", "2", "--max-time", "10"]
     frontend = subprocess.check_output([*args, "http://127.0.0.1:8110/"], text=True).strip()
     assert frontend == "302", f"storage SSO anonymous entry expected 302; got {frontend}"
     gate = subprocess.check_output([*args, "http://127.0.0.1:8110/_storage_pilot_gate"], text=True).strip()
     assert gate == "404", f"internal storage gate exposed: {gate}"
-    # Legacy Filestash remains a technician-only loopback tool.
-    origin = subprocess.check_output([*args, "http://127.0.0.1:8111/"], text=True).strip()
-    assert origin in {"200", "302"}, f"Filestash operator origin unhealthy: {origin}"
-    # New Drive UI must serve its own app, not the fallback Portal or Filestash.
+    # Own Drive must serve its app, not the fallback Portal.
     drive = subprocess.check_output([
         "curl", "-sS", "--connect-timeout", "2", "--max-time", "10",
         "http://127.0.0.1:8115/",
@@ -134,12 +131,7 @@ def verify_storage_pilot(host):
     sudo = [] if __import__("os").geteuid() == 0 else ["sudo", "-n"]
     subprocess.run([*sudo, "python3", str(ROOT / "scripts/storage/verify_s3_pilot.py"), str(ROOT / ".env")],
                    check=True, cwd=ROOT)
-    # The S3 container can be healthy while Filestash /login renders its
-    # generic internal error because zero backends are configured.
-    subprocess.run([*sudo, "python3", str(ROOT / "scripts/storage/ensure-filestash-pilot.py"),
-                    "--env-file", str(ROOT / ".env"), "--check"],
-                   check=True, cwd=ROOT)
-    print("[verify] Storage pilot: SSO, signed S3 and configured Filestash backend OK", flush=True)
+    print("[verify] Storage pilot: SSO, own Drive origin, guarded API and signed S3 OK", flush=True)
 
 
 
@@ -180,12 +172,12 @@ def verify_storage_authenticated_navigation(compose, sudo, host):
     except urllib.error.HTTPError as exc:
         status, location = exc.code, exc.headers.get("Location", "")
     assert status in {200, 302}, (
-        f"Storage authenticated nginx/Filestash route unhealthy: HTTP {status}"
+        f"Storage authenticated nginx/Drive route unhealthy: HTTP {status}"
     )
     assert "storage=1" not in location, (
         "Storage authenticated cookie was rejected and looped to Dashboard"
     )
-    print("[verify] Storage: real admin session cookie, nginx gate and Filestash OK", flush=True)
+    print("[verify] Storage: real admin session cookie, nginx gate and Drive OK", flush=True)
 
 def main():
     plan = json.loads((ROOT / ".ci/deploy-plan.json").read_text())
@@ -213,15 +205,15 @@ def main():
     verify_design_system(host)
     # Probe real SSO only when Employees or Storage is in the release;
     # unrelated Finance and client smoke checks remain independent.
-    if selected.intersection({'employees', 'storage-s3', 'storage-web', 'storage-drive', 'storage-api'}):
+    if selected.intersection({'employees', 'storage-s3', 'storage-drive', 'storage-api'}):
         verify_storage_authenticated_navigation(compose, sudo, host)
-    if selected.intersection({'storage-s3','storage-web','storage-drive','storage-api'}):
+    if selected.intersection({'storage-s3','storage-drive','storage-api'}):
         verify_storage_pilot(host)
     for c in data["components"]:
         if not selected.intersection([c["service"], *c.get("aliases", [])]):
             continue
-        if c["id"] in {"brandbook", "design-system", "storage-s3", "storage", "storage-filestash", "storage-api"}:
-            continue  # Specialized checks cover branded SPAs and private S3/Filestash origins.
+        if c["id"] in {"brandbook", "design-system", "storage-s3", "storage", "storage-api"}:
+            continue  # Specialized checks cover branded SPAs and private S3/Drive origins.
         path = c.get("health_path") or c["page_path"]
         try:
             body = subprocess.check_output(["curl", "-H", f"Host: {host}", "-fsS", "--connect-timeout", "2", "--max-time", "10",
