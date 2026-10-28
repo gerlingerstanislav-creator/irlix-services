@@ -16,6 +16,28 @@ final class VacationsRoleAuthorization
     ];
 
     /**
+     * Signed V2 claims must be a subset of the current assignments of the
+     * SAME Employees actor. No live role can add a privilege absent from JWT.
+     * Current role changes invalidate the entire stale JWT, including scope:*.
+     */
+    public static function currentIdentityMatches(array $signed, array $live): bool
+    {
+        $ids = array_values(array_filter($signed, static fn ($role) =>
+            is_string($role) && preg_match('/^employee-id:[1-9][0-9]*$/D', $role) === 1));
+        if (count($ids) !== 1 ||
+            (int) substr($ids[0], strlen('employee-id:')) !== (int) ($live['employee_id'] ?? 0) ||
+            !is_array($live['roles'] ?? null) || !is_array($live['role_claims'] ?? null)) return false;
+        $current = array_fill_keys($live['role_claims'], true);
+        foreach ($signed as $role) {
+            if (!is_string($role)) continue;
+            if ($role === 'platform-admin' && !in_array('platform-admin', $live['roles'], true)) return false;
+            if (preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $role) &&
+                !isset($current[$role])) return false;
+        }
+        return true;
+    }
+
+    /**
      * Target permission contract only. A matching permission NEVER proves
      * access to a particular absence: the controller must additionally
      * enforce scope, current employee relationship, approver assignments,
