@@ -116,8 +116,19 @@ def verify_storage_pilot(host):
     assert frontend == "302", f"storage SSO anonymous entry expected 302; got {frontend}"
     gate = subprocess.check_output([*args, "http://127.0.0.1:8110/_storage_pilot_gate"], text=True).strip()
     assert gate == "404", f"internal storage gate exposed: {gate}"
+    # Legacy Filestash remains a technician-only loopback tool.
     origin = subprocess.check_output([*args, "http://127.0.0.1:8111/"], text=True).strip()
-    assert origin in {"200", "302"}, f"Filestash origin unhealthy: {origin}"
+    assert origin in {"200", "302"}, f"Filestash operator origin unhealthy: {origin}"
+    # New Drive UI must serve its own app, not the fallback Portal or Filestash.
+    drive = subprocess.check_output([
+        "curl", "-sS", "--connect-timeout", "2", "--max-time", "10",
+        "http://127.0.0.1:8115/",
+    ], text=True)
+    assert "<title>IRLIX · Хранилище</title>" in drive, "Own Storage Drive origin not serving expected app"
+    api_health = subprocess.check_output([*args, "http://127.0.0.1:8114/health"], text=True).strip()
+    assert api_health == "200", f"Storage API health unavailable: {api_health}"
+    api_denied = subprocess.check_output([*args, "http://127.0.0.1:8114/items"], text=True).strip()
+    assert api_denied == "401", f"Direct Storage API bypass without cookie: {api_denied}"
     s3 = subprocess.check_output([*args, "http://127.0.0.1:8113/"], text=True).strip()
     assert s3 in {"400", "401", "403"}, f"Unauthenticated S3 access was accepted or unavailable: {s3}"
     sudo = [] if __import__("os").geteuid() == 0 else ["sudo", "-n"]
@@ -202,14 +213,14 @@ def main():
     verify_design_system(host)
     # Probe real SSO only when Employees or Storage is in the release;
     # unrelated Finance and client smoke checks remain independent.
-    if selected.intersection({'employees', 'storage-s3', 'storage-web'}):
+    if selected.intersection({'employees', 'storage-s3', 'storage-web', 'storage-drive', 'storage-api'}):
         verify_storage_authenticated_navigation(compose, sudo, host)
-    if selected.intersection({'storage-s3','storage-web'}):
+    if selected.intersection({'storage-s3','storage-web','storage-drive','storage-api'}):
         verify_storage_pilot(host)
     for c in data["components"]:
         if not selected.intersection([c["service"], *c.get("aliases", [])]):
             continue
-        if c["id"] in {"brandbook", "design-system", "storage-s3", "storage"}:
+        if c["id"] in {"brandbook", "design-system", "storage-s3", "storage", "storage-filestash", "storage-api"}:
             continue  # Specialized checks cover branded SPAs and private S3/Filestash origins.
         path = c.get("health_path") or c["page_path"]
         try:

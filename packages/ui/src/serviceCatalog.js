@@ -45,7 +45,7 @@ export const serviceGroups = [
     label: 'Системные',
     items: [
       { key: 'system', label:'Система', href:'/system/', icon:'settings', available:true, platformAdminOnly:true },
-      { key: 'storage', label: 'Хранилище (пилот)', href: '/storage/', icon: 'document', available: true, platformAdminOnly: true },
+      { key: 'storage', label: 'Хранилище', href: '/storage/', icon: 'document', available: true, platformAdminOnly: true },
       { key: 'design-system', label: 'Design System', href: '/design-system/', icon: 'palette', available: true },
       { key: 'brandbook', label: 'Брендбук', href: '/brandbook/', icon: 'document', available: true },
       { key: 'migration', label: 'Перенос данных', href: '/system/migration/control/', icon: 'tasks', available: true, platformAdminOnly: true, showInLauncher:false },
@@ -74,7 +74,7 @@ const details = {
   finance: { description: 'Счета, денежный учёт и предварительная финансовая аналитика.', audience: ['Бухгалтерия'], status: SERVICE_STATUSES.preproduction },
   recruitment: { description: 'Кандидаты, заявки на подбор, воронка найма, интервью и офферы.', audience: ['Recruiter', 'HR', 'Руководитель направления'], status: SERVICE_STATUSES.inDevelopment },
   'cv-converter': { description: 'Преобразование исходных CV в стандартизированный формат IRLIX.', audience: [], status: SERVICE_STATUSES.inDevelopment },
-  storage: { description: 'Изолированное тестовое S3-хранилище с интерфейсом Filestash.', audience:['Администратор платформы'], status:SERVICE_STATUSES.inDevelopment },
+  storage: { description: 'Пилот корпоративного Диска: файлы, папки и безопасный предпросмотр через собственный Storage API.', audience:['Администратор платформы'], status:SERVICE_STATUSES.inDevelopment },
   'design-system': { description: 'Компоненты, токены и визуальные правила интерфейсов платформы.', audience: [], status: SERVICE_STATUSES.production },
   brandbook: { description: 'Закрытый цифровой брендбук IRLIX для топ-менеджмента и администратора платформы.', audience: ['Топ-менеджмент'], status: SERVICE_STATUSES.preproduction },
   system: { description:'Ресурсный монитор, карта сервисов и перенос данных.', audience:[], status:SERVICE_STATUSES.preproduction },

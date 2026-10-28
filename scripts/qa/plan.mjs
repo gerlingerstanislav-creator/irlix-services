@@ -7,13 +7,14 @@ export const suites = [
   { id: 'timesheets', label: 'Timesheets', files: ['apps/timesheets/tests'] },
   { id: 'migration', label: 'Migration', files: ['apps/migration/tests/migration-control.test.mjs'] },
   { id: 'portal', label: 'Dashboard', files: ['apps/portal/tests'] },
+  { id: 'storage', label: 'Storage pilot', files: ['apps/storage/tests'] },
   { id: 'vacations', label: 'Vacations', files: ['apps/vacations/tests'] },
   { id: 'finance', label: 'Finance contracts', files: ['apps/finance/tests'] },
   { id: 'equipment', label: 'Equipment regression', files: ['apps/equipment/tests/contracts.test.mjs'] },
   { id: 'qa', label: 'QA self-tests', files: ['scripts/qa/tests'] }
 ];
 
-export const domains = ['ui', 'auth', 'employees', 'clients', 'timesheets', 'migration', 'portal', 'vacations', 'equipment', 'finance', 'specialists', 'recruitment', 'cv', 'platform', 'ci'];
+export const domains = ['ui', 'auth', 'employees', 'clients', 'timesheets', 'migration', 'portal', 'vacations', 'equipment', 'finance', 'specialists', 'recruitment', 'cv', 'storage', 'platform', 'ci'];
 const mapping = [
   ['packages/ui/', ['ui', 'employees', 'clients', 'timesheets', 'portal', 'migration', 'equipment', 'finance']],
   ['packages/auth/', ['auth', 'ui', 'employees', 'clients', 'timesheets', 'portal', 'migration', 'equipment', 'finance']],
@@ -31,6 +32,8 @@ const mapping = [
   ['services/migration/', ['migration']],
   ['services/migration-ops/', ['migration']],
   ['apps/portal/', ['portal']],
+  ['apps/storage/', ['storage']],
+  ['services/storage-api/', ['storage']],
   ['services/platform-core/', ['portal', 'auth']],
   ['apps/vacations/', ['vacations']],
   ['services/vacations/', ['vacations', 'timesheets']],
@@ -52,7 +55,7 @@ const mapping = [
   ['.github/agents/', ['qa']]
 ];
 const suiteIds = new Set(suites.map(x => x.id));
-const scopeSuiteIds = { vacations: ['vacations'], equipment: ['equipment'], specialists: [], recruitment: [], cv: [], platform: ['portal', 'auth'], ci: ['qa'] };
+const scopeSuiteIds = { storage: ['storage'], vacations: ['vacations'], equipment: ['equipment'], specialists: [], recruitment: [], cv: [], platform: ['portal', 'auth'], ci: ['qa'] };
 export function makePlan(changedPaths = null, scope = 'changed') {
   if (scope !== 'all' && scope !== 'changed' && !domains.includes(scope)) {
     throw new Error('Unknown QA scope: ' + scope);

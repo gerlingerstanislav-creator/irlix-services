@@ -48,5 +48,45 @@ services:
     mem_limit: 512m
     cpus: 1.0
 
+
+  # Read-only metadata and small synthetic pilot object operations. The API
+  # revalidates the Employees cookie on each call; S3 keys never reach browsers.
+  storage-api:
+    build:
+      context: .
+      dockerfile: services/storage-api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      storage-s3:
+        condition: service_started
+      employees:
+        condition: service_started
+    environment:
+      STORAGE_S3_ACCESS_KEY: ${STORAGE_S3_ACCESS_KEY:?Storage pilot access key missing}
+      STORAGE_S3_SECRET_KEY: ${STORAGE_S3_SECRET_KEY:?Storage pilot secret key missing}
+      STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-irlix-storage-pilot}
+      STORAGE_S3_ENDPOINT: http://storage-s3:8333
+      STORAGE_EMPLOYEES_GATE: http://employees:8000/_storage_pilot_access
+      STORAGE_PUBLIC_ORIGIN: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}:8110
+    ports:
+      - "127.0.0.1:8114:8000"
+    mem_limit: 256m
+    cpus: 0.75
+
+  # Own UI replaces Filestash on the guarded :8110 ingress. Filestash's
+  # existing state/container remains intact for technical operator testing.
+  storage-drive:
+    build:
+      context: .
+      dockerfile: apps/storage/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      storage-api:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8115:80"
+    mem_limit: 128m
+    cpus: 0.5
+
 volumes:
   storage_filestash_state:

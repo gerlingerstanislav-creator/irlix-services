@@ -407,13 +407,36 @@
       "health_path": "/"
     },
     {
-      "id": "storage",
-      "kind": "frontend",
+      "id": "storage-filestash",
+      "kind": "backend",
       "service": "storage-web",
       "image": "irlix-storage-web",
       "tag_env": "STORAGE_WEB_IMAGE_TAG",
       "paths": [
         "infra/storage/filestash/"
+      ],
+      "health_path": "/"
+    },
+    {
+      "id": "storage-api",
+      "kind": "backend",
+      "service": "storage-api",
+      "image": "irlix-storage-api",
+      "tag_env": "STORAGE_API_IMAGE_TAG",
+      "paths": [
+        "services/storage-api/"
+      ],
+      "health_path": "/api/storage/health"
+    },
+    {
+      "id": "storage",
+      "kind": "frontend",
+      "service": "storage-drive",
+      "image": "irlix-storage-drive",
+      "tag_env": "STORAGE_DRIVE_IMAGE_TAG",
+      "paths": [
+        "apps/storage/",
+        "packages/ui/"
       ],
       "page_path": "/storage/"
     }
