@@ -26,7 +26,7 @@ final class VacationsScopedAccess
 
         // The collective queue is filtered again by its controller before
         // serialization. Other mass read models require separate filtering.
-        if ($path === 'api/approvals' && $method === 'GET') return true;
+        if (in_array($path, ['api/approvals','api/registry'], true) && $method === 'GET') return true;
 
         if (in_array($path, [
             'api/me','api/workspace','api/history','api/attention',
