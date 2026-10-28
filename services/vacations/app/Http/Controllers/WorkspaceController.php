@@ -188,7 +188,8 @@ final class WorkspaceController extends Controller
             $item['attachment_count'] = $attachmentCount;
             $item['available_actions'] = $historicalReadOnly
                 ? ['view', 'history']
-                : $this->availableActions($item, $access, $actorId, $pending, $attachmentCount);
+                : $this->availableActions($item, $access, $actorId, $pending, $attachmentCount,
+                    $request->attributes->get('vacations_local_permissions'));
             $item['pending_approval_id'] = $historicalReadOnly ? null : ($pending['id'] ?? null);
             $item['pending_approval_stage'] = $pending['stage'] ?? null;
             $item['approval_progress'] = $approvals;
@@ -302,7 +303,8 @@ final class WorkspaceController extends Controller
                 $pending = $this->pendingApprovalForActor($tasks, $request, $access, $actorId, $targetId);
                 $item['available_actions'] = $historical && !isset($currentEmployeeIds[$targetId])
                     ? ['view', 'history']
-                    : $this->availableActions($item, $access, $actorId, $pending, (int) $item['attachment_count']);
+                    : $this->availableActions($item, $access, $actorId, $pending, (int) $item['attachment_count'],
+                        $request->attributes->get('vacations_local_permissions'));
                 $item['pending_approval_id'] = $pending['id'] ?? null;
                 $item['pending_approval_stage'] = $pending['stage'] ?? null;
                 $item['approval_progress'] = $tasks;
@@ -447,7 +449,8 @@ final class WorkspaceController extends Controller
         return null;
     }
 
-    private function availableActions(array $absence, array $access, int $actorId, ?array $pending, int $attachmentCount): array
+    private function availableActions(array $absence, array $access, int $actorId,
+        ?array $pending, int $attachmentCount, ?array $localPermissions = null): array
     {
         $status = (string) $absence['status'];
         $owner = (int) $absence['employee_id'] === $actorId;
@@ -481,7 +484,7 @@ final class WorkspaceController extends Controller
 
         if ($this->authorization->isAdmin($access)) $actions[] = 'delete';
 
-        return array_values(array_unique($actions));
+        return \App\Services\VacationsActionPolicy::visible($actions, $localPermissions);
     }
 
     private function handle(Request $request, callable $callback): JsonResponse
