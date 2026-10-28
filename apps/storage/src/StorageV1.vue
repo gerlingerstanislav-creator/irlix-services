@@ -25,6 +25,9 @@ const shareRole = ref('reader');
 const grants = ref([]);
 const historyItem = ref(null);
 const historyEvents = ref([]);
+const versionsItem = ref(null);
+const fileVersions = ref([]);
+const newVersionInput = ref(null);
 const operationItem = ref(null);
 const operationKind = ref('');
 const operationName = ref('');
@@ -34,6 +37,7 @@ const directoryOptions = ref([]);
 const currentEmployeeId = computed(() => Number(props.access?.employee_id || 0));
 const isAdmin = computed(() => Array.isArray(props.access?.roles) && props.access.roles.includes('platform-admin'));
 const canManage = item => isAdmin.value || item.owner_employee_id === currentEmployeeId.value;
+const canEdit = item => canManage(item) || item.can_edit === true;
 const targets = computed(() => [
   { value: '', label: 'Корневая папка' },
   ...targetFolders.value.filter(folder => operationKind.value !== 'move'
@@ -44,10 +48,12 @@ const targets = computed(() => [
 const actionsFor = item => [
   ...(item.kind === 'file' && mode.value !== 'trash'
     ? [{ id: 'download', label: 'Скачать' }, { id: 'copy', label: 'Создать копию' }] : []),
+  ...(canEdit(item) && mode.value !== 'trash'
+    ? [{ id: 'rename', label: 'Переименовать' },
+       ...(item.kind === 'file' ? [{ id: 'versions', label: 'Версии файла' }] : []) ] : []),
   ...(canManage(item) && mode.value !== 'trash' ? [
-    { id: 'rename', label: 'Переименовать' }, { id: 'move', label: 'Переместить' },
-    { id: 'share', label: 'Настроить доступ' }, { id: 'history', label: 'История действий' },
-    { id: 'trash', label: 'В корзину', danger: true },
+    { id: 'move', label: 'Переместить' }, { id: 'share', label: 'Настроить доступ' },
+    { id: 'history', label: 'История действий' }, { id: 'trash', label: 'В корзину', danger: true },
   ] : []),
   ...(mode.value === 'trash' && canManage(item) ? [{ id: 'restore', label: 'Восстановить' }] : []),
 ];
@@ -149,6 +155,7 @@ async function mutate(item, action) {
   if (action === 'download') return download(item);
   if (action === 'share') return openSharing(item);
   if (action === 'history') return openHistory(item);
+  if (action === 'versions') return openVersions(item);
   if (['rename','move','copy'].includes(action)) return openOperation(item, action);
   if (!['trash', 'restore'].includes(action)) return;
   if (action === 'trash' && !window.confirm('Переместить «' + item.name + '» в корзину? Файл можно восстановить.')) return;
@@ -245,6 +252,37 @@ async function submitOperation() {
     }
     notice.value = 'Операция выполнена';
     operationItem.value = null;
+    await refresh();
+  } catch (err) { error.value = err.message; }
+  finally { busy.value = false; }
+}
+async function openVersions(item) {
+  versionsItem.value = item; fileVersions.value = []; error.value = '';
+  try {
+    const result = await request('/objects/' + item.id + '/versions');
+    fileVersions.value = result.versions || [];
+  } catch (err) { error.value = err.message; }
+}
+async function replaceVersion(chosen) {
+  if (!versionsItem.value || !chosen || busy.value) return;
+  busy.value = true; error.value = '';
+  try {
+    const data = new FormData();
+    data.append('file', chosen);
+    await request('/objects/' + versionsItem.value.id + '/versions', { method: 'POST', body: data });
+    notice.value = 'Новая версия сохранена';
+    await openVersions(versionsItem.value);
+    await refresh();
+  } catch (err) { error.value = err.message; }
+  finally { busy.value = false; if (newVersionInput.value) newVersionInput.value.value = ''; }
+}
+async function restoreVersion(version) {
+  if (!versionsItem.value || busy.value || !window.confirm('Восстановить выбранную версию файла? Текущая версия сохранится в истории.')) return;
+  busy.value = true; error.value = '';
+  try {
+    await request('/objects/' + versionsItem.value.id + '/versions/' + version.id + '/restore', { method: 'POST' });
+    notice.value = 'Версия восстановлена';
+    await openVersions(versionsItem.value);
     await refresh();
   } catch (err) { error.value = err.message; }
   finally { busy.value = false; }
@@ -349,6 +387,23 @@ onMounted(() => refresh());
           <UiButton :disabled="busy || (operationKind !== 'move' && !operationName.trim())">Сохранить</UiButton>
         </div>
       </form>
+    </div>
+    <div v-if="versionsItem" class="storage-overlay" @click.self="versionsItem=null">
+      <section class="storage-modal storage-small-modal storage-v1-history" role="dialog" aria-modal="true" aria-label="Версии файла">
+        <div class="storage-modal-head"><h2>Версии: {{ versionsItem.name }}</h2><button type="button" @click="versionsItem=null">×</button></div>
+        <div v-if="canEdit(versionsItem)" class="storage-v1-version-actions">
+          <UiButton type="button" :disabled="busy" @click="newVersionInput?.click()">Загрузить новую версию</UiButton>
+          <input ref="newVersionInput" type="file" hidden @change="replaceVersion($event.target.files?.[0])" />
+        </div>
+        <p v-if="!fileVersions.length">Версий пока нет</p>
+        <div v-for="version in fileVersions" :key="version.id" class="storage-v1-grant">
+          <span>{{ new Date(version.created_at).toLocaleString('ru-RU') }} · {{ version.size_bytes }} Б
+            <strong v-if="version.current"> · Текущая</strong>
+          </span>
+          <UiButton v-if="!version.current && canEdit(versionsItem)" type="button" variant="secondary"
+            :disabled="busy" @click="restoreVersion(version)">Восстановить</UiButton>
+        </div>
+      </section>
     </div>
     <div v-if="historyItem" class="storage-overlay" @click.self="historyItem=null">
       <section class="storage-modal storage-small-modal storage-v1-history" role="dialog" aria-modal="true" aria-label="История действий с файлом">
