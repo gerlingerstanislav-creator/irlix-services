@@ -12,6 +12,7 @@ $result=Authz::evaluate(['org:irlix','special:personnel-officer'],$rows);
 $check($result['recruitment.workspace.view'],'Recruiter view missing');
 $check(!$result['recruitment.candidates.manage'],'Explicit denial did not override recruiter grant');
 $check(!$result['recruitment.offers.manage'],'Unassigned offer permission became granted');
+$check(!$result['recruitment.compensation.view'],'General workspace access exposed compensation');
 $check(!Authz::evaluate(['service:recruitment'],$rows)['recruitment.workspace.view'],
     'Legacy service marker bypassed Recruitment policy');
 $check(!Authz::evaluate(['special:personnel-officer'],[
