@@ -91,6 +91,16 @@ async def guard(request: Request):
                 headers={"Cookie": "irlix_storage_pilot=" + token})
         if resp.status_code != 204:
             raise HTTPException(401 if resp.status_code == 401 else 403, "Нет доступа к хранилищу")
+        # Actor identity comes only from the internal Employees gate response.
+        # Browser-supplied X-Storage-* headers are NEVER trusted.
+        actor_id = resp.headers.get("X-Storage-Employee-ID", "")
+        request.state.storage_actor_id = (int(actor_id) if actor_id.isascii()
+                                          and actor_id.isdecimal() and int(actor_id) > 0
+                                          else None)
+        request.state.storage_platform_admin = (
+            request.state.storage_actor_id is not None
+            and resp.headers.get("X-Storage-Platform-Admin") == "1"
+        )
     except httpx.RequestError:
         raise HTTPException(503, "Не удалось проверить доступ")
     if request.method not in ("GET", "HEAD", "OPTIONS"):
@@ -456,3 +466,9 @@ def read_file(key: str = Query(...), preview: bool = False):
         headers["Content-Length"] = str(obj["ContentLength"])
     # No active content as HTML/SVG: these are always downloaded.
     return StreamingResponse(stream(), media_type=mime if inline else "application/octet-stream", headers=headers)
+
+
+# Keep new ACL endpoints isolated from the administrator-only legacy pilot.
+# They fail closed unless the new metadata DB and signed Employees actor are enabled.
+from .v1_api import router as v1_router
+app.include_router(v1_router, dependencies=[Depends(guard)])
