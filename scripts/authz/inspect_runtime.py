@@ -115,19 +115,15 @@ def matrix_counts(sudo, compose, service, model):
 
 
 def role_sync(sudo, compose):
-    result = safely_parse_json(invoke([
-        *sudo, *compose, "exec", "-T", "employees", "php",
-        "bin/authz-status.php",
-    ], timeout=25))
+    raw = invoke([*sudo, *compose, "exec", "-T", "employees", "php",
+                  "bin/authz-status.php"], timeout=25)
     # authz-status exits 2 when not ready; its JSON is still safe to parse.
-    if result is None:
-        raw = invoke([*sudo, *compose, "exec", "-T", "employees",
-                      "php", "bin/authz-status.php"], timeout=25)
-        if raw is not None:
-            try:
-                result = json.loads(raw.stdout)
-            except (ValueError, TypeError):
-                pass
+    result = None
+    if raw is not None and raw.returncode in (0, 2):
+        try:
+            result = json.loads(raw.stdout)
+        except (ValueError, TypeError):
+            pass
     return "ready" if isinstance(result, dict) and result.get("ready") is True \
         else "not_ready_or_unverified"
 
