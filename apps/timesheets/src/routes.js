@@ -21,5 +21,6 @@ export const routes = [
   { path: '/partners/', redirect: to => ({ name: 'management', query: to.query, hash: to.hash }) },
   { path: '/commercial-load/', name: 'analytics', meta: { section: 'analytics' } },
   { path: '/audit/', name: 'audit', meta: { section: 'audit' } },
+  { path: '/permissions/', name: 'permissions', meta: { section: 'permissions' } },
   { path: '/:pathMatch(.*)*', name: 'not-found', meta: { section: 'not-found' } },
 ];
