@@ -216,11 +216,6 @@ class StoragePilotApiTests(TestCase):
         with Image.open(BytesIO(result.content)) as image:
             self.assertLessEqual(image.width, 320)
             self.assertLessEqual(image.height, 240)
-        self.assertEqual(self.client.get("/trash").status_code, 401)
-        self.assertEqual(self.client.post("/trash", data={
-            "kind": "folder", "path": "Private/"}).status_code, 401)
-        self.assertEqual(self.client.post("/restore", data={
-            "kind": "folder", "path": "Private/"}).status_code, 401)
         self.assertEqual(self.client.get("/thumbnails", params={
             "key": "pilot-ui/not-legit"}).status_code, 404)
         other = self.client.post("/files", files={"file": ("doc.pdf", b"pdf")}).json()
@@ -255,6 +250,11 @@ class StoragePilotApiTests(TestCase):
         app.dependency_overrides.clear()
         self.assertEqual(self.client.get("/items").status_code, 401)
         self.assertEqual(self.client.post("/folders", data={"folder_name": "oops"}).status_code, 401)
+        self.assertEqual(self.client.get("/trash").status_code, 401)
+        self.assertEqual(self.client.post("/trash", data={
+            "kind": "folder", "path": "Private/"}).status_code, 401)
+        self.assertEqual(self.client.post("/restore", data={
+            "kind": "folder", "path": "Private/"}).status_code, 401)
         self.assertEqual(self.client.post("/rename", data={
             "kind": "file", "key": "pilot-ui/00000000000000000000000000000000__a.pdf",
             "new_name": "b.pdf"}).status_code, 401)
