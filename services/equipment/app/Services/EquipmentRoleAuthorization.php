@@ -6,6 +6,22 @@ use App\Models\EquipmentRolePermission;
 
 final class EquipmentRoleAuthorization
 {
+    public static function currentIdentityMatches(array $signed, array $live): bool
+    {
+        $ids=array_values(array_filter($signed,static fn ($role)=>
+            is_string($role) && preg_match('/^employee-id:[1-9][0-9]*$/D',$role)===1));
+        if (count($ids)!==1 || (int)substr($ids[0],strlen('employee-id:'))!==(int)($live['employee_id']??0)
+            || !is_array($live['roles']??null) || !is_array($live['role_claims']??null)) return false;
+        $current=array_fill_keys((array)$live['role_claims'],true);
+        foreach ($signed as $role) {
+            if (!is_string($role)) continue;
+            if ($role==='platform-admin' && !in_array('platform-admin',$live['roles'],true)) return false;
+            if (preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D',$role)===1
+                && !isset($current[$role])) return false;
+        }
+        return true;
+    }
+
     public const PERMISSIONS = [
         'equipment.view','equipment.manage','equipment.operate',
     ];
