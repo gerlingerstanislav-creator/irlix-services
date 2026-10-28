@@ -20,12 +20,17 @@ const year=ref(new Date().getFullYear());
 const workspace=ref(null),loadingWorkspace=ref(true),error=ref(''),success=ref(''),refreshToken=ref(0),drawerOpen=ref(false),drawerLoading=ref(false),detail=ref(null),showEdit=ref(false),editSaving=ref(false),editForm=ref({id:null,type:'paid_vacation',starts_on:'',ends_on:'',comment:''});
 const roles=computed(()=>workspace.value?.access?.roles||[]);
 const isAdmin=computed(()=>roles.value.includes('platform-admin')||roles.value.includes('special:platform-admin'));
-const isPersonnelOfficer=computed(()=>isAdmin.value||roles.value.includes('personnel-officer')||roles.value.includes('special:personnel-officer'));
-const isHr=computed(()=>isAdmin.value||roles.value.includes('hr')||roles.value.includes('org:hr'));
-const isManager=computed(()=>isAdmin.value||roles.value.includes('manager')
-  ||roles.value.some(role=>role.endsWith('-head')||role.startsWith('head:')));
-const isElevated=computed(()=>isPersonnelOfficer.value||isHr.value||isManager.value);
 const mode=computed(()=>workspace.value?.authorization?.mode||'legacy');
+const isPersonnelOfficer=computed(()=>isAdmin.value||(mode.value==='local'
+  ? roles.value.includes('special:personnel-officer')
+  : roles.value.includes('personnel-officer')));
+const isHr=computed(()=>isAdmin.value||(mode.value==='local'
+  ? roles.value.includes('org:hr')
+  : roles.value.includes('hr')));
+const isManager=computed(()=>isAdmin.value||(mode.value==='local'
+  ? roles.value.some(role=>role.startsWith('head:'))
+  : roles.value.includes('manager')||roles.value.some(role=>role.endsWith('-head'))));
+const isElevated=computed(()=>isPersonnelOfficer.value||isHr.value||isManager.value);
 const effectivePermissions=computed(()=>workspace.value?.authorization?.permissions||{});
 const can=(key, legacy=false)=>canVacations(mode.value,effectivePermissions.value,key,legacy);
 const visible=computed(()=>visibleVacationsSections(mode.value,effectivePermissions.value,{
@@ -156,8 +161,8 @@ onMounted(loadWorkspace);
 
       <template v-else-if="workspace && availableSections.has(section)">
         <MyAbsencesPage v-if="section==='mine'" :year="year" :profile="workspace.employee" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged()"/>
-        <DepartmentAbsencesPage v-else-if="section==='department'" :year="year" :departments="workspace.departments||[]" :employees="workspace.employees||[]" :can-create-for-employee="can('vacations.department.manage',isManager)" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged('Отсутствие сотрудника создано')"/>
-        <ManageAbsencesPage v-else-if="section==='manage'" :year="year" :departments="workspace.departments||[]" :employees="workspace.employees||[]" :can-create-for-employee="can('vacations.department.manage',isManager||isPersonnelOfficer)" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged('Отсутствие сотрудника создано')"/>
+        <DepartmentAbsencesPage v-else-if="section==='department'" :year="year" :departments="workspace.departments||[]" :employees="workspace.employees||[]" :can-create-for-employee="can('vacations.department.manage',isManager) && isManager" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged('Отсутствие сотрудника создано')"/>
+        <ManageAbsencesPage v-else-if="section==='manage'" :year="year" :departments="workspace.departments||[]" :employees="workspace.employees||[]" :can-create-for-employee="can('vacations.department.manage',isManager||isPersonnelOfficer) && (isManager||isPersonnelOfficer)" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged('Отсутствие сотрудника создано')"/>
         <ActionHistoryPage v-else-if="section==='history'" :year="year" :employees="workspace.employees||[]" :refresh-token="refreshToken" @action="handleAction" @error="notifyError"/>
         <PermissionsPage v-else-if="section==='permissions'"/>
       </template>
