@@ -35,15 +35,45 @@ final class WorkspaceController extends Controller
                         && ($localGrants['vacations.department.view']['scope'] ?? 'none') === 'all')
                     || (($localGrants['vacations.manage.view']['allowed'] ?? false)
                         && ($localGrants['vacations.manage.view']['scope'] ?? 'none') === 'all'));
+            if (is_array($localGrants)) {
+                // The service-specific matrix, never the presence of an HR
+                // or manager identity alone, decides visibility. Team
+                // projections are filtered before leaving this backend.
+                $allowedScopes = [];
+                foreach (['vacations.department.view', 'vacations.manage.view'] as $permission) {
+                    $rule = (array) ($localGrants[$permission] ?? []);
+                    if (($rule['allowed'] ?? false) === true) {
+                        $allowedScopes[] = $rule['scope'] ?? 'none';
+                    }
+                }
+                $scope = in_array('all', $allowedScopes, true) ? 'all'
+                    : (in_array('team', $allowedScopes, true) ? 'team' : 'none');
+                $canReadDirectory = $scope !== 'none';
+            }
             if ($canReadDirectory) {
                 $payload = $this->employees->vacationsDirectory($request);
                 $directory = array_values($payload['employees'] ?? []);
                 $departments = array_values($payload['departments'] ?? []);
+                if (is_array($localGrants) && $scope === 'team') {
+                    $ids = array_fill_keys(
+                        \App\Services\VacationsObjectScope::managedDepartments(
+                            (int) $employee['id'], $departments
+                        ), true);
+                    $directory = array_values(array_filter($directory,
+                        static fn (array $person): bool =>
+                            isset($ids[(int) ($person['department_id'] ?? 0)])));
+                    $departments = array_values(array_filter($departments,
+                        static fn (array $dept): bool =>
+                            isset($ids[(int) ($dept['id'] ?? 0)])));
+                }
             }
 
             return response()->json(['data' => [
                 'employee' => $employee,
                 'access' => $access,
+                'authorization' => is_array($localGrants)
+                    ? ['mode' => 'local', 'permissions' => $localGrants]
+                    : ['mode' => 'legacy', 'permissions' => []],
                 'employees' => $directory,
                 'departments' => $departments,
             ]]);
@@ -140,7 +170,14 @@ final class WorkspaceController extends Controller
     public function registry(Request $request): JsonResponse
     {
         return $this->handle($request, function (array $employee, array $access) use ($request) {
-            if (!$this->authorization->isElevated($access)) throw new DomainException('Недостаточно прав для просмотра отпусков подразделения');
+            $localGrants = $request->attributes->get('vacations_local_permissions');
+            if (is_array($localGrants)) {
+                if (($localGrants['vacations.manage.view']['allowed'] ?? false) !== true) {
+                    throw new DomainException('Не разрешён просмотр реестра отпусков');
+                }
+            } elseif (!$this->authorization->isElevated($access)) {
+                throw new DomainException('Недостаточно прав для просмотра отпусков подразделения');
+            }
 
 
             $historical = $request->has('historical_year');
