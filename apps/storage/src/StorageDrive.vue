@@ -1,0 +1,266 @@
+<script setup>
+import { ref, computed, onMounted } from 'vue';
+
+const folder = ref('');
+const folders = ref([]);
+const files = ref([]);
+const next = ref(null);
+const loading = ref(false);
+const busy = ref(false);
+const error = ref('');
+const notice = ref('');
+const search = ref('');
+const layout = ref('list');
+const sortBy = ref('name');
+const createFolder = ref(false);
+const folderName = ref('');
+const selected = ref(null);
+const preview = ref(null);
+const textPreview = ref('');
+const showDrop = ref(false);
+const input = ref(null);
+let requestSerial = 0;
+
+const segments = computed(() => folder.value.split('/').filter(Boolean));
+const breadcrumbs = computed(() => [
+  { name: 'Мои файлы', path: '' },
+  ...segments.value.map((segment, index) => ({
+    name: segment,
+    path: segments.value.slice(0, index + 1).join('/') + '/',
+  })),
+]);
+const visible = computed(() => {
+  const term = search.value.trim().toLocaleLowerCase();
+  const items = [
+    ...folders.value.map(entry => ({ ...entry, kind: 'folder' })),
+    ...files.value.map(entry => ({ ...entry, kind: 'file' })),
+  ].filter(item => !term || item.name.toLocaleLowerCase().includes(term));
+  return items.sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind === 'folder' ? -1 : 1;
+    if (sortBy.value === 'size') return (b.size || 0) - (a.size || 0);
+    if (sortBy.value === 'date') return (b.modified || '').localeCompare(a.modified || '');
+    return a.name.localeCompare(b.name, 'ru', { numeric: true });
+  });
+});
+const totalSize = computed(() => files.value.reduce((sum, item) => sum + (item.size || 0), 0));
+const typeOf = filename => {
+  const extension = filename.toLocaleLowerCase().split('.').pop();
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension)) return 'image';
+  if (extension === 'pdf') return 'pdf';
+  if (['txt', 'csv', 'json', 'xml', 'log'].includes(extension)) return 'text';
+  if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(extension)) return 'office';
+  return 'other';
+};
+const iconOf = item => item.kind === 'folder' ? '📁' :
+  ({ pdf: '📕', image: '🖼️', text: '📄', office: '📘', other: '📄' })[typeOf(item.name)];
+const readableSize = size => {
+  if (!size) return '0 Б';
+  const unit = Math.floor(Math.log(size) / Math.log(1024));
+  return (size / 1024 ** unit).toFixed(unit ? 1 : 0).replace('.', ',') + ' ' + ['Б', 'КБ', 'МБ', 'ГБ'][Math.min(unit, 3)];
+};
+const dateText = date => {
+  if (!date) return '—';
+  const parsed = new Date(date);
+  return Number.isNaN(parsed.valueOf()) ? '—' : new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  }).format(parsed);
+};
+const urlFor = (item, inline = false) =>
+  '/api/storage/files?key=' + encodeURIComponent(item.key) + (inline ? '&preview=true' : '');
+async function api(path, options = {}) {
+  const response = await fetch('/api/storage' + path, {
+    credentials: 'same-origin', cache: 'no-store',
+    ...options,
+    headers: { ...(options.method ? { 'X-Irlix-Storage-Request': '1' } : {}), ...(options.headers || {}) },
+  });
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Сессия истекла или доступ запрещён. Перейдите на дашборд и войдите повторно.');
+    }
+    let message = 'Не удалось выполнить операцию';
+    try { message = (await response.json()).detail || message; } catch (_) { /* no JSON */ }
+    throw new Error(message);
+  }
+  return response.json();
+}
+async function refresh(loadMore = false) {
+  if (loading.value) return;
+  loading.value = true; error.value = '';
+  const serial = ++requestSerial;
+  try {
+    const params = new URLSearchParams({ folder: folder.value });
+    if (loadMore && next.value) params.set('continuation', next.value);
+    const result = await api('/items?' + params);
+    if (serial !== requestSerial) return;
+    folders.value = loadMore ? [...folders.value, ...result.folders] : result.folders;
+    files.value = loadMore ? [...files.value, ...result.files] : result.files;
+    next.value = result.next;
+  } catch (err) { error.value = err.message; }
+  finally { loading.value = false; }
+}
+function go(path) {
+  if (path === folder.value) return;
+  folder.value = path; folders.value = []; files.value = []; next.value = null;
+  selected.value = null; preview.value = null; search.value = '';
+  refresh();
+}
+function open(item) {
+  if (item.kind === 'folder') { go(item.path); return; }
+  selected.value = item;
+  preview.value = item;
+  textPreview.value = '';
+  if (typeOf(item.name) === 'text' && item.size <= 1024 * 1024) {
+    fetch(urlFor(item, true), { credentials: 'same-origin', cache: 'no-store' })
+      .then(response => {
+        if (!response.ok) throw new Error('Не удалось открыть предпросмотр');
+        return response.text();
+      }).then(text => { if (preview.value?.key === item.key) textPreview.value = text; })
+      .catch(() => { textPreview.value = 'Предпросмотр недоступен'; });
+  }
+}
+function download(item) {
+  // The server forces Content-Disposition: attachment and never reveals S3 credentials.
+  const link = document.createElement('a');
+  link.href = urlFor(item);
+  link.download = item.name;
+  document.body.appendChild(link); link.click(); link.remove();
+}
+async function addFolder() {
+  if (!folderName.value.trim() || busy.value) return;
+  busy.value = true; error.value = '';
+  try {
+    const body = new FormData();
+    body.append('folder', folder.value);
+    body.append('folder_name', folderName.value);
+    await api('/folders', { method: 'POST', body });
+    createFolder.value = false; folderName.value = '';
+    notice.value = 'Папка создана';
+    await refresh();
+  } catch (err) { error.value = err.message; }
+  finally { busy.value = false; }
+}
+async function upload(chosen) {
+  const uploadFiles = Array.from(chosen || []);
+  if (!uploadFiles.length || busy.value) return;
+  if (uploadFiles.some(file => file.size > 10 * 1024 * 1024)) {
+    error.value = 'Максимальный размер одного файла — 10 МБ'; return;
+  }
+  busy.value = true; error.value = ''; notice.value = '';
+  try {
+    for (const file of uploadFiles) {
+      const body = new FormData();
+      body.append('folder', folder.value);
+      body.append('file', file, file.name);
+      await api('/files', { method: 'POST', body });
+    }
+    notice.value = 'Загружено файлов: ' + uploadFiles.length;
+    await refresh();
+  } catch (err) { error.value = err.message; }
+  finally { busy.value = false; if (input.value) input.value.value = ''; }
+}
+function dropped(event) {
+  showDrop.value = false;
+  if (event.dataTransfer?.files?.length) upload(event.dataTransfer.files);
+}
+onMounted(() => refresh());
+</script>
+
+<template>
+  <div class="storage-shell" @dragenter.prevent="showDrop = true" @dragover.prevent @dragleave="showDrop = false" @drop.prevent="dropped">
+    <header class="storage-header">
+      <div class="storage-brand"><span class="storage-logo">i</span><span><b>IRLIX</b><small>services</small></span></div>
+      <div class="storage-header-title"><span class="storage-divider"></span><span>Хранилище</span><span class="storage-pilot">Пилот</span></div>
+      <a href="/" class="storage-header-link">На дашборд <span aria-hidden="true">↗</span></a>
+    </header>
+    <div class="storage-body">
+      <aside class="storage-sidebar">
+        <div class="storage-sidebar-title">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+        <button class="storage-nav active" @click="go('')"><span>▦</span> Мои файлы</button>
+        <div class="storage-sidebar-line"></div>
+        <div class="storage-sidebar-title">ХРАНИЛИЩЕ</div>
+        <div class="storage-capacity"><span class="storage-capacity-icon">◫</span><div><strong>Локальный S3</strong><small>SeaweedFS · тестовый контур</small></div></div>
+        <p class="storage-sidebar-note">Доступно администраторам платформы. Не храните здесь коммерческие документы до настройки резервного копирования.</p>
+        <div class="storage-sidebar-bottom">IRLIX STORAGE · v0.1</div>
+      </aside>
+      <main class="storage-main">
+        <div class="storage-main-top">
+          <div class="storage-heading"><h1>Файлы</h1><p>Хранение и просмотр документов в корпоративной инфраструктуре</p></div>
+          <div class="storage-actions">
+            <button type="button" class="storage-button secondary" @click="createFolder = true" :disabled="busy">＋ Папка</button>
+            <button type="button" class="storage-button primary" @click="input?.click()" :disabled="busy">{{ busy ? 'Загрузка…' : '↑ Загрузить файлы' }}</button>
+            <input ref="input" type="file" hidden multiple @change="upload($event.target.files)" />
+          </div>
+        </div>
+        <div class="storage-toolbar">
+          <nav class="storage-crumbs" aria-label="Путь"><template v-for="(part, idx) in breadcrumbs" :key="part.path">
+            <span v-if="idx" class="storage-separator">/</span>
+            <button @click="go(part.path)" :class="{ current: idx === breadcrumbs.length - 1 }">{{ part.name }}</button>
+          </template></nav>
+          <div class="storage-toolbar-tools">
+            <label class="storage-search"><span>⌕</span><input v-model="search" placeholder="Поиск в папке" aria-label="Поиск в папке" /></label>
+            <select v-model="sortBy" aria-label="Сортировка"><option value="name">По названию</option><option value="date">По дате</option><option value="size">По размеру</option></select>
+            <div class="storage-switch" aria-label="Вид файлов">
+              <button :class="{ active:layout==='list' }" title="Список" @click="layout = 'list'">☰</button>
+              <button :class="{ active:layout==='grid' }" title="Плитки" @click="layout = 'grid'">▦</button>
+            </div>
+          </div>
+        </div>
+        <div v-if="error" class="storage-alert" role="alert">{{ error }} <a href="/" v-if="error.includes('Сессия')">На дашборд</a></div>
+        <div v-if="notice" class="storage-notice" role="status">{{ notice }} <button @click="notice=''">×</button></div>
+        <div class="storage-content">
+          <div v-if="loading && !visible.length" class="storage-empty">Загружаем файлы…</div>
+          <div v-else-if="!visible.length" class="storage-empty">
+            <div class="storage-empty-icon">▤</div>
+            <h2>{{ search ? 'Ничего не найдено' : 'Папка пока пуста' }}</h2>
+            <p>{{ search ? 'Попробуйте другой поисковый запрос' : 'Загрузите первые файлы или создайте папку' }}</p>
+            <button v-if="!search" class="storage-button primary" @click="input?.click()">↑ Загрузить файлы</button>
+          </div>
+          <div v-else-if="layout==='list'" class="storage-table-wrap">
+            <table class="storage-table">
+              <thead><tr><th>Название</th><th>Размер</th><th>Изменён</th><th class="storage-download-cell"></th></tr></thead>
+              <tbody><tr v-for="item in visible" :key="item.kind==='folder'?item.path:item.key" @dblclick="open(item)" @click="selected=item" :class="{ selected:selected===item }" tabindex="0" @keydown.enter="open(item)">
+                <td><span class="storage-file-icon">{{ iconOf(item) }}</span><button class="storage-file-name" @click.stop="open(item)">{{ item.name }}</button></td>
+                <td>{{ item.kind === 'folder' ? 'Папка' : readableSize(item.size) }}</td>
+                <td>{{ dateText(item.modified) }}</td>
+                <td class="storage-download-cell"><button v-if="item.kind==='file'" @click.stop="download(item)" title="Скачать" aria-label="Скачать файл">↓</button><span v-else>›</span></td>
+              </tr></tbody>
+            </table>
+          </div>
+          <div v-else class="storage-grid">
+            <button v-for="item in visible" :key="item.kind==='folder'?item.path:item.key" class="storage-tile" @click="open(item)">
+              <span class="storage-tile-icon">{{ iconOf(item) }}</span>
+              <strong :title="item.name">{{ item.name }}</strong>
+              <small>{{ item.kind==='folder'?'Папка':readableSize(item.size) }}</small>
+            </button>
+          </div>
+          <div v-if="next" class="storage-load-more"><button class="storage-button secondary" :disabled="loading" @click="refresh(true)">Показать ещё</button></div>
+        </div>
+        <div class="storage-footer"><span>{{ folders.length }} папок · {{ files.length }} файлов</span><span>{{ readableSize(totalSize) }} · показана текущая папка</span></div>
+      </main>
+    </div>
+    <div v-if="createFolder" class="storage-overlay" @click.self="createFolder=false">
+      <form class="storage-modal storage-small-modal" @submit.prevent="addFolder">
+        <div class="storage-modal-head"><h2>Новая папка</h2><button type="button" @click="createFolder=false">×</button></div>
+        <label>Название папки<input v-model="folderName" placeholder="Например, Документы" maxlength="80" autofocus required /></label>
+        <div class="storage-modal-actions"><button type="button" class="storage-button secondary" @click="createFolder=false">Отмена</button><button class="storage-button primary" :disabled="busy||!folderName.trim()">Создать</button></div>
+      </form>
+    </div>
+    <div v-if="preview" class="storage-overlay" @click.self="preview=null">
+      <div class="storage-modal storage-preview-modal" role="dialog" aria-modal="true" aria-label="Просмотр файла">
+        <div class="storage-modal-head"><div><strong>{{ preview.name }}</strong><small>{{ readableSize(preview.size) }} · {{ dateText(preview.modified) }}</small></div>
+          <div><button class="storage-button secondary" @click="download(preview)">↓ Скачать</button><button title="Закрыть" @click="preview=null">×</button></div>
+        </div>
+        <div class="storage-preview-content">
+          <img v-if="typeOf(preview.name)==='image'" :src="urlFor(preview,true)" :alt="preview.name" />
+          <iframe v-else-if="typeOf(preview.name)==='pdf'" :src="urlFor(preview,true)" :title="preview.name" />
+          <pre v-else-if="typeOf(preview.name)==='text' && preview.size<=1024*1024">{{ textPreview || 'Загрузка текста…' }}</pre>
+          <div v-else class="storage-preview-fallback"><div class="storage-preview-symbol">{{ iconOf(preview) }}</div>
+            <h3>Предпросмотр пока недоступен</h3><p>Этот формат можно скачать. Просмотр Word, Excel и презентаций добавим отдельно.</p>
+            <button class="storage-button primary" @click="download(preview)">Скачать файл</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div v-if="showDrop" class="storage-dropzone">Отпустите файлы, чтобы загрузить их в папку</div>
+  </div>
+</template>
