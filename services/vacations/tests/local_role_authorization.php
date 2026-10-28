@@ -83,4 +83,16 @@ $test(!ObjectScope::allows('all',0,74,$org,$members),
     'Anonymous actor must never get a global scope grant');
 $test(ObjectScope::requiresCollectiveScope('api/registry'),
     'Global registry must not treat own scope as organization-wide');
+$signed = ['employee-id:74','org:irlix','org:backend','head:backend','special:personnel-officer'];
+$live = ['employee_id'=>74,'roles'=>['personnel-officer'],
+    'role_claims'=>['org:irlix','org:backend','head:backend','special:personnel-officer']];
+$test(Authz::currentIdentityMatches($signed,$live),'Live signed org/head and special roles rejected');
+$live['role_claims']=['org:irlix','org:backend','special:personnel-officer'];
+$test(!Authz::currentIdentityMatches($signed,$live),'Old head claim survived removal of management role');
+$live['role_claims']=['org:irlix','org:backend','head:backend','special:personnel-officer'];
+$live['employee_id']=75;
+$test(!Authz::currentIdentityMatches($signed,$live),'Other employee authorized a foreign token');
+$live['employee_id']=74;
+$test(!Authz::currentIdentityMatches([...$signed,'platform-admin'],$live),
+    'Old superuser JWT survived administrator role removal');
 echo "Vacations local roles: PASS\n";
