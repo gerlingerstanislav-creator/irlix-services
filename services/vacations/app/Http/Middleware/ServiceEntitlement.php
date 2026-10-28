@@ -107,6 +107,8 @@ final class ServiceEntitlement
                     return response()->json(['message' => 'Other employees require object-scope authorization'], 403);
                 }
             }
+            $request->attributes->set('vacations_local_employee_id',
+                (int) $fresh->json('data.employee_id'));
             $request->attributes->set('vacations_local_permissions', $permissions);
             return $next($request);
         }
