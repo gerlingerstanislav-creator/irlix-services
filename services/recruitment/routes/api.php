@@ -15,7 +15,7 @@ $actor = static function (Request $request): string {
     return (string)($identity['preferred_username'] ?? $identity['email'] ?? 'unknown');
 };
 
-Route::get('/workspace', function () {
+Route::get('/workspace', function (Request $request) {
     $candidates = DB::table('candidates')->orderByDesc('updated_at')->get()->map(function ($candidate) {
         $candidate->stack = json_decode($candidate->stack_json ?: '[]', true) ?: [];
         unset($candidate->stack_json);
@@ -37,14 +37,33 @@ Route::get('/workspace', function () {
     $interviews = DB::table('interviews as i')->join('hiring_processes as h','h.id','=','i.hiring_process_id')->join('candidates as c','c.id','=','h.candidate_id')->select('i.*','c.full_name as candidate_name')->orderBy('i.scheduled_at')->get();
     $offers = DB::table('offers as o')->join('hiring_processes as h','h.id','=','o.hiring_process_id')->join('candidates as c','c.id','=','h.candidate_id')->select('o.*','c.full_name as candidate_name')->orderByDesc('o.updated_at')->get();
     $funnel = DB::table('hiring_processes')->selectRaw('stage_type, count(*) as count')->groupBy('stage_type')->pluck('count', 'stage_type');
+    // Reading candidate cards does not implicitly grant compensation details.
+    $local=filter_var(env('IRLIX_AUTHZ_JWT_ENABLED',false),FILTER_VALIDATE_BOOLEAN)
+        &&filter_var(env('IRLIX_RECRUITMENT_LOCAL_AUTHZ_ENABLED',false),FILTER_VALIDATE_BOOLEAN);
+    $policy=(array)$request->attributes->get('recruitment_local_permissions',[]);
+    if($local&&!($policy['recruitment.compensation.view']??false)){
+        $candidates=$candidates->map(function($candidate){
+            $candidate->salary_expectation=null;
+            return $candidate;
+        });
+        $offers=$offers->map(function($offer){
+            $offer->compensation=null;
+            return $offer;
+        });
+    }
     return ['data' => compact('candidates','requests','pools','employment','onboarding','tasks','interviews','offers','funnel')];
 });
 
-Route::get('/candidates/{id}', function (int $id) {
+Route::get('/candidates/{id}', function (Request $request, int $id) {
     $candidate = DB::table('candidates')->find($id);
     abort_if(!$candidate, 404, 'Candidate not found');
     $candidate->stack = json_decode($candidate->stack_json ?: '[]', true) ?: [];
     unset($candidate->stack_json);
+    if(filter_var(env('IRLIX_AUTHZ_JWT_ENABLED',false),FILTER_VALIDATE_BOOLEAN)
+        &&filter_var(env('IRLIX_RECRUITMENT_LOCAL_AUTHZ_ENABLED',false),FILTER_VALIDATE_BOOLEAN)
+        &&!($request->attributes->get('recruitment_local_permissions',[])['recruitment.compensation.view']??false)){
+        $candidate->salary_expectation=null;
+    }
     $activities = DB::table('activities')->where('candidate_id', $id)->orderByDesc('occurred_at')->get();
     $processes = DB::table('hiring_processes')->where('candidate_id', $id)->orderByDesc('created_at')->get();
     $pools = DB::table('candidate_talent_pool as cp')->join('talent_pools as p','p.id','=','cp.talent_pool_id')->where('cp.candidate_id',$id)->select('p.id','p.name')->get();
