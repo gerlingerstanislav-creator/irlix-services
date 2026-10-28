@@ -88,7 +88,7 @@ async def guard(request: Request):
         raise HTTPException(503, "Не удалось проверить доступ")
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         # Cookie authentication must not allow cross-site forms or scripts to mutate S3.
-        expected = os.environ.get("STORAGE_PUBLIC_ORIGIN", "http://services.lan:8110")
+        expected = os.environ.get("STORAGE_PUBLIC_ORIGIN", "http://services.lan")
         if request.headers.get("Origin") != expected or request.headers.get("X-Irlix-Storage-Request") != "1":
             raise HTTPException(403, "Недопустимый источник запроса")
 
