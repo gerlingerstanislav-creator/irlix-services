@@ -18,16 +18,35 @@ final class PartnerAccessService
     {
         $me = $this->actor->resolve($request);
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
-        $response = Http::withToken($token)
-            ->withHeaders($request->header('X-Irlix-Role-Preview')
-                ? ['X-Irlix-Role-Preview' => $request->header('X-Irlix-Role-Preview')] : [])
-            ->acceptJson()->timeout(5)
-            ->get(rtrim((string) env('CLIENTS_URL', 'http://clients:8000/api'), '/').'/permissions/me');
-        abort_unless($response->successful(), 503, 'Не удалось проверить доступ через Clients');
-        $access = $response->json('data');
-        abort_unless(is_array($access), 503, 'Некорректный ответ прав');
-        $permission = $request->isMethod('GET')
-            ? 'timesheets.management.view' : 'timesheets.management.manage';
+        $local = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+            && filter_var(env('IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+        if ($local) {
+            // ServiceEntitlement checked the signed JWT and current
+            // organizational assignments. Never consult Clients for a
+            // business permission after Timesheets is switched to local V2.
+            $localPermissions = $request->attributes->get('timesheets_local_permissions');
+            abort_unless(is_array($localPermissions), 503, 'Timesheets permissions were not verified');
+            $access = ['permissions' => $localPermissions,
+                'platform_admin' => (bool) ($request->attributes->get('identity', [])['realm_roles'] ?? false)
+                    && (in_array('platform-admin', (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []), true)
+                        || in_array('special:platform-admin', (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []), true))];
+            $permission = match (true) {
+                $request->is('api/partner-hours/final-approval') => 'timesheets.partner-hours.approve',
+                $request->isMethod('GET') => 'timesheets.partner-hours.view',
+                default => 'timesheets.partner-hours.manage',
+            };
+        } else {
+            $response = Http::withToken($token)
+                ->withHeaders($request->header('X-Irlix-Role-Preview')
+                    ? ['X-Irlix-Role-Preview' => $request->header('X-Irlix-Role-Preview')] : [])
+                ->acceptJson()->timeout(5)
+                ->get(rtrim((string) env('CLIENTS_URL', 'http://clients:8000/api'), '/').'/permissions/me');
+            abort_unless($response->successful(), 503, 'Не удалось проверить доступ через Clients');
+            $access = $response->json('data');
+            abort_unless(is_array($access), 503, 'Некорректный ответ прав');
+            $permission = $request->isMethod('GET')
+                ? 'timesheets.management.view' : 'timesheets.management.manage';
+        }
         $grant = $access['permissions'][$permission] ?? [];
         abort_unless(($access['platform_admin'] ?? false) || ($grant['allowed'] ?? false),
             403, 'Недостаточно прав на ТШ партнёров');
