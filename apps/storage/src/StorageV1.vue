@@ -39,13 +39,26 @@ const actionsFor = item => [
 const showingNormal = computed(() => mode.value !== 'trash');
 const canCreate = computed(() => mode.value === 'mine' || (mode.value === 'shared' && Boolean(parentId.value)));
 
-async function request(path, options = {}) {
-  const response = await fetch('/api/storage/v1' + path, {
+async function authenticatedFetch(path, options = {}) {
+  const call = () => fetch('/api/storage/v1' + path, {
     credentials: 'same-origin',
     cache: 'no-store',
     ...options,
     headers: { ...(options.method ? { 'X-Irlix-Storage-Request': '1' } : {}), ...(options.headers || {}) },
   });
+  let response = await call();
+  if (response.status === 401) {
+    // Tokens are short-lived; renew through Keycloak-authorized Employees,
+    // never by trusting an employee ID supplied by the browser.
+    const renewal = await props.directoryFetch('/api/employees/storage-v1/session', {
+      method: 'POST', cache: 'no-store',
+    });
+    if (renewal.ok) response = await call();
+  }
+  return response;
+}
+async function request(path, options = {}) {
+  const response = await authenticatedFetch(path, options);
   if (!response.ok) {
     let message = response.status === 503 ? 'Новое файловое пространство ещё не подключено к базе метаданных.' : 'Операция не выполнена';
     try { message = (await response.json()).detail || message; } catch { /* empty response */ }
@@ -77,10 +90,18 @@ function open(item) {
     download(item);
   }
 }
-function download(item) {
-  const link = document.createElement('a');
-  link.href = '/api/storage/v1/files/' + encodeURIComponent(item.id);
-  link.download = item.name; document.body.appendChild(link); link.click(); link.remove();
+async function download(item) {
+  error.value = '';
+  try {
+    const response = await authenticatedFetch('/files/' + encodeURIComponent(item.id));
+    if (!response.ok) throw new Error('Не удалось скачать файл');
+    const file = await response.blob();
+    const url = URL.createObjectURL(file);
+    const link = document.createElement('a');
+    link.href = url; link.download = item.name;
+    document.body.appendChild(link); link.click(); link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) { error.value = err.message; }
 }
 async function createFolder() {
   if (!createName.value.trim() || busy.value) return;
