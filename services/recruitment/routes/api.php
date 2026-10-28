@@ -76,21 +76,16 @@ Route::post('/candidates', function (Request $request) {
         'salary_expectation'=>['nullable','string','max:128'],'source'=>['nullable','string','max:128'],'recruiter_name'=>['nullable','string','max:255'],'email'=>['nullable','email','max:255'],
         'phone'=>['nullable','string','max:64'],'stack'=>['array'],'stack.*'=>['string','max:128'],
     ]);
-    $local = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
-        && filter_var(env('IRLIX_RECRUITMENT_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
-    $grants = (array) $request->attributes->get('recruitment_local_permissions', []);
-    if ($local && !\App\Services\RecruitmentRoleAuthorization::canWriteSensitiveField($grants, $data, 'salary_expectation')) {
-        abort(403, 'Additional permission required for this field');
-    }
+    app(\App\Services\RecruitmentCompensationPolicy::class)
+        ->assertWrite($request, $data, 'salary_expectation');
     $id = DB::table('candidates')->insertGetId([
         'full_name'=>$data['full_name'],'role'=>$data['role']??null,'grade'=>$data['grade']??null,'city'=>$data['city']??null,'salary_expectation'=>$data['salary_expectation']??null,
         'source'=>$data['source']??null,'recruiter_name'=>$data['recruiter_name']??null,'email'=>$data['email']??null,'phone'=>$data['phone']??null,
         'stack_json'=>json_encode($data['stack']??[], JSON_UNESCAPED_UNICODE),'created_at'=>now(),'updated_at'=>now(),
     ]);
     $created = DB::table('candidates')->find($id);
-    if ($local && !($grants['recruitment.compensation.view'] ?? false)) {
-        $created->salary_expectation = null;
-    }
+    $created = app(\App\Services\RecruitmentCompensationPolicy::class)
+        ->redact($request, $created, 'salary_expectation');
     return response()->json(['data'=>$created], 201);
 });
 
@@ -139,37 +134,27 @@ Route::post('/interviews/{id}/evaluations', function (Request $request, int $id)
 Route::post('/offers', function (Request $request) {
     $data = $request->validate(['hiring_process_id'=>['required','integer'],'role'=>['required','string','max:255'],'compensation'=>['nullable','string','max:255'],'planned_start_date'=>['nullable','date']]);
     abort_if(!DB::table('hiring_processes')->where('id',$data['hiring_process_id'])->exists(),422,'Hiring process not found');
-    $local = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
-        && filter_var(env('IRLIX_RECRUITMENT_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
-    $grants = (array) $request->attributes->get('recruitment_local_permissions', []);
-    if ($local && !\App\Services\RecruitmentRoleAuthorization::canWriteSensitiveField($grants, $data, 'compensation')) {
-        abort(403, 'Additional permission required for this field');
-    }
+    app(\App\Services\RecruitmentCompensationPolicy::class)
+        ->assertWrite($request, $data, 'compensation');
     $id = DB::table('offers')->insertGetId([...$data,'status'=>'draft','created_at'=>now(),'updated_at'=>now()]);
     $created = DB::table('offers')->find($id);
-    if ($local && !($grants['recruitment.compensation.view'] ?? false)) {
-        $created->compensation = null;
-    }
+    $created = app(\App\Services\RecruitmentCompensationPolicy::class)
+        ->redact($request, $created, 'compensation');
     return response()->json(['data'=>$created],201);
 });
 
 Route::patch('/offers/{id}', function (Request $request, int $id) {
     $data = $request->validate(['status'=>['required','in:draft,approval,ready,sent,accepted,rejected,withdrawn'],'compensation'=>['sometimes','nullable','string','max:255'],'planned_start_date'=>['sometimes','nullable','date']]);
-    $local = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
-        && filter_var(env('IRLIX_RECRUITMENT_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
-    $grants = (array) $request->attributes->get('recruitment_local_permissions', []);
-    if ($local && !\App\Services\RecruitmentRoleAuthorization::canWriteSensitiveField($grants, $data, 'compensation')) {
-        abort(403, 'Additional permission required for this field');
-    }
+    app(\App\Services\RecruitmentCompensationPolicy::class)
+        ->assertWrite($request, $data, 'compensation');
     abort_if(!DB::table('offers')->where('id',$id)->exists(),404,'Offer not found');
     $update = [...$data,'updated_at'=>now()];
     if (($data['status']??null)==='sent') $update['sent_at']=now();
     if (in_array(($data['status']??null),['accepted','rejected'],true)) $update['decision_at']=now();
     DB::table('offers')->where('id',$id)->update($update);
     $updated = DB::table('offers')->find($id);
-    if ($local && !($grants['recruitment.compensation.view'] ?? false)) {
-        $updated->compensation = null;
-    }
+    $updated = app(\App\Services\RecruitmentCompensationPolicy::class)
+        ->redact($request, $updated, 'compensation');
     return ['data'=>$updated];
 });
 
