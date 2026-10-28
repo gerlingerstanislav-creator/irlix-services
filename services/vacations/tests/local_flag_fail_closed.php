@@ -7,6 +7,10 @@ use Illuminate\Http\Request;
 
 $app = require __DIR__.'/../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+set_exception_handler(static function (\Throwable $error): void {
+    fwrite(STDERR, 'Vacations outage guard FAIL: '.$error->getMessage()."\n");
+    exit(1);
+});
 $old = getenv('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED');
 $oldJwt = getenv('IRLIX_AUTHZ_JWT_ENABLED');
 putenv('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED=true');
