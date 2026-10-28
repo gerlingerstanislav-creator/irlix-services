@@ -46,6 +46,20 @@ class PolicyTests(unittest.TestCase):
         cross_owner = {"root": FileObject("root", 2), "file": self.file}
         self.assertFalse(self.allowed(1, Permission.READ, objects=cross_owner))
 
+    def test_denies_long_chain_even_if_owner_and_grant_match(self):
+        objects = {"node0": FileObject("node0", 1, "node1")}
+        for i in range(1, 36):
+            objects[f"node{i}"] = FileObject(
+                f"node{i}", 1, f"node{i+1}" if i < 35 else None
+            )
+        self.assertFalse(can_access(
+            Principal(1, True), "node0", Permission.READ, objects, []
+        ))
+        self.assertFalse(can_access(
+            Principal(9, True, platform_admin=True), "node0",
+            Permission.READ, objects, []
+        ))
+
     def test_invalid_graph_and_admin_still_requires_active(self):
         self.assertFalse(self.allowed(1, Permission.READ, objects={"file": self.file}))
         cycle = {"root": FileObject("root", 1, "file"), "file": self.file}
