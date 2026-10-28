@@ -12,6 +12,8 @@ const router = useRouter();
 const parentId = computed(() => typeof route.query.folder_id === 'string' ? route.query.folder_id : '');
 const mode = ref('mine');
 const entries = ref([]);
+const searchQuery = ref('');
+const searchActive = ref(false);
 const loading = ref(false);
 const busy = ref(false);
 const error = ref('');
@@ -91,7 +93,8 @@ async function refresh() {
   if (loading.value) return;
   loading.value = true; error.value = '';
   try {
-    const url = mode.value === 'trash' ? '/trash'
+    const url = searchActive.value ? '/search?q=' + encodeURIComponent(searchQuery.value.trim())
+      : mode.value === 'trash' ? '/trash'
       : mode.value === 'shared' && !parentId.value ? '/available'
       : '/items' + (parentId.value ? '?parent_id=' + encodeURIComponent(parentId.value) : '');
     const result = await request(url);
@@ -100,8 +103,18 @@ async function refresh() {
   finally { loading.value = false; }
 }
 function setMode(value) {
+  searchActive.value = false; searchQuery.value = '';
   mode.value = value;
   if (parentId.value) router.push({ name: 'v1', query: {} });
+  else refresh();
+}
+function applySearch() {
+  if (searchQuery.value.trim().length < 2) {
+    searchActive.value = false;
+  } else {
+    searchActive.value = true;
+  }
+  if (parentId.value) router.push({ name: 'v1' });
   else refresh();
 }
 function open(item) {
@@ -331,6 +344,11 @@ onMounted(() => refresh());
 <template>
   <section class="storage-v1">
     <div class="storage-v1-toolbar">
+      <form class="storage-v1-search" role="search" @submit.prevent="applySearch">
+        <input v-model="searchQuery" type="search" placeholder="Поиск по доступным файлам" aria-label="Поиск по диску" />
+        <UiButton>Найти</UiButton>
+        <UiButton v-if="searchActive" type="button" variant="secondary" @click="searchQuery='';applySearch()">Сбросить</UiButton>
+      </form>
       <div class="storage-v1-sections" role="group" aria-label="Раздел">
         <UiButton v-for="part in [{id:'mine',label:'Мои файлы'},{id:'shared',label:'Доступные мне'},{id:'trash',label:'Корзина'}]"
           :key="part.id" type="button" :variant="mode === part.id ? 'primary' : 'secondary'" @click="setMode(part.id)">{{ part.label }}</UiButton>
