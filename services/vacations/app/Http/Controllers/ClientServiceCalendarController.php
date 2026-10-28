@@ -139,7 +139,10 @@ final class ClientServiceCalendarController extends Controller
         }
         // The signed Keycloak bearer has been verified by KeycloakBearer.
         // A role preview, when present, is verified by Employees before replacement.
-        $platformAdmin = in_array('platform-admin', $roles, true);
+        $platformAdmin = in_array('platform-admin', $roles, true)
+            || ($jwt && filter_var(env('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED', false),
+                FILTER_VALIDATE_BOOLEAN)
+                && in_array('special:platform-admin', $roles, true));
         if ($requireSpecialistsPermission) {
             $this->checkClientsSpecialistsPermission($request, $actorId);
         } else {
