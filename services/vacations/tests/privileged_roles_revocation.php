@@ -40,4 +40,61 @@ foreach ([
 $assert(EmployeesDirectory::limitToCurrentPrivilegedRoles(['employee-id:44','org:irlix'],44,
     ['employee_id'=>44,'roles'=>[]])===['employee-id:44','org:irlix'],
     'Regular signed organization labels must be left unchanged');
+// Exercise the actual EmployeesDirectory JWT decision with a controlled
+// real Laravel HTTP client. Never reach external hosts or production.
+$app = require __DIR__.'/../bootstrap/app.php';
+$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$oldJwtMode = getenv('IRLIX_AUTHZ_JWT_ENABLED');
+putenv('IRLIX_AUTHZ_JWT_ENABLED=true');
+$source = ['employee_id'=>44,'roles'=>['personnel-officer']];
+$status = 200;
+\Illuminate\Support\Facades\Http::preventStrayRequests();
+\Illuminate\Support\Facades\Http::fake(static function ($request) use (&$source, &$status) {
+    if (!str_ends_with((string) $request->url(), '/access/me')) {
+        return \Illuminate\Support\Facades\Http::response([], 404);
+    }
+    return \Illuminate\Support\Facades\Http::response(['data'=>$source], $status);
+});
+$req = \Illuminate\Http\Request::create('/api/approvals/1/approve','POST');
+$req->headers->set('Authorization', 'Bearer synthetic-test-token');
+$req->attributes->set('identity', ['realm_roles'=>[
+    'employee-id:44','service:vacations','scope:all','personnel-officer',
+]]);
+$directory = new EmployeesDirectory();
+$assert(in_array('personnel-officer',$directory->access($req)['roles'],true),
+    'Current signed personnel role rejected on live Employees validation');
+$source['roles'] = [];
+try {
+    $directory->access($req);
+    throw new RuntimeException('Stale JWT and scope:all remained effective after revocation');
+} catch (DomainException $expected) {
+    // A revoked privileged role must deny the whole stale token, not
+    // leave the lingering scope:all grant effective.
+}
+$source = ['employee_id'=>55,'roles'=>['personnel-officer']];
+try {
+    $directory->access($req);
+    throw new RuntimeException('Mismatched employee subject accepted');
+} catch (RuntimeException $expected) {
+    if ($expected->getMessage()==='Mismatched employee subject accepted') throw $expected;
+}
+$source=['employee_id'=>44,'roles'=>['personnel-officer']];
+$status=503;
+try {
+    $directory->access($req);
+    throw new RuntimeException('Employees outage granted personnel privileges');
+} catch (RuntimeException $expected) {
+    if ($expected->getMessage()==='Employees outage granted personnel privileges') throw $expected;
+}
+$status=200;
+$req->headers->set('X-Irlix-Role-Preview', 'personnel-officer');
+try {
+    $directory->access($req);
+    throw new RuntimeException('Role preview granted privileged access');
+} catch (DomainException $expected) {
+    // preview never authorizes sensitive data
+}
+if ($oldJwtMode === false) putenv('IRLIX_AUTHZ_JWT_ENABLED');
+else putenv('IRLIX_AUTHZ_JWT_ENABLED='.$oldJwtMode);
+
 echo "Vacations immediate privileged-role revocation contract: PASS\n";
