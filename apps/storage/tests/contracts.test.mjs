@@ -72,3 +72,45 @@ test('No business attachment or destructive object endpoints exist in the pilot'
   assert.doesNotMatch(api, /@app\.(post|put|patch)\("\/business/);
   assert.ok(api.includes('MAX_FILE = 10 * 1024 * 1024'));
 });
+
+test('Storage routes keep folders in history, reject unknown URLs and separate the future shared view', async () => {
+  const { routes } = await import('../src/routes.js');
+  assert.deepEqual(routes.map(route => [route.path, route.name]), [
+    ['/', 'files'],
+    ['/available', 'available'],
+    ['/:pathMatch(.*)*', 'not-found'],
+  ]);
+  const entry = text('../src/main.js');
+  const router = text('../src/router.js');
+  const wrapper = text('../src/StorageApp.vue');
+  assert.ok(entry.includes('.use(router)'));
+  assert.ok(router.includes('createWebHistory(import.meta.env.BASE_URL)'));
+  assert.ok(wrapper.includes('@update:section="navigateSection"'));
+  assert.ok(wrapper.includes("router.push({ name: id })"));
+  assert.ok(wrapper.includes("route.query.folder"));
+  assert.ok(wrapper.includes("encodeURIComponent(segments.slice(0, index + 1)"));
+  assert.ok(wrapper.includes('UiErrorState v-else :status="404"'));
+  assert.ok(wrapper.includes("activeSection === 'available'"));
+  assert.ok(wrapper.includes('общий доступ не подключён'));
+  assert.ok(!wrapper.includes('fetch(\'/api/storage/shared'));
+});
+
+test('Drive has one compact action/filter row, shared buttons and transient corner toasts', () => {
+  const css = text('../src/storage.css');
+  assert.ok(vue.includes('class="storage-toolbar"'));
+  assert.ok(vue.includes('<UiButton variant="secondary"'));
+  assert.ok(vue.includes('<UiViewSelect v-model="layout"'));
+  assert.ok(vue.includes('class="storage-toolbar-tools"'));
+  assert.ok(vue.includes('class="storage-actions"'));
+  assert.ok(!vue.includes('class="storage-main-top"'));
+  assert.ok(!vue.includes('class="storage-heading"'));
+  assert.ok(!vue.includes('class="storage-crumbs"'));
+  assert.ok(vue.includes('class="storage-toast"'));
+  assert.ok(vue.includes('window.setTimeout('));
+  assert.ok(vue.includes('window.clearTimeout('));
+  assert.ok(vue.includes("if (serial === requestSerial) loading.value = false"));
+  assert.ok(vue.includes('watch(folder, () =>'));
+  assert.ok(vue.includes("router.push({ name: 'files'"));
+  assert.ok(css.includes('.storage-toast{position:fixed;right:20px;bottom:20px;'));
+  assert.ok(css.includes('height:var(--irlix-control-height,27px)'));
+});
