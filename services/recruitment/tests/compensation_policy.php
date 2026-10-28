@@ -8,6 +8,10 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 $app = require __DIR__.'/../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+set_exception_handler(static function (\Throwable $error): void {
+    fwrite(STDERR, 'Recruitment compensation policy FAIL: '.$error->getMessage()."\n");
+    exit(1);
+});
 
 $assert = static function (bool $ok, string $message): void {
     if (!$ok) throw new RuntimeException($message);
