@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\TimesheetsPermissionsController;
 
 Route::get('/health', HealthController::class);
+Route::get('/permissions/me', [TimesheetsPermissionsController::class, 'me']);
 Route::get('/permissions', [TimesheetsPermissionsController::class, 'index']);
 Route::put('/permissions', [TimesheetsPermissionsController::class, 'update']);
 Route::get('/workspace', [PersonalTimesheetsController::class, 'workspace']);
