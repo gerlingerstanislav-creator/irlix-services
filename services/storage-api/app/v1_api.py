@@ -40,17 +40,17 @@ def _employee_active(request: Request, recipient: int) -> bool:
         return False
     # Fixed trusted backend URL. No user-supplied URLs or headers.
     url = os.environ.get("STORAGE_EMPLOYEES_RECIPIENT_BASE",
-                         "http://employees:8000/_storage_pilot_recipient/")
-    if not url.startswith("http://employees:8000/_storage_pilot_recipient/"):
+                         "http://employees:8000/_storage_v1_recipient/")
+    if not url.startswith("http://employees:8000/_storage_v1_recipient/"):
         # Until a trusted operator configures an explicit allowlist, fail closed.
         return False
-    token = request.cookies.get("irlix_storage_pilot", "")
+    token = request.cookies.get("irlix_storage_v1", "")
     if not token:
         return False
     try:
         with httpx.Client(timeout=3, trust_env=False) as client:
             response = client.get(url + str(recipient),
-                                  headers={"Cookie": "irlix_storage_pilot=" + token})
+                                  headers={"Cookie": "irlix_storage_v1=" + token})
         return response.status_code == 204
     except httpx.RequestError:
         return False
