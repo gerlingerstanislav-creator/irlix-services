@@ -20,6 +20,11 @@ final class EmployeesDirectory
             if (count($ids) !== 1 || !in_array('service:vacations', $roles, true))
                 throw new DomainException('Недостаточно прав для отпуска');
             $employeeId = (int) substr($ids[0], strlen('employee-id:'));
+            // A previously signed privileged role is not enough to grant
+            // another person's sensitive absence data after immediate
+            // revocation in Employees. Check CURRENT persisted assignments,
+            // fail closed on source outage, and never trust previewed roles.
+            $roles = $this->reconcilePrivilegedAccess($request, $roles, $employeeId);
             $scopeIds = array_values(array_map(fn ($role) => (int) substr($role, strlen('scope:department-')),
                 array_filter($roles, fn ($role) => is_string($role) && preg_match('/^scope:department-[1-9][0-9]*$/D', $role))));
             return [
@@ -31,11 +36,69 @@ final class EmployeesDirectory
         return $this->get($request, '/access/me');
     }
 
+    /**
+     * Return only privilege labels that are BOTH present in a verified JWT
+     * and still assigned by Employees. No new rights are conferred by the
+     * lookup; an unrelated Employees permission never authorizes Vacations.
+     */
+    public static function limitToCurrentPrivilegedRoles(
+        array $jwtRoles, int $actorId, array $current
+    ): array {
+        if ($actorId <= 0 || (int) ($current['employee_id'] ?? 0) !== $actorId
+            || !is_array($current['roles'] ?? null)) {
+            throw new RuntimeException('Current employee privileges cannot be verified');
+        }
+        $currentRoles = (array) $current['roles'];
+        $guarded = ['personnel-officer', 'special:personnel-officer',
+            'platform-admin', 'special:platform-admin'];
+        $safe = [];
+        foreach ($jwtRoles as $role) {
+            if (!is_string($role)) continue;
+            $canonical = str_starts_with($role, 'special:') ? substr($role, 8) : $role;
+            if (in_array($role, $guarded, true) && !in_array($canonical, $currentRoles, true)) {
+                continue;
+            }
+            $safe[] = $role;
+        }
+        return $safe;
+    }
+
+    private function reconcilePrivilegedAccess(Request $request, array $roles, int $employeeId): array
+    {
+        if (!array_intersect($roles, ['personnel-officer','special:personnel-officer',
+            'platform-admin','special:platform-admin'])) return $roles;
+        // Even GET previews must not authorize download or privilege reuse.
+        if ($request->header('X-Irlix-Role-Preview') !== null) {
+            return array_values(array_diff($roles, [
+                'personnel-officer','special:personnel-officer',
+                'platform-admin','special:platform-admin',
+            ]));
+        }
+        // Employees /access/me is available to authenticated users even
+        // without employees.read. Do not forward any preview headers.
+        $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
+        if (!$token) throw new RuntimeException('Authentication token missing');
+        $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
+        try {
+            $response = Http::withToken($token)->acceptJson()->timeout(5)->get($base.'/access/me');
+        } catch (Throwable) {
+            throw new RuntimeException('Current privileged roles could not be checked');
+        }
+        if (!$response->successful()) {
+            throw new RuntimeException('Current privileged roles could not be checked');
+        }
+        $current = $response->json('data');
+        if (!is_array($current)) {
+            throw new RuntimeException('Invalid current privileged role response');
+        }
+        return self::limitToCurrentPrivilegedRoles($roles, $employeeId, $current);
+    }
+
     public function vacationsAccess(Request $request, int $employeeId): array
     {
         $access = $this->access($request);
-        // In JWT mode the synchronized role is the ONLY personnel grant.
-        // Do not make a request-time Employees authorization fallback.
+        // In JWT mode Employees currently verifies privileged assignments
+        // against its persisted source-of-truth; it never adds local rights.
         if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
             return $access;
         }
