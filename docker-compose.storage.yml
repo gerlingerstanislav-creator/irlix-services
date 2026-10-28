@@ -47,8 +47,8 @@ services:
     mem_limit: 256m
     cpus: 0.75
 
-  # The only end-user Drive UI. The retired Filestash state is kept
-  # separately on the host for recovery, never mounted or removed here.
+  # Only end-user Drive UI. Filestash is retired and its dedicated state
+  # is cleaned by a gated deployment script; S3 data is never deleted.
   storage-drive:
     build:
       context: .
