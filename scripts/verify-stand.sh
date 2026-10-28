@@ -82,12 +82,20 @@ check_status "Anonymous Brandbook deep link gated" http://127.0.0.1/brandbook/co
 check_status "Anonymous Brandbook SVG gated" http://127.0.0.1/brandbook/downloads/irlix-logo-dark-background.svg 302
 check_status "Brandbook gate endpoint internal-only" http://127.0.0.1/_brandbook_gate 404
 
-# Canonical Storage UI/API are gated at the corporate origin, including
-# all static assets. The former :8110 listener redirects to /storage/.
-check_status "Anonymous Storage canonical route" http://127.0.0.1/storage/ 302
-check_status "Anonymous Storage asset" http://127.0.0.1/storage/assets/missing.js 302
-check_status "Anonymous Storage API" http://127.0.0.1/api/storage/items 302
-check_status "Storage internal gate" http://127.0.0.1/_storage_pilot_gate 404
+# Storage V1 deliberately serves only its *static* Vue shell without the
+# legacy administrator redirect; employees authenticate through the app and
+# every data operation is independently denied at nginx and Storage API.
+# Keep verifying that neither legacy pilot objects nor V1 objects can be
+# read anonymously. Never turn a data API 401/302 into a blanket 200 check.
+check_body "Anonymous Storage static SPA" http://127.0.0.1/storage/ storage-drive "IRLIX · Хранилище"
+check_status "Anonymous Storage V1 deep link SPA" http://127.0.0.1/storage/v1 200
+storage_asset="$(curl_stand -fsS http://127.0.0.1/storage/ | grep -o '/storage/assets/[^" ]*\\.js' | head -n1)"
+[ -n "$storage_asset" ] || fail "Storage static JS asset was not found"
+check_status "Anonymous Storage static JS" "http://127.0.0.1$storage_asset" 200
+check_status "Anonymous Storage legacy API still admin gated" http://127.0.0.1/api/storage/items 302
+check_status "Anonymous Storage V1 API denied" http://127.0.0.1/api/storage/v1/items 401
+check_status "Storage pilot gate internal-only" http://127.0.0.1/_storage_pilot_gate 404
+check_status "Storage V1 gate internal-only" http://127.0.0.1/_storage_v1_gate 404
 check_status "Storage old-port redirect" http://127.0.0.1:8110/ 302
 
 echo "[verify] OIDC discovery uses configured public Keycloak URL"
