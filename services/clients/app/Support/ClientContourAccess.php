@@ -74,6 +74,7 @@ class ClientContourAccess
         $http = Http::withToken((string) $token)->acceptJson()
             ->withHeaders($request->header('X-Irlix-Role-Preview') ? ['X-Irlix-Role-Preview' => $request->header('X-Irlix-Role-Preview')] : [])->timeout(8);
         $jwtMode = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+        $localRoleMode = $jwtMode && filter_var(env('IRLIX_CLIENTS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
         // JWT roles are cryptographically verified by KeycloakBearer before
         // this resolver runs. Do not fetch /access/me for authorization in JWT mode.
         $jwtLabels = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
@@ -108,11 +109,17 @@ class ClientContourAccess
         $specialRoles = array_values(array_diff($specialRoles, ['platform-tester']));
         $departments = collect($directoryResponse->json('data.departments', []));
         $directoryEmployees = collect($directoryResponse->json('data.employees', []));
-        $departmentIds = $jwtMode
-            ? array_values(array_map(fn ($role) => (int) substr($role, strlen('scope:department-')),
-                array_filter($specialRoles, fn ($role) => preg_match('/^scope:department-[1-9][0-9]*$/D', $role))))
-            : array_values(array_unique(array_map('intval', $accessResponse->json('data.department_ids', []))));
-        if ($jwtMode && in_array('scope:all', $specialRoles, true))
+        $departmentIds = $localRoleMode
+            ? $departments->filter(fn ($department) =>
+                (int) ($department['manager_id'] ?? 0) > 0
+                && (int) ($department['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0)
+                && in_array('head:'.(string) ($department['alias'] ?? ''), $specialRoles, true))
+                ->pluck('id')->map(fn ($id) => (int) $id)->all()
+            : ($jwtMode
+                ? array_values(array_map(fn ($role) => (int) substr($role, strlen('scope:department-')),
+                    array_filter($specialRoles, fn ($role) => preg_match('/^scope:department-[1-9][0-9]*$/D', $role))))
+                : array_values(array_unique(array_map('intval', $accessResponse->json('data.department_ids', [])))));
+        if ($jwtMode && !$localRoleMode && in_array('scope:all', $specialRoles, true))
             $departmentIds = $departments->pluck('id')->map(fn ($id) => (int) $id)->all();
         $chain = collect($jwtMode ? [] : $contextResponse->json('data.department_chain', []));
         $departmentAliases = $jwtMode
@@ -130,9 +137,13 @@ class ClientContourAccess
         )));
         $managedProductionRoots = $departments
             ->filter(fn ($department) => (bool) ($department['is_production'] ?? false)
-                && ($jwtMode
-                    ? in_array((string) ($department['alias'] ?? '').'-head', $specialRoles, true)
-                    : (int) ($department['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0)))
+                && ($localRoleMode
+                    ? ((int) ($department['manager_id'] ?? 0) > 0
+                        && (int) $department['manager_id'] === (int) ($employee['id'] ?? 0)
+                        && in_array('head:'.(string) ($department['alias'] ?? ''), $specialRoles, true))
+                    : ($jwtMode
+                        ? in_array((string) ($department['alias'] ?? '').'-head', $specialRoles, true)
+                        : (int) ($department['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0))))
             ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         $productionDepartmentIds = $managedProductionRoots;
         do {
@@ -234,17 +245,23 @@ class ClientContourAccess
             || in_array('sales-manager', $jwtFunctionalRoles, true)
             || in_array('sales-manager', $verifiedFunctionalRoles, true)
             || ($actorDepartmentId > 0 && in_array($actorDepartmentId, $salesDepartmentIds, true));
-        $managedDepartmentAliases = $jwtMode
-            ? array_values(array_map(fn ($role) => substr($role, 0, -5),
-                array_filter($specialRoles, fn ($role) => str_ends_with($role, '-head'))))
-            : $departments->filter(fn ($d) => (int) ($d['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0))
-                ->pluck('alias')->filter()->values()->all();
+        $managedDepartmentAliases = $localRoleMode
+            ? array_values(array_map(static fn ($role) => substr($role, 5),
+                array_filter($specialRoles, static fn ($role) =>
+                    is_string($role) && str_starts_with($role, 'head:'))))
+            : ($jwtMode
+                ? array_values(array_map(fn ($role) => substr($role, 0, -5),
+                    array_filter($specialRoles, fn ($role) => str_ends_with($role, '-head'))))
+                : $departments->filter(fn ($d) => (int) ($d['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0))
+                    ->pluck('alias')->filter()->values()->all());
         // Manager assignment is verified against the current organizational
         // tree. Exact department IDs also support legacy alias/name variants,
         // unlike brittle hard-coded -head label comparisons. Scope comes from
         // Employees' managed department ids; a job title never creates it.
         $managedRoots = $departments->filter(fn ($d) =>
-            (int) ($d['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0))
+            (int) ($employee['id'] ?? 0) > 0
+            && (int) ($d['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0)
+            && (!$localRoleMode || in_array('head:'.(string) ($d['alias'] ?? ''), $specialRoles, true)))
             ->pluck('id')->map(fn ($id) => (int) $id)->all();
         $isAccountHead = in_array('account-management', $managedDepartmentAliases, true)
             || (bool) array_intersect($managedRoots, $accountingRoots);
@@ -291,7 +308,15 @@ class ClientContourAccess
             $rank = ['none' => 0, 'own' => 1, 'team' => 2, 'all' => 3];
             // Generic managers retain the configurable Timesheets grants of the
             // department-manager matrix role, without gaining its Clients grants.
-            $matrixRoles = in_array('manager', $specialRoles, true) ? [...$roles, 'department-manager'] : $roles;
+            // During V2 cutover, only explicitly configured, signed,
+            // namespaced identity roles can yield local permissions. Legacy
+            // functional projections remain available for object relationships
+            // but never grant permissions implicitly in this mode.
+            $matrixRoles = $localRoleMode
+                ? array_values(array_filter($jwtLabels, static fn ($role) =>
+                    is_string($role)
+                    && preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $role) === 1))
+                : (in_array('manager', $specialRoles, true) ? [...$roles, 'department-manager'] : $roles);
             $explicitDenies = [];
             foreach (ClientContourPermission::query()->whereIn('role', $matrixRoles)->get() as $row) {
                 // A default false row does not deny grants from another role.
