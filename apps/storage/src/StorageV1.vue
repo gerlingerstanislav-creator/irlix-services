@@ -476,19 +476,19 @@ onMounted(() => refresh());
       </form>
     </div>
 
-    <div v-if="bulkMoving" class="storage-overlay" @click.self="bulkMoving=false">
+    <div v-if="bulkMoving" class="storage-overlay" @click.self="bulkMoving=false;operationItem=null">
       <form class="storage-modal storage-small-modal" @submit.prevent="submitBulkMove">
-        <div class="storage-modal-head"><h2>Переместить выбранные объекты</h2><button type="button" @click="bulkMoving=false">×</button></div>
+        <div class="storage-modal-head"><h2>Переместить выбранные объекты</h2><button type="button" @click="bulkMoving=false;operationItem=null">×</button></div>
         <label>Папка назначения
           <UiSearchSelect v-model="bulkTarget" :options="targets" placeholder="Корневая папка" :teleport="true" />
         </label>
         <div class="storage-modal-actions">
-          <UiButton type="button" variant="secondary" @click="bulkMoving=false">Отмена</UiButton>
+          <UiButton type="button" variant="secondary" @click="bulkMoving=false;operationItem=null">Отмена</UiButton>
           <UiButton :disabled="busy">Переместить</UiButton>
         </div>
       </form>
     </div>
-    <div v-if="operationItem" class="storage-overlay" @click.self="!busy && (operationItem=null)">
+    <div v-if="operationItem && !bulkMoving" class="storage-overlay" @click.self="!busy && (operationItem=null)">
       <form class="storage-modal storage-small-modal" @submit.prevent="submitOperation">
         <div class="storage-modal-head">
           <h2>{{ operationKind === 'rename' ? 'Переименовать' : operationKind === 'move' ? 'Переместить' : 'Создать копию' }}</h2>
