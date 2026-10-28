@@ -178,6 +178,17 @@ namespace {
     $check(in_array('account-manager', $nestedAccount['roles'], true), 'Nested account employee lost Account Manager role');
     $check(($nestedAccount['permissions']['clients.view']['scope'] ?? 'none') === 'all', 'Account Manager matrix permission missing');
     $check(($nestedAccount['permissions']['timesheets.management.view']['allowed'] ?? false) === true, 'Account Manager Timesheets right missing');
+    // Legacy disabled cells are not hard denials; only an explicitly marked
+    // deny may override another organizational role's positive grant.
+    $db->where('role','client-service')->where('permission','clients.view')->update(['denied'=>true]);
+    $deniedAccount = $resolver->resolve($request('api/permissions/me'));
+    $check(!($deniedAccount['permissions']['clients.view']['allowed'] ?? false),
+        'Explicit Clients denial failed to override Account Manager grant');
+    $db->where('role','client-service')->where('permission','clients.view')->update(['denied'=>false]);
+    $restoredAccount = $resolver->resolve($request('api/permissions/me'));
+    $check(($restoredAccount['permissions']['clients.view']['allowed'] ?? false) === true,
+        'Removing an explicit deny did not restore the independent grant');
+
     $check(in_array(501, $nestedAccount['account_employee_ids'], true) && !in_array(502, $nestedAccount['account_employee_ids'], true), 'Finance employee mixed into account directory');
     $actorStub = ['id'=>502,'position'=>'Finance specialist'];
     $financeAccount = $resolver->resolve($request('api/permissions/me'));
