@@ -210,6 +210,14 @@ test('V1 operations support immutable versions, scoped search, bulk actions, and
     assert.ok(server.includes(route), route);
   }
   assert.ok(server.includes('_require_capacity(repo'));
+  assert.ok(server.includes('@router.get("/preview/{object_id}")'));
+  assert.ok(server.includes('Content-Security-Policy'));
+  assert.ok(server.includes('X-Content-Type-Options'));
+  assert.ok(server.includes('Несоответствие содержимого и расширения'));
+  assert.ok(!server.includes('".html": "text/html"'));
+  assert.ok(v1.includes('async function openPreview(item)'));
+  assert.ok(v1.includes('URL.revokeObjectURL(previewUrl.value)'));
+  assert.ok(v1.includes('sandbox=""'));
   assert.ok(compose.includes('STORAGE_V1_QUOTA_BYTES:'));
   assert.ok(versions.includes('storage.file_versions'));
   assert.ok(versions.includes('storage.reject_version_mutation'));
