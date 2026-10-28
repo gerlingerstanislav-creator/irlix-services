@@ -215,7 +215,7 @@ def main():
     # Read-only cutover evidence on every production release, even a
     # script-only rollout. Never log DSNs, passwords or employee metadata.
     if not selected or selected.intersection({'employees', 'storage-s3', 'storage-drive', 'storage-api'}):
-        subprocess.run([*sudo, "python3", str(ROOT / "scripts/storage/inspect-v1-readiness.py")],
+        subprocess.run([*sudo, "python3", str(ROOT / "scripts/storage/inspect-v1-readiness.py"), *compose],
                        check=True, cwd=ROOT, timeout=90)
     # Record *effective running-container* AuthZ switches and aggregate matrix
     # coverage on every production release, including script-only deploys.
