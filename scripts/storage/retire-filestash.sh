@@ -2,20 +2,27 @@
 # Remove the retired Filestash runtime/config only, after new Drive is healthy.
 # S3 objects, business volumes, and other Docker services must never be touched.
 set -eu
-# Fail closed if the current user-facing frontend/API is not responding.
-drive=$(curl -fsS --connect-timeout 2 --max-time 12 http://127.0.0.1:8115/) || {
-  echo "Storage Drive origin not ready; retaining legacy Filestash." >&2
+# A newly recreated Docker container can briefly reset connections while nginx
+# and uvicorn are starting. Probe both origins with a bounded readiness window.
+# Never retire legacy state on timeout, wrong SPA content or unhealthy API.
+storage_ready=false
+attempt=1
+while [ "$attempt" -le 30 ]; do
+  drive=$(curl -fsS --connect-timeout 2 --max-time 4 http://127.0.0.1:8115/ 2>/dev/null || true)
+  code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 4 http://127.0.0.1:8114/health 2>/dev/null || true)
+  if printf '%s' "$drive" | grep -Fq '<title>IRLIX · Хранилище</title>' && [ "$code" = 200 ]; then
+    storage_ready=true
+    break
+  fi
+  attempt=$((attempt + 1))
+  sleep 1
+done
+if [ "$storage_ready" != true ]; then
+  echo "Storage Drive/API not ready after 30 startup checks; preserving existing data and retired-state cleanup." >&2
   exit 1
-}
-printf '%s' "$drive" | grep -Fq '<title>IRLIX · Хранилище</title>' || {
-  echo "Storage Drive origin unexpected; retaining legacy Filestash." >&2
-  exit 1
-}
-code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 12 http://127.0.0.1:8114/health) || exit 1
-[ "$code" = 200 ] || {
-  echo "Storage API not ready; retaining legacy Filestash." >&2
-  exit 1
-}
+fi
+echo "Storage Drive and API readiness confirmed."
+
 # Filter by both immutable Compose project and exact retired service label.
 old=$(docker ps -aq \
   --filter label=com.docker.compose.project=irlix-services \
