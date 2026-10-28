@@ -136,7 +136,7 @@ def _parent_for_create(repo, actor, parent_id):
 
 
 @router.get("/items")
-def list_items(request: Request, parent_id: UUID | None = None):
+def list_items(request: Request, parent_id: UUID | None = None, scope: str = "all"):
     actor = _identity(request)
     with metadata_connection() as conn:
         repo = _repo(conn, request)
@@ -146,6 +146,13 @@ def list_items(request: Request, parent_id: UUID | None = None):
                 "SELECT id::text,kind,owner_employee_id,parent_id::text,display_name,state "
                 "FROM storage.objects WHERE parent_id=%s AND state='active' "
                 "ORDER BY display_name LIMIT 200", (parent,)
+            ).fetchall()
+        elif scope == "mine":
+            rows = conn.execute(
+                "SELECT id::text,kind,owner_employee_id,parent_id::text,display_name,state "
+                "FROM storage.objects WHERE parent_id IS NULL AND state='active' "
+                "AND owner_employee_id=%s ORDER BY display_name LIMIT 200",
+                (actor.employee_id,)
             ).fetchall()
         elif actor.platform_admin:
             rows = conn.execute(
