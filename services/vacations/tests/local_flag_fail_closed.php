@@ -17,7 +17,7 @@ $pass = static fn ($request) => response()->json(['data'=>['unsafe'=>true]]);
 foreach ([
     ['GET','/api/absences'],
     ['POST','/api/absences'],
-    ['GET','/api/registry'],
+    ['GET','/api/department-roster'],
     ['GET','/api/absences/123/attachments/4/download'],
     ['POST','/api/approvals/1/approve'],
     ['GET','/api/client-service-calendar'],
