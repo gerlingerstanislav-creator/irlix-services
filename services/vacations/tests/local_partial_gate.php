@@ -16,6 +16,10 @@ set_exception_handler(static function (\Throwable $error): void {
     exit(1);
 });
 
+if (getenv('IRLIX_SECURITY_TEST_PROBE') === '1') {
+    throw new RuntimeException('Security test must signal failure to Docker');
+}
+
 config()->set('database.default','sqlite');
 config()->set('database.connections.sqlite.database',':memory:');
 \Illuminate\Support\Facades\DB::purge('sqlite');
