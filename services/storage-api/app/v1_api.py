@@ -288,6 +288,7 @@ async def upload(request: Request, file: UploadFile = File(...),
                          (oid, owner, parent, title, key))
         except psycopg.errors.UniqueViolation:
             raise HTTPException(409, "Название уже существует")
+        _register_version(repo, actor, oid, key, len(data), hashlib.sha256(data).hexdigest())
         _audit(repo, actor, oid, "file.upload")
     return {"id": oid, "name": title, "kind": "file", "size": len(data)}
 
@@ -519,6 +520,12 @@ def copy_file(request: Request, object_id: UUID, data: CopyInput):
                          (new_id, owner, parent, title, target_key))
         except psycopg.errors.UniqueViolation:
             raise HTTPException(409, "Название уже существует")
+        try:
+            info = _s3().head_object(Bucket=_bucket(), Key=target_key)
+        except (ClientError, BotoCoreError):
+            raise HTTPException(503, "Не удалось проверить копию")
+        _register_version(repo, actor, new_id, target_key, info.get("ContentLength", 0),
+                          info.get("Metadata", {}).get("sha256"))
         _audit(repo, actor, oid, "file.copy.source")
         _audit(repo, actor, new_id, "file.copy.target")
     return {"id": new_id, "name": title, "kind": "file", "copied": True}
