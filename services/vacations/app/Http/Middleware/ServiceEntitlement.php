@@ -20,6 +20,15 @@ final class ServiceEntitlement
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
         if (!$token) return response()->json(['message' => 'Authentication required'], 401);
 
+        // Until Vacations enforces its local permissions AND object scopes
+        // in every workflow/attachment route, flipping the V2 switch must
+        // never silently fall through to legacy broad role authorization.
+        // Matrix configuration remains usable; all business operations fail
+        // closed on premature activation. This is deliberately not cutover.
+        if (filter_var(env('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+            && !$request->is('api/permissions')) {
+            return response()->json(['message' => 'Vacations V2 authorization cutover is not ready'], 503);
+        }
         if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
             $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
             if (!in_array('service:vacations', $roles, true)
