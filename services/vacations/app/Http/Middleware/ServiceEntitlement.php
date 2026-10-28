@@ -24,12 +24,6 @@ final class ServiceEntitlement
             && !$request->is('api/permissions')) {
             // Global and cross-contour read models are not yet provably
             // filtered per row. Fail closed rather than reusing legacy grants.
-            $unsupported = [
-                'api/client-service-calendar', 'api/client-service-absence-alerts',
-            ];
-            if (in_array($request->path(), $unsupported, true)) {
-                return response()->json(['message'=>'Vacations global V2 scope is not ready'],503);
-            }
             if (!filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
                 return response()->json(['message' => 'Verified JWT mode required for Vacations V2'], 503);
             }
