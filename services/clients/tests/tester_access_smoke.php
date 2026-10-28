@@ -83,6 +83,7 @@ namespace {
         \App\Support\ClientContourAccess::importedMatrixLabels([
             'accounting', 'accounting-head', 'sales', 'account-management-head',
             'service:clients', 'permission:finance-view', 'scope:all', 'employee-id:42',
+            'org:irlix', 'org:accounting', 'head:accounting', 'special:personnel-officer',
         ]) === ['sales', 'account-management-head'],
         'Finance accountant leaked into Clients account-head permission matrix'
     );
