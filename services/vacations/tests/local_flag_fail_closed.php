@@ -30,7 +30,7 @@ foreach ([
     ]]);
     $result = $gate->handle($request,$pass);
     if ($result->getStatusCode() !== 503) {
-        throw new RuntimeException('Incomplete Vacations V2 gate admitted '. $verb .' '. $route);
+        throw new RuntimeException('Vacations V2 failed to close upon Employees authorization outage '. $verb .' '. $route);
     }
 }
 if ($old === false) putenv('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED');
