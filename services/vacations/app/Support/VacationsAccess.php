@@ -37,24 +37,31 @@ final class VacationsAccess
 
     public function isHr(array $access): bool
     {
-        return $this->isAdmin($access)
-            || in_array('hr', $this->roles($access), true)
-            || ($this->localV2() && in_array('org:hr', $this->roles($access), true));
+        if ($this->localV2()) {
+            return $this->isAdmin($access) || in_array('org:hr', $this->roles($access), true);
+        }
+        return $this->isAdmin($access) || in_array('hr', $this->roles($access), true);
     }
 
     public function isPersonnelOfficer(array $access): bool
     {
-        return $this->isAdmin($access)
-            || in_array('personnel-officer', $this->roles($access), true)
-            || ($this->localV2() && in_array('special:personnel-officer', $this->roles($access), true));
+        if ($this->localV2()) {
+            return $this->isAdmin($access)
+                || in_array('special:personnel-officer', $this->roles($access), true);
+        }
+        return $this->isAdmin($access) || in_array('personnel-officer', $this->roles($access), true);
     }
 
     public function isManager(array $access): bool
     {
-        return $this->isAdmin($access) || in_array('manager', $this->roles($access), true)
-            || count(array_filter($this->roles($access), fn ($role) => str_ends_with($role, '-head'))) > 0
-            || ($this->localV2() && count(array_filter($this->roles($access),
-                fn ($role) => str_starts_with($role, 'head:'))) > 0);
+        $roles = $this->roles($access);
+        if ($this->localV2()) {
+            return $this->isAdmin($access)
+                || count(array_filter($roles,
+                    static fn ($role) => str_starts_with($role, 'head:'))) > 0;
+        }
+        return $this->isAdmin($access) || in_array('manager', $roles, true)
+            || count(array_filter($roles, fn ($role) => str_ends_with($role, '-head'))) > 0;
     }
 
     /**
@@ -84,6 +91,17 @@ final class VacationsAccess
         if ($actorEmployeeId === $targetEmployeeId) return true;
         if ($this->isAdmin($access) || $this->isPersonnelOfficer($access) || $this->isHr($access)) return true;
         if (!$this->isManager($access)) return false;
+
+        if ($this->localV2()) {
+            // Legacy Employees organizational permission helpers must not
+            // decide V2 business scope. Verify direct manager assignment
+            // through current trusted organizational IDs.
+            $org = $this->employees->vacationsDirectory($request);
+            return \App\Services\VacationsObjectScope::allows('team',
+                $actorEmployeeId, $targetEmployeeId,
+                array_values($org['departments'] ?? []),
+                array_values($org['employees'] ?? []));
+        }
 
         try {
             $this->employees->employeeApprovalContext($request, $targetEmployeeId);
