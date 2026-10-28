@@ -32,6 +32,8 @@ final class TimesheetsRoleAuthorization
         'timesheets.mine.view', 'timesheets.mine.manage',
         'timesheets.management.view', 'timesheets.management.manage',
         'timesheets.analytics.view', 'timesheets.audit.view',
+        'timesheets.partner-hours.view', 'timesheets.partner-hours.manage',
+        'timesheets.partner-hours.approve',
     ];
 
     /**
