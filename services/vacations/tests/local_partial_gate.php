@@ -14,14 +14,18 @@ $oldJwt = getenv('IRLIX_AUTHZ_JWT_ENABLED');
 putenv('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED=true');
 putenv('IRLIX_AUTHZ_JWT_ENABLED=true');
 
+$profileId = 17;
 $live = ['employee_id'=>17,
     'roles'=>['platform-admin'],
     'role_claims'=>['org:irlix','special:platform-admin'],
 ];
 Http::preventStrayRequests();
-Http::fake(static function ($req) use (&$live) {
+Http::fake(static function ($req) use (&$live, &$profileId) {
     if (str_ends_with((string) $req->url(), '/access/me')) {
         return Http::response(['data'=>$live],200);
+    }
+    if (str_ends_with((string) $req->url(), '/self')) {
+        return Http::response(['data'=>['id'=>$profileId,'full_name'=>'Synthetic']],200);
     }
     return Http::response([],404);
 });
@@ -63,6 +67,24 @@ $assert(403, 'GET', '/api/me');
 $live['role_claims']=['org:irlix','special:platform-admin'];
 $live['employee_id']=18;
 $assert(403, 'GET', '/api/me');
+
+// A secondary Employees /self response may never silently change the
+// actor already bound to the signed Keycloak/Employees identity projection.
+$profile = Request::create('/api/me', 'GET', [], [], [], [
+    'HTTP_AUTHORIZATION'=>'Bearer synthetic-signed-jwt',
+]);
+$profile->attributes->set('vacations_local_employee_id',17);
+$profileService = new \App\Support\CurrentEmployee();
+if ((int) $profileService->resolve($profile)['id'] !== 17) {
+    throw new RuntimeException('Verified actor profile mismatch in normal flow');
+}
+$profileId = 18;
+try {
+    $profileService->resolve($profile);
+    throw new RuntimeException('Another employee profile was accepted');
+} catch (RuntimeException $expected) {
+    if ($expected->getMessage()==='Another employee profile was accepted') throw $expected;
+}
 
 if ($oldLocal === false) putenv('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED');
 else putenv('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED='.$oldLocal);
