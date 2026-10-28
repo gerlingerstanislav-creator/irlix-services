@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { UiAppShell, UiBadge, UiButton, UiFilterRail, UiPanel, UiRegistryTable, UiLoader, UiSearchSelect, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 import EquipmentCardDrawer from './EquipmentCardDrawer.vue';
+import EquipmentRolePermissionsView from './EquipmentRolePermissionsView.vue';
 
 const sections = [
   { id: 'registry', label: 'Техника', href: '/equipment/', icon: 'briefcase' },
@@ -32,6 +33,12 @@ const settingsDraft = reactive({ ...defaultSettings });
 const settingsLoaded = ref(false);
 const settingsSaved = ref(false);
 const permissions = reactive({ view: false, manage: false, operate: false });
+const localRoleAdmin=ref(false);
+const navigation=computed(()=>[
+  ...sections,
+  ...(localRoleAdmin.value ? [{id:'role-permissions',label:'Разрешения',href:'/equipment/role-permissions',icon:'settings'}] : []),
+]);
+
 const loading = ref(false);
 const error = ref('');
 const importOpen = ref(false);
@@ -121,6 +128,8 @@ const load = async () => {
   loading.value=true; error.value=''; settingsSaved.value=false;
   try {
     Object.assign(permissions,await api('/api/permissions'));
+    localRoleAdmin.value=!!(await api('/api/role-permissions').catch(()=>null))?.can_manage;
+    if(section.value==='role-permissions') return;
     if(section.value==='assignments'){await ensureEmployees(); assignments.value=await api('/api/assignments');}
     else if(section.value==='valuation'){valuation.value=await api('/api/valuation');}
     else if(section.value==='settings'){await loadSettings(true);}
@@ -157,7 +166,7 @@ watch(() => editor.type, (type, previous) => { if(editor.open && type !== previo
 </script>
 
 <template>
-  <UiAppShell service="equipment" service-name="Учёт техники" :section="section" :items="sections" :current-user="auth.user" :platform-access="() => auth.fetch('/api/employees/access/me')"
+  <UiAppShell service="equipment" service-name="Учёт техники" :section="section" :items="navigation" :current-user="auth.user" :platform-access="() => auth.fetch('/api/employees/access/me')"
       :report-submit="(url, options) => auth.fetch(url, options)" :loading="loading" @update:section="changeSection" @logout="auth.logout">
     <template #actions>
       <div class="equipment-topbar-summary">
@@ -174,6 +183,8 @@ watch(() => editor.type, (type, previous) => { if(editor.open && type !== previo
 
     <main class="equipment-page" :class="{ 'equipment-page--with-filter': section === 'registry' || section === 'written-off' }">
       <UiErrorState v-if="section === 'not-found'" :status="404" back-href="/equipment/" back-label="К учёту техники" />
+      <UiErrorState v-else-if="section==='role-permissions' && !localRoleAdmin" :status="403" />
+      <EquipmentRolePermissionsView v-else-if="section==='role-permissions' && localRoleAdmin" />
       <div v-if="error" class="equipment-error">{{ error }}</div>
       <UiPanel v-if="section==='registry' || section==='written-off'" class="equipment-registry-panel" :aria-busy="loading"><UiRegistryTable class="equipment-shared-registry" :columns="['12%','10%','270px','14%','10%','10%','auto']" min-width="1080px" aria-label="Техника" density="compact"><template #head><tr><th>Инв. №</th><th class="equipment-cell-center">Тип</th><th class="equipment-model-column">Изготовитель / модель</th><th>Серийный номер</th><th class="equipment-cell-center">Назначение</th><th class="equipment-cell-center">Состояние</th><th class="equipment-issued-column">Выдана</th></tr></template><tr v-for="item in filtered" :key="item.id"><td><button type="button" class="equipment-inventory-link" @click="openItem(item)">{{ item.inventory_number }}</button></td><td class="equipment-cell-center">{{ labels[item.type] }}</td><td class="equipment-model-column">{{ [item.manufacturer, item.model].filter(Boolean).join(' ') }}</td><td>{{ item.serial_number || '—' }}</td><td class="equipment-cell-center">{{ !item.purpose || item.purpose === 'unknown' ? '—' : (labels[item.purpose] || item.purpose) }}</td><td class="equipment-cell-center"><UiBadge :tone="item.condition === 'ok' ? 'success' : item.condition === 'damaged' ? 'danger' : item.condition === 'needs_repair' ? 'warning' : 'neutral'">{{ labels[item.condition] || item.condition || '—' }}</UiBadge></td><td class="equipment-issued-column"><span>{{ item.assignment ? shortEmployeeName(item.assignment.employee_id) : '—' }}</span> <UiButton v-if="permissions.operate && !item.written_off_at && item.assignment" compact variant="ghost" class="equipment-text-action" @click="openReturn(item)">(вернуть)</UiButton><UiButton v-else-if="permissions.operate && !item.written_off_at" compact variant="ghost" class="equipment-text-action" @click="openAssign(item)">(выдать)</UiButton></td></tr><tr v-if="!loading && !filtered.length"><td colspan="7" class="equipment-empty">Нет данных</td></tr></UiRegistryTable><UiLoader v-if="loading" overlay label="Загрузка техники" /></UiPanel>
 
