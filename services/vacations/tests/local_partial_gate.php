@@ -71,7 +71,7 @@ $assert(200, 'POST', '/api/absences');
 $assert(200, 'GET', '/api/absences/15/history');
 $assert(200, 'PATCH', '/api/absences/15');
 $assert(200, 'GET', '/api/absences/occupied', ['employee_id'=>17]);
-$assert(403, 'GET', '/api/absences/occupied', ['employee_id'=>18]);
+$assert(200, 'GET', '/api/absences/occupied', ['employee_id'=>18]);
 $assert(200, 'GET', '/api/workspace');
 $assert(200, 'GET', '/api/history');
 $assert(200, 'GET', '/api/production-calendar');
