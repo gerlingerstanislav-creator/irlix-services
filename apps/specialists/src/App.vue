@@ -3,13 +3,19 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { UiAppTopbar, UiAppSidebar, UiRegistryTable, UiErrorState, UiLoader } from '@irlix/ui';
 import { auth } from './auth';
+import SpecialistsRolePermissionsView from './SpecialistsRolePermissionsView.vue';
 
-const navItems = [
+const defaultNavItems = [
   { id: 'dashboard', label: 'Дашборд', icon: 'dashboard' },
   { id: 'people', label: 'Специалисты', icon: 'users' },
   { id: 'competencies', label: 'Технологии и компетенции', icon: 'code' },
 ];
 
+const roleMatrixAdmin=ref(false);
+const navItems=computed(()=>[
+  ...defaultNavItems,
+  ...(roleMatrixAdmin.value?[{id:'role-permissions',label:'Разрешения',icon:'settings'}]:[]),
+]);
 const loading = ref(true);
 const canEditTechnologyCatalog = ref(false);
 const saving = ref(false);
@@ -247,12 +253,12 @@ const toggleTechnology = (id) => {
 
 onMounted(async () => {
   try {
-    const response = await auth.fetch('/api/employees/access/me');
-    if (response.ok) {
-      const result = await response.json();
-      canEditTechnologyCatalog.value = Array.isArray(result?.data?.roles) && result.data.roles.includes('platform-admin');
-    }
-  } catch (_) { /* Deny catalog changes when permissions cannot be verified. */ }
+    const permissions=await api('/permissions');
+    canEditTechnologyCatalog.value=permissions?.catalog_manage === true;
+  } catch (_) { canEditTechnologyCatalog.value=false; }
+  try {
+    roleMatrixAdmin.value=!!(await api('/role-permissions'))?.can_manage;
+  } catch (_) { roleMatrixAdmin.value=false; }
   await loadWorkspace();
   const parents = (workspace.value.catalog.technologies || []).filter((t) => (workspace.value.catalog.technologies || []).some((c) => Number(c.parent_id) === Number(t.id)));
   expandedTechnologies.value = new Set(parents.map((t) => Number(t.id)));
@@ -285,6 +291,8 @@ const openPerson = id => navigate(`people/${id}`);
 
       <UiErrorState v-else-if="route.section === 'not-found'" :status="404" back-href="/specialists/" back-label="На главную Specialists" />
 
+      <UiErrorState v-else-if="route.section==='role-permissions' && !roleMatrixAdmin" :status="403"/>
+      <SpecialistsRolePermissionsView v-else-if="route.section==='role-permissions' && roleMatrixAdmin"/>
       <template v-else-if="route.section === 'dashboard'">
         <header class="page-head">
           <div><div class="eyebrow">Specialists</div><h1>Дашборд направления</h1><p>Профессиональный профиль команды и состояние компетенций.</p></div>
