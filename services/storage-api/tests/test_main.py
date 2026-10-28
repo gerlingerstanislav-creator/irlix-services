@@ -29,7 +29,7 @@ class FakeS3:
             raise ClientError({"Error": {"Code": "NoSuchKey"}}, "HeadObject")
         return {"ContentLength": len(self.records[Key])}
 
-    def list_objects_v2(self, Bucket, Prefix, Delimiter, MaxKeys, **kwargs):
+    def list_objects_v2(self, Bucket, Prefix, Delimiter=None, MaxKeys=200, **kwargs):
         found = set()
         files = []
         for key, content in self.records.items():
@@ -90,6 +90,66 @@ class StoragePilotApiTests(TestCase):
         self.assertEqual(listed["folders"], [{"name": "Отчёты", "path": "Отчёты/"}])
         self.assertEqual(self.client.get("/items?folder=Отчёты/").json()["files"], [])
 
+    def test_reversible_trash_hides_files_and_revokes_direct_read(self):
+        result = self.client.post("/files", files={
+            "file": ("memo.pdf", b"%PDF synthetic")}).json()
+        key = result["key"]
+        removed = self.client.post("/trash", data={"kind": "file", "key": key})
+        self.assertEqual(removed.status_code, 200, removed.text)
+        self.assertEqual(removed.json()["state"], "deleted")
+        self.assertIn(key, self.store.records)  # no physical S3 deletion
+        self.assertEqual(self.client.get("/items").json()["files"], [])
+        self.assertEqual(self.client.get("/files", params={"key": key}).status_code, 404)
+        self.assertEqual(self.client.get("/trash").json()["entries"][0]["identity"], key)
+        second = self.client.post("/trash", data={"kind": "file", "key": key})
+        self.assertEqual(second.status_code, 404)
+        restored = self.client.post("/restore", data={"kind": "file", "key": key})
+        self.assertEqual(restored.status_code, 200, restored.text)
+        self.assertTrue(restored.json()["restored"])
+        self.assertEqual(self.client.get("/trash").json()["entries"], [])
+        self.assertEqual(self.client.get("/items").json()["files"][0]["name"], "memo.pdf")
+        self.assertEqual(self.client.get("/files", params={"key": key}).content, b"%PDF synthetic")
+
+    def test_trash_folder_revokes_nested_files_and_allows_restore(self):
+        self.assertEqual(self.client.post("/folders", data={
+            "folder_name": "Reports"}).status_code, 200)
+        upload = self.client.post("/files", data={"folder": "Reports/"},
+                                  files={"file": ("notes.txt", b"synthetic")}).json()
+        key = upload["key"]
+        self.assertEqual(self.client.post("/trash", data={
+            "kind": "folder", "path": "Reports/"}).status_code, 200)
+        self.assertEqual(self.client.get("/items").json()["folders"], [])
+        self.assertEqual(self.client.get("/items", params={
+            "folder": "Reports/"}).status_code, 404)
+        self.assertEqual(self.client.get("/files", params={"key": key}).status_code, 404)
+        self.assertEqual(self.client.post("/files", data={"folder": "Reports/"},
+                                        files={"file": ("not-visible.txt", b"x")}).status_code, 404)
+        self.assertEqual(self.client.post("/folders", data={
+            "folder_name": "Reports"}).status_code, 409)
+        self.assertEqual(self.client.post("/restore", data={
+            "kind": "folder", "path": "Reports/"}).status_code, 200)
+        self.assertEqual(self.client.get("/items", params={"folder": "Reports/"}).status_code, 200)
+        self.assertEqual(self.client.get("/files", params={"key": key}).content, b"synthetic")
+
+    def test_nested_trash_restore_requires_parent_and_blocks_invalid_ids(self):
+        self.client.post("/folders", data={"folder_name": "Parent"})
+        self.client.post("/folders", data={"folder": "Parent/", "folder_name": "Nested"})
+        self.client.post("/trash", data={"kind": "folder", "path": "Parent/Nested/"})
+        self.client.post("/trash", data={"kind": "folder", "path": "Parent/"})
+        blocked = self.client.post("/restore", data={
+            "kind": "folder", "path": "Parent/Nested/"})
+        self.assertEqual(blocked.status_code, 404)
+        self.client.post("/restore", data={"kind": "folder", "path": "Parent/"})
+        self.assertEqual(self.client.post("/restore", data={
+            "kind": "folder", "path": "Parent/Nested/"}).status_code, 200)
+        self.assertEqual(self.client.post("/trash", data={
+            "kind": "folder", "path": "../"}).status_code, 422)
+        self.assertEqual(self.client.post("/trash", data={
+            "kind": "folder", "path": ""}).status_code, 422)
+        self.assertEqual(self.client.post("/restore", data={
+            "kind": "file", "key": "legacy/key"}).status_code, 404)
+        self.assertFalse(any(hasattr(self.store, method) for method in ("delete_object", "delete_objects")))
+
     def test_rename_preserves_physical_identity_and_updates_download_name(self):
         file_result = self.client.post("/files", files={
             "file": ("old.pdf", b"%PDF synthetic", "application/pdf")}).json()
@@ -143,6 +203,11 @@ class StoragePilotApiTests(TestCase):
         with Image.open(BytesIO(result.content)) as image:
             self.assertLessEqual(image.width, 320)
             self.assertLessEqual(image.height, 240)
+        self.assertEqual(self.client.get("/trash").status_code, 401)
+        self.assertEqual(self.client.post("/trash", data={
+            "kind": "folder", "path": "Private/"}).status_code, 401)
+        self.assertEqual(self.client.post("/restore", data={
+            "kind": "folder", "path": "Private/"}).status_code, 401)
         self.assertEqual(self.client.get("/thumbnails", params={
             "key": "pilot-ui/not-legit"}).status_code, 404)
         other = self.client.post("/files", files={"file": ("doc.pdf", b"pdf")}).json()
