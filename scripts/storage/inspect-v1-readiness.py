@@ -49,7 +49,7 @@ def main(compose_args=None):
         ("employees", ["php", "-r", CHECK_EMPLOYEES]),
     ):
         run = subprocess.run(
-            [*sudo, *compose, "exec", "-T", service, *cmd],
+            [*sudo, *compose, "exec", "-T", "storage-api" if service == "api" else service, *cmd],
             cwd=ROOT, capture_output=True, text=True, timeout=25, check=False,
         )
         if run.returncode != 0:
