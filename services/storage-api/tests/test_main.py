@@ -110,6 +110,19 @@ class StoragePilotApiTests(TestCase):
         self.assertEqual(self.client.get("/items").json()["files"][0]["name"], "memo.pdf")
         self.assertEqual(self.client.get("/files", params={"key": key}).content, b"%PDF synthetic")
 
+    def test_trashed_image_thumbnail_is_denied_and_restored(self):
+        source = BytesIO()
+        Image.new("RGB", (100, 60), (40, 100, 160)).save(source, format="PNG")
+        upload = self.client.post("/files", files={
+            "file": ("preview.png", source.getvalue(), "image/png")}).json()
+        key = upload["key"]
+        self.assertEqual(self.client.get("/thumbnails", params={"key": key}).status_code, 200)
+        self.assertEqual(self.client.post("/trash", data={"kind": "file", "key": key}).status_code, 200)
+        self.assertEqual(self.client.get("/thumbnails", params={"key": key}).status_code, 404)
+        self.assertEqual(self.client.get("/files", params={"key": key, "preview": "true"}).status_code, 404)
+        self.assertEqual(self.client.post("/restore", data={"kind": "file", "key": key}).status_code, 200)
+        self.assertEqual(self.client.get("/thumbnails", params={"key": key}).status_code, 200)
+
     def test_trash_folder_revokes_nested_files_and_allows_restore(self):
         self.assertEqual(self.client.post("/folders", data={
             "folder_name": "Reports"}).status_code, 200)
