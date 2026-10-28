@@ -50,6 +50,15 @@ final class ServiceEntitlement
                 }
                 $path=$request->path();
                 $method=$request->method();
+                if ($path==='api/permissions') {
+                    $hasGrant=false;
+                    foreach ($permissions as $permission) {
+                        if (($permission['allowed']??false)===true) { $hasGrant=true; break; }
+                    }
+                    if (!$hasGrant) return response()->json(['message'=>'Specialists access denied'],403);
+                    $request->attributes->set('specialists_local_permissions',$permissions);
+                    return $next($request);
+                }
                 $required=match(true){
                     $path==='api/workspace'||($method==='GET'&&preg_match('#^api/people/[0-9]+$#',$path))
                         =>'specialists.profiles.view',
