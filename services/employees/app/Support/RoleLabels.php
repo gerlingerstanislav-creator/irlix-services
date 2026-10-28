@@ -26,7 +26,8 @@ final class RoleLabels
 
         foreach ($departments as $department) {
             $alias = (string) ($department->alias ?? '');
-            if ((int) ($department->manager_id ?? 0) !== (int) $employee->id || !self::valid($alias)) continue;
+            if ((int) ($employee->id ?? 0) <= 0 || (int) ($department->manager_id ?? 0) <= 0
+                || (int) $department->manager_id !== (int) $employee->id || !self::valid($alias)) continue;
             if ($alias === 'accounting' && in_array('account-manager',
                 self::functionalClientRoles((object) ['department_id' => $department->id], $departments), true)) {
                 $labels[] = 'account-management-head';
@@ -73,7 +74,8 @@ final class RoleLabels
         }
 
         foreach ($departments as $department) {
-            if ((int) ($department->manager_id ?? 0) !== (int) ($employee->id ?? 0)) continue;
+            if ((int) ($employee->id ?? 0) <= 0 || (int) ($department->manager_id ?? 0) <= 0
+                || (int) $department->manager_id !== (int) $employee->id) continue;
             $alias = self::canonicalOrganizationAlias($department, $departments);
             if ($alias !== null) $claims[] = 'head:'.$alias;
         }
@@ -92,7 +94,7 @@ final class RoleLabels
     private static function canonicalOrganizationAlias(object $department, array $departments): ?string
     {
         $alias = (string) ($department->alias ?? '');
-        if (!self::valid($alias)) return null;
+        if (!preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $alias)) return null;
 
         // Legacy Client Service / Accounting is account management, not
         // Finance Accounting. Do not publish an ambiguous finance identity.
