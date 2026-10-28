@@ -96,7 +96,8 @@ async function refresh() {
     const url = searchActive.value ? '/search?q=' + encodeURIComponent(searchQuery.value.trim())
       : mode.value === 'trash' ? '/trash'
       : mode.value === 'shared' && !parentId.value ? '/available'
-      : '/items' + (parentId.value ? '?parent_id=' + encodeURIComponent(parentId.value) : '');
+      : '/items' + (parentId.value ? '?parent_id=' + encodeURIComponent(parentId.value)
+                                     : '?scope=mine');
     const result = await request(url);
     entries.value = Array.isArray(result.entries) ? result.entries : [];
   } catch (err) { entries.value = []; error.value = err.message; }
