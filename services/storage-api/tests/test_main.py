@@ -68,6 +68,14 @@ class StoragePilotApiTests(TestCase):
         self.assertEqual(download.status_code, 200)
         self.assertTrue(download.headers["content-disposition"].startswith("attachment"))
 
+    def test_double_underscore_filename_is_preserved_in_content_disposition(self):
+        result = self.client.post("/files", files={
+            "file": ("report__final__2026.pdf", b"%PDF synthetic", "application/pdf")})
+        self.assertEqual(result.status_code, 200)
+        response = self.client.get("/files", params={"key": result.json()["key"]})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("report__final__2026.pdf", response.headers["content-disposition"])
+
     def test_empty_folder_visible_after_creation(self):
         response = self.client.post("/folders", data={"folder": "", "folder_name": "Отчёты"})
         self.assertEqual(response.status_code, 200)
