@@ -17,7 +17,11 @@ final class EmployeesDirectory
             $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
             $ids = array_values(array_filter($roles, fn ($role) =>
                 is_string($role) && preg_match('/^employee-id:[1-9][0-9]*$/D', $role)));
-            if (count($ids) !== 1 || !in_array('service:vacations', $roles, true))
+            $local = filter_var(env('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+                && is_array($request->attributes->get('vacations_local_permissions'));
+            // The authenticated local matrix owns service admission. Legacy
+            // service:vacations is a transition marker, never a V2 grant.
+            if (count($ids) !== 1 || (!$local && !in_array('service:vacations', $roles, true)))
                 throw new DomainException('Недостаточно прав для отпуска');
             $employeeId = (int) substr($ids[0], strlen('employee-id:'));
             // A previously signed privileged role is not enough to grant
@@ -25,6 +29,11 @@ final class EmployeesDirectory
             // revocation in Employees. Check CURRENT persisted assignments,
             // fail closed on source outage, and never trust previewed roles.
             $roles = $this->reconcilePrivilegedAccess($request, $roles, $employeeId);
+            if ($local) {
+                // Never reimport legacy global scope markers into V2.
+                return ['roles' => $roles, 'employee_id' => $employeeId,
+                    'scope' => 'none', 'department_ids' => []];
+            }
             $scopeIds = array_values(array_map(fn ($role) => (int) substr($role, strlen('scope:department-')),
                 array_filter($roles, fn ($role) => is_string($role) && preg_match('/^scope:department-[1-9][0-9]*$/D', $role))));
             return [
