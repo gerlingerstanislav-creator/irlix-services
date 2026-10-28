@@ -37,6 +37,7 @@ final class ServiceEntitlement
             $method = $request->method();
             $personal = $method === 'GET' && in_array($path, [
                 'api/me', 'api/absences', 'api/absences/occupied',
+                'api/workspace', 'api/history', 'api/production-calendar',
             ], true);
             $personal = $personal || $method === 'POST' && $path === 'api/absences'
                 || in_array($method, ['GET','PATCH'], true) &&
