@@ -4,9 +4,15 @@ namespace App\Services;
 
 use App\Models\Department;
 use App\Models\Employee;
+use App\Support\BrandbookGate;
 
 final class StorageV1DirectoryService
 {
+    public function actorActive(int $employeeId): bool
+    {
+        return $employeeId > 0 && BrandbookGate::active(Employee::query()->find($employeeId));
+    }
+
     /** Only safe recipient lookup columns; no salary, contacts, or other HR data. */
     public function people(): array
     {
