@@ -26,23 +26,43 @@ final class StoragePilotAccessService
             ->where('role', SpecialRoles::PlatformAdmin)->exists() ? $employee : null;
     }
 
-    public function statusForCookie(string $header): int
+    /**
+     * Current authenticated admin pilot session with verified active Employees ID.
+     * No user-controlled HTTP header, query or form parameter is trusted.
+     * Internal Storage API calls the gate on every request. Do not expose the ID
+     * to nginx-authenticated end users or use it to widen pilot permissions.
+     */
+    public function contextForCookie(string $header): array
     {
-        if (!preg_match('/(?:^|;\\s*)irlix_storage_pilot=([^;]*)/', $header, $match)) return 401;
+        if (!preg_match('/(?:^|;\\s*)irlix_storage_pilot=([^;]*)/', $header, $match)) {
+            return ['status' => 401, 'employee_id' => null];
+        }
         try {
             $session = json_decode(Crypt::decryptString(rawurldecode($match[1])), true, 8, JSON_THROW_ON_ERROR);
         } catch (Throwable) {
-            return 401;
+            return ['status' => 401, 'employee_id' => null];
         }
-        if (!BrandbookGate::validSession($session)) return 401;
+        if (!BrandbookGate::validSession($session)) {
+            return ['status' => 401, 'employee_id' => null];
+        }
         try {
             $employee = Employee::query()->whereKey($session['employee_id'])
                 ->where('keycloak_user_id', $session['subject'])->first();
-            if (!BrandbookGate::active($employee)) return 403;
-            return EmployeeAccessRole::query()->where('employee_id', $employee->id)
-                ->where('role', SpecialRoles::PlatformAdmin)->exists() ? 204 : 403;
+            if (!BrandbookGate::active($employee)) {
+                return ['status' => 403, 'employee_id' => null];
+            }
+            if (!EmployeeAccessRole::query()->where('employee_id', $employee->id)
+                ->where('role', SpecialRoles::PlatformAdmin)->exists()) {
+                return ['status' => 403, 'employee_id' => null];
+            }
+            return ['status' => 204, 'employee_id' => (int) $employee->id];
         } catch (Throwable) {
-            return 503;
+            return ['status' => 503, 'employee_id' => null];
         }
+    }
+
+    public function statusForCookie(string $header): int
+    {
+        return $this->contextForCookie($header)['status'];
     }
 }
