@@ -407,17 +407,6 @@
       "health_path": "/"
     },
     {
-      "id": "storage-filestash",
-      "kind": "backend",
-      "service": "storage-web",
-      "image": "irlix-storage-web",
-      "tag_env": "STORAGE_WEB_IMAGE_TAG",
-      "paths": [
-        "infra/storage/filestash/"
-      ],
-      "health_path": "/"
-    },
-    {
       "id": "storage-api",
       "kind": "backend",
       "service": "storage-api",
