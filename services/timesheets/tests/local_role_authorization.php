@@ -18,6 +18,19 @@ $check($result['timesheets.management.view'] === ['allowed'=>false,'scope'=>'non
 $check(!$result['timesheets.analytics.view']['allowed'], 'Unknown permission must be denied');
 $check(!$result['timesheets.mine.manage']['allowed'], 'Viewing cannot imply editing');
 $check(!Authz::evaluate(['org:irlix'], [])['timesheets.mine.view']['allowed'], 'Org role has no default rights');
+$partnerRules = [
+    ['role'=>'org:account-management','permission'=>'timesheets.partner-hours.view','allowed'=>true,'scope'=>'own'],
+    ['role'=>'head:account-management','permission'=>'timesheets.partner-hours.manage','allowed'=>true,'scope'=>'team'],
+    ['role'=>'head:account-management','permission'=>'timesheets.partner-hours.approve','allowed'=>false,'scope'=>'none'],
+];
+$partner=Authz::evaluate(['org:account-management','head:account-management'], $partnerRules);
+$check($partner['timesheets.partner-hours.view']===['allowed'=>true,'scope'=>'own'],
+    'Partner hours read permission scope was not isolated');
+$check($partner['timesheets.partner-hours.manage']===['allowed'=>true,'scope'=>'team'],
+    'Partner hours write permission was not independent');
+$check(!$partner['timesheets.partner-hours.approve']['allowed'],
+    'Partner final approval must require a separate explicit grant');
+
 $check(!Authz::evaluate(['service:timesheets','scope:all'], $rows)['timesheets.mine.view']['allowed'],
     'Legacy service grants must not be imported');
 $check(Authz::evaluate(['platform-admin'], [])['timesheets.audit.view']['scope'] === 'all',
