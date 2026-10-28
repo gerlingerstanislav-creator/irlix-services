@@ -1,7 +1,9 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { UiButton, UiIcon, UiViewSelect } from '@irlix/ui';
+import { UiActionMenu, UiButton, UiIcon } from '@irlix/ui';
+
+const emit = defineEmits(['breadcrumbs']);
 
 const route = useRoute();
 const router = useRouter();
@@ -31,7 +33,40 @@ const preview = ref(null);
 const textPreview = ref('');
 const showDrop = ref(false);
 const input = ref(null);
+const editor = ref(null);
+const editedName = ref('');
+const properties = ref(null);
+const failedThumbs = ref(new Set());
 let requestSerial = 0;
+const actionsFor = item => item.kind === 'file'
+  ? [{ id: 'rename', label: 'Переименовать' }, { id: 'details', label: 'Свойства' }, { id: 'download', label: 'Скачать' }]
+  : [{ id: 'rename', label: 'Переименовать' }, { id: 'details', label: 'Свойства' }];
+function action(item, id) {
+  if (id === 'download') return download(item);
+  if (id === 'details') { properties.value = item; return; }
+  if (id === 'rename') {
+    editor.value = item;
+    editedName.value = item.name;
+  }
+}
+const thumbnailUrl = item => '/api/storage/thumbnails?key=' + encodeURIComponent(item.key);
+async function renameItem() {
+  if (!editor.value || !editedName.value.trim() || busy.value) return;
+  const item = editor.value;
+  busy.value = true;
+  try {
+    const body = new FormData();
+    body.append('kind', item.kind);
+    body.append(item.kind === 'folder' ? 'path' : 'key', item.kind === 'folder' ? item.path : item.key);
+    body.append('new_name', editedName.value.trim());
+    await api('/rename', { method: 'POST', body });
+    editor.value = null;
+    notify('Название изменено');
+    await refresh();
+  } catch (err) { notify(err.message, 'error'); }
+  finally { busy.value = false; }
+}
+
 
 const visible = computed(() => {
   const term = search.value.trim().toLocaleLowerCase();
@@ -99,6 +134,7 @@ async function refresh(loadMore = false) {
     folders.value = loadMore ? [...folders.value, ...result.folders] : result.folders;
     files.value = loadMore ? [...files.value, ...result.files] : result.files;
     next.value = result.next;
+    emit('breadcrumbs', result.breadcrumbs || []);
   } catch (err) {
     if (serial === requestSerial) notify(err.message, 'error');
   } finally {
@@ -111,6 +147,8 @@ function go(path) {
 watch(folder, () => {
   folders.value = []; files.value = []; next.value = null;
   selected.value = null; preview.value = null; search.value = '';
+  failedThumbs.value = new Set();
+  emit('breadcrumbs', []);
   refresh();
 });
 function open(item) {
@@ -181,7 +219,10 @@ onMounted(() => refresh());
           <div class="storage-toolbar-tools">
             <label class="storage-search"><UiIcon name="search" /><input v-model="search" placeholder="Поиск в папке" aria-label="Поиск в папке" /></label>
             <select v-model="sortBy" aria-label="Сортировка"><option value="name">По названию</option><option value="date">По дате</option><option value="size">По размеру</option></select>
-            <UiViewSelect v-model="layout" :options="[{ value: 'list', label: 'Список' }, { value: 'grid', label: 'Плитки' }]" aria-label="Вид файлов" />
+            <div class="storage-switch" role="group" aria-label="Вид файлов">
+              <button type="button" :class="{ active: layout === 'list' }" :aria-pressed="layout === 'list'" title="Список" aria-label="Список" @click="layout = 'list'"><UiIcon name="list" /></button>
+              <button type="button" :class="{ active: layout === 'grid' }" :aria-pressed="layout === 'grid'" title="Плитки" aria-label="Плитки" @click="layout = 'grid'"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1" /><rect x="13.5" y="3.5" width="7" height="7" rx="1" /><rect x="3.5" y="13.5" width="7" height="7" rx="1" /><rect x="13.5" y="13.5" width="7" height="7" rx="1" /></svg></button>
+            </div>
           </div>
           <div class="storage-actions">
             <UiButton variant="secondary" type="button" @click="createFolder = true" :disabled="busy">＋ Папка</UiButton>
@@ -204,16 +245,24 @@ onMounted(() => refresh());
                 <td><span class="storage-file-icon">{{ iconOf(item) }}</span><button class="storage-file-name" @click.stop="open(item)">{{ item.name }}</button></td>
                 <td>{{ item.kind === 'folder' ? 'Папка' : readableSize(item.size) }}</td>
                 <td>{{ dateText(item.modified) }}</td>
-                <td class="storage-download-cell"><button v-if="item.kind==='file'" @click.stop="download(item)" title="Скачать" aria-label="Скачать файл">↓</button><span v-else>›</span></td>
+                <td class="storage-download-cell" @click.stop @dblclick.stop><UiActionMenu :items="actionsFor(item)" :aria-label="'Действия: ' + item.name" @select="action(item, $event)" /></td>
               </tr></tbody>
             </table>
           </div>
           <div v-else class="storage-grid">
-            <button v-for="item in visible" :key="item.kind==='folder'?item.path:item.key" class="storage-tile" @click="open(item)">
-              <span class="storage-tile-icon">{{ iconOf(item) }}</span>
-              <strong :title="item.name">{{ item.name }}</strong>
-              <small>{{ item.kind==='folder'?'Папка':readableSize(item.size) }}</small>
-            </button>
+            <div v-for="item in visible" :key="item.kind==='folder'?item.path:item.key" class="storage-tile">
+              <div class="storage-tile-actions" @click.stop><UiActionMenu :items="actionsFor(item)" :aria-label="'Действия: ' + item.name" @select="action(item, $event)" /></div>
+              <button type="button" class="storage-tile-open" @click="open(item)" :aria-label="'Открыть: ' + item.name">
+                <span class="storage-tile-icon">
+                  <img v-if="item.kind === 'file' && typeOf(item.name) === 'image' && !failedThumbs.has(item.key)"
+                       class="storage-thumbnail" :src="thumbnailUrl(item)" :alt="''" loading="lazy" decoding="async"
+                       @error="failedThumbs.add(item.key)" />
+                  <span v-else>{{ iconOf(item) }}</span>
+                </span>
+                <strong :title="item.name">{{ item.name }}</strong>
+                <small>{{ item.kind==='folder'?'Папка':readableSize(item.size) }}</small>
+              </button>
+            </div>
           </div>
           <div v-if="next" class="storage-load-more"><button class="storage-button secondary" :disabled="loading" @click="refresh(true)">Показать ещё</button></div>
         </div>
@@ -225,6 +274,21 @@ onMounted(() => refresh());
         <label>Название папки<input v-model="folderName" placeholder="Например, Документы" maxlength="80" autofocus required /></label>
         <div class="storage-modal-actions"><button type="button" class="storage-button secondary" @click="createFolder=false">Отмена</button><button class="storage-button primary" :disabled="busy||!folderName.trim()">Создать</button></div>
       </form>
+    </div>
+    <div v-if="editor" class="storage-overlay" @click.self="!busy && (editor=null)">
+      <form class="storage-modal storage-small-modal" @submit.prevent="renameItem">
+        <div class="storage-modal-head"><h2>Переименовать {{ editor.kind === 'folder' ? 'папку' : 'файл' }}</h2><button type="button" :disabled="busy" @click="editor=null">×</button></div>
+        <label>Название<input v-model="editedName" maxlength="160" required autofocus /></label>
+        <p v-if="editor.kind === 'file'" class="storage-rename-hint">Расширение файла менять нельзя: оно используется для безопасного предпросмотра.</p>
+        <div class="storage-modal-actions"><UiButton type="button" variant="secondary" :disabled="busy" @click="editor=null">Отмена</UiButton><UiButton :disabled="busy || !editedName.trim() || editedName.trim() === editor.name">Сохранить</UiButton></div>
+      </form>
+    </div>
+    <div v-if="properties" class="storage-overlay" @click.self="properties=null">
+      <section class="storage-modal storage-small-modal" role="dialog" aria-modal="true" aria-label="Свойства объекта">
+        <div class="storage-modal-head"><h2>Свойства</h2><button type="button" @click="properties=null">×</button></div>
+        <dl class="storage-properties"><dt>Название</dt><dd>{{ properties.name }}</dd><dt>Тип</dt><dd>{{ properties.kind === 'folder' ? 'Папка' : 'Файл' }}</dd><dt v-if="properties.kind === 'file'">Размер</dt><dd v-if="properties.kind === 'file'">{{ readableSize(properties.size) }}</dd><dt v-if="properties.kind === 'file'">Изменён</dt><dd v-if="properties.kind === 'file'">{{ dateText(properties.modified) }}</dd></dl>
+        <div class="storage-modal-actions"><UiButton type="button" variant="secondary" @click="properties=null">Закрыть</UiButton></div>
+      </section>
     </div>
     <div v-if="preview" class="storage-overlay" @click.self="preview=null">
       <div class="storage-modal storage-preview-modal" role="dialog" aria-modal="true" aria-label="Просмотр файла">
