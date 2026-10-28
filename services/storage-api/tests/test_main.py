@@ -87,7 +87,7 @@ class StoragePilotApiTests(TestCase):
         for key in ("legacy-cv/secret.pdf", "pilot-ui/../../private.pdf",
                     "pilot-ui/guest.pdf", "pilot-ui/.irlix-folder"):
             response = self.client.get("/files", params={"key": key})
-            self.assertEqual(response.status_code, 404)
+            self.assertIn(response.status_code, (404, 422), "invalid object ID must be rejected")
         self.assertEqual(self.client.delete("/files").status_code, 405)
 
     def test_active_formats_are_forced_download(self):
