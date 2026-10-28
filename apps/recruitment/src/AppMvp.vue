@@ -108,26 +108,31 @@ async function createCandidate() {
   modal.value = null; await reload();
 }
 async function createRequest() {
+  if (!can('recruitment.requests.manage')) return;
   await recruitmentApi.createRequest({ ...requestForm, positions_count:Number(requestForm.positions_count) });
   modal.value = null; await reload();
 }
-async function createPool() { await recruitmentApi.createPool(poolForm); poolForm.name=''; poolForm.description=''; modal.value=null; await reload(); }
-async function createTask() { await recruitmentApi.createTask({ ...taskForm, entity_id: taskForm.entity_id ? Number(taskForm.entity_id) : null, due_at: taskForm.due_at || null }); modal.value=null; await reload(); }
-async function moveStage(process, stage_type, stage_label) { await recruitmentApi.moveStage(process.id, { stage_type, stage_label }); await reload(); }
-async function completeTask(task) { await recruitmentApi.completeTask(task.id); await reload(); }
+async function createPool() { if (!can('recruitment.pools.manage')) return; await recruitmentApi.createPool(poolForm); poolForm.name=''; poolForm.description=''; modal.value=null; await reload(); }
+async function createTask() { if (!can('recruitment.tasks.manage')) return; await recruitmentApi.createTask({ ...taskForm, entity_id: taskForm.entity_id ? Number(taskForm.entity_id) : null, due_at: taskForm.due_at || null }); modal.value=null; await reload(); }
+async function moveStage(process, stage_type, stage_label) { if (!can('recruitment.hiring.manage')) return; await recruitmentApi.moveStage(process.id, { stage_type, stage_label }); await reload(); }
+async function completeTask(task) { if (!can('recruitment.tasks.manage')) return; await recruitmentApi.completeTask(task.id); await reload(); }
 async function advanceEmployment(item) {
+  if (!can('recruitment.employment.manage')) return;
   const index = employmentStages.findIndex(([id]) => id === item.stage); if (index < 0 || index === employmentStages.length - 1) return;
   await recruitmentApi.updateEmployment(item.id, { stage: employmentStages[index+1][0] }); await reload();
 }
 async function advanceOffer(item) {
+  if (!can('recruitment.offers.manage')) return;
   const index = offerStatuses.findIndex(([id]) => id === item.status); if (index < 0 || index === offerStatuses.length - 1) return;
   await recruitmentApi.updateOffer(item.id, { status: offerStatuses[index+1][0] }); await reload();
 }
 async function addCandidateToPool(pool) {
+  if (!can('recruitment.pools.manage')) return;
   const raw = window.prompt('ID кандидата для добавления в Talent Pool'); if (!raw) return;
   await recruitmentApi.addToPool(pool.id, Number(raw)); await reload();
 }
 async function scheduleInterview(process) {
+  if (!can('recruitment.interviews.manage')) return;
   const when = window.prompt('Дата и время интервью, например 2026-10-01 14:00'); if (!when) return;
   const type = window.prompt('Тип интервью', process.stage_type === 'manager_interview' ? 'manager' : 'hr') || 'hr';
   await recruitmentApi.createInterview({ hiring_process_id:process.id, type, scheduled_at:when, participants:'' }); await reload();
@@ -139,6 +144,7 @@ async function createOffer(process) {
   await reload();
 }
 async function startEmployment(process) {
+  if (!can('recruitment.employment.manage')) return;
   const c = process.candidate;
   const department_name = window.prompt('Направление / подразделение', '') || 'Не указано';
   const manager_name = window.prompt('Руководитель', '') || 'Не указан';
