@@ -3,8 +3,12 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\RecruitmentPermissionsController;
 
 Route::get('/health', fn () => ['data' => ['status' => 'ok', 'service' => 'recruitment']]);
+Route::get('/role-permissions',[RecruitmentPermissionsController::class,'index']);
+Route::put('/role-permissions',[RecruitmentPermissionsController::class,'update']);
+Route::delete('/role-permissions',[RecruitmentPermissionsController::class,'remove']);
 
 $actor = static function (Request $request): string {
     $identity = $request->attributes->get('identity', []);
