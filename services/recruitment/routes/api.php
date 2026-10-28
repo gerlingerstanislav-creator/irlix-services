@@ -146,17 +146,31 @@ Route::post('/offers', function (Request $request) {
         abort(403, 'Additional permission required for this field');
     }
     $id = DB::table('offers')->insertGetId([...$data,'status'=>'draft','created_at'=>now(),'updated_at'=>now()]);
-    return response()->json(['data'=>DB::table('offers')->find($id)],201);
+    $created = DB::table('offers')->find($id);
+    if ($local && !($grants['recruitment.compensation.view'] ?? false)) {
+        $created->compensation = null;
+    }
+    return response()->json(['data'=>$created],201);
 });
 
 Route::patch('/offers/{id}', function (Request $request, int $id) {
     $data = $request->validate(['status'=>['required','in:draft,approval,ready,sent,accepted,rejected,withdrawn'],'compensation'=>['sometimes','nullable','string','max:255'],'planned_start_date'=>['sometimes','nullable','date']]);
+    $local = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+        && filter_var(env('IRLIX_RECRUITMENT_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+    $grants = (array) $request->attributes->get('recruitment_local_permissions', []);
+    if ($local && !\App\Services\RecruitmentRoleAuthorization::canWriteSensitiveField($grants, $data, 'compensation')) {
+        abort(403, 'Additional permission required for this field');
+    }
     abort_if(!DB::table('offers')->where('id',$id)->exists(),404,'Offer not found');
     $update = [...$data,'updated_at'=>now()];
     if (($data['status']??null)==='sent') $update['sent_at']=now();
     if (in_array(($data['status']??null),['accepted','rejected'],true)) $update['decision_at']=now();
     DB::table('offers')->where('id',$id)->update($update);
-    return ['data'=>DB::table('offers')->find($id)];
+    $updated = DB::table('offers')->find($id);
+    if ($local && !($grants['recruitment.compensation.view'] ?? false)) {
+        $updated->compensation = null;
+    }
+    return ['data'=>$updated];
 });
 
 Route::post('/talent-pools', function (Request $request) {
