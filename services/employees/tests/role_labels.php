@@ -22,6 +22,17 @@ $check($roles(200,3,['personnel-officer']), ['account-management','account-manag
 $check($roles(100,1), ['irlix','irlix-head']);
 $check($roles(101,2,['system-admin','system-admin']), ['accounting','system-admin']);
 $check($roles(0,4), ['sales','sales-manager']);
+// V2 identities include every organizational ancestor. They do not
+// include a parent's head privileges and special roles are independent.
+$check(RoleLabels::publishedRoleClaims((object)['id'=>101,'department_id'=>2], $departments,
+    ['personnel-officer']), ['org:accounting','org:irlix','special:personnel-officer']);
+$check(RoleLabels::publishedRoleClaims((object)['id'=>200,'department_id'=>3], $departments,
+    ['personnel-officer']), ['head:accounting','head:sales','org:account-management','org:irlix',
+        'special:personnel-officer']);
+$check(RoleLabels::publishedRoleClaims((object)['id'=>100,'department_id'=>1], $departments),
+    ['head:irlix','org:irlix']);
+$check(RoleLabels::publishedRoleClaims((object)['id'=>101,'department_id'=>2], $departments,
+    ['platform-tester']), ['org:accounting','org:irlix']);
 // A Backend employee inherits configurable baseline permissions from
 // Development and Irlix, but NO parent manager/JWT role.
 $engineering = [
@@ -31,11 +42,15 @@ $engineering = [
 ];
 $engineer = (object)['id'=>900,'department_id'=>22];
 $check(RoleLabels::resolve($engineer,$engineering), ['backend']);
+$check(RoleLabels::publishedRoleClaims($engineer,$engineering),
+    ['org:backend','org:development','org:irlix']);
 $check(RoleLabels::ancestorDepartmentRoles($engineer,$engineering), ['development','irlix']);
 $check(RoleLabels::ancestorDepartmentRoles((object)['department_id'=>21],$engineering), ['irlix']);
 $check(RoleLabels::ancestorDepartmentRoles((object)['department_id'=>999],$engineering), []);
 $engineering[0]->parent_id = 22;
 $check(RoleLabels::ancestorDepartmentRoles($engineer,$engineering), ['development','irlix']); // cycle-safe
+$check(RoleLabels::publishedRoleClaims($engineer,$engineering),
+    ['org:backend','org:development','org:irlix']); // cycle-safe
 $engineering[0]->parent_id = null;
 $unsafe = [(object) ['id'=>5,'alias'=>'platform-admin','parent_id'=>null,'manager_id'=>501],
     (object) ['id'=>6,'alias'=>'accounting-head','parent_id'=>null,'manager_id'=>501],
@@ -104,6 +119,8 @@ $check(RoleLabels::resolve((object)['id'=>502,'department_id'=>13], $clientTree)
     ['account-manager']);
 $check(RoleLabels::resolve((object)['id'=>503,'department_id'=>12], $clientTree),
     ['account-manager']); // Legacy Accounting must NOT become Finance accounting
+$check(RoleLabels::publishedRoleClaims((object)['id'=>503,'department_id'=>12],$clientTree),
+    ['org:account-management']); // Legacy accounting may never publish Finance accounting
 $check(RoleLabels::resolve((object)['id'=>504,'department_id'=>16], $clientTree),
     ['sales','sales-manager']);
 $check(RoleLabels::resolve((object)['id'=>505,'department_id'=>15], $clientTree),
@@ -117,6 +134,17 @@ $check(KeycloakAuthorizationSync::grants([
 $check(KeycloakAuthorizationSync::managedNames(
     ['account-manager','sales-manager','account-management-head','unrelated'], [], []
 ), ['account-manager','sales-manager','account-management-head']);
+$check(KeycloakAuthorizationSync::grants([
+    'employee_id'=>101,
+    'roles'=>['accounting','accounting-head','personnel-officer'],
+    'role_claims'=>['org:irlix','org:accounting','head:accounting','special:personnel-officer'],
+    'services'=>['finance'=>true],
+    'scope'=>'none',
+]), ['accounting','accounting-head','employee-id:101','head:accounting','org:accounting',
+    'org:irlix','personnel-officer','service:finance','special:personnel-officer']);
+$check(KeycloakAuthorizationSync::managedNames(
+    ['org:irlix','head:accounting','special:personnel-officer','unrelated'],[],[]
+),['org:irlix','head:accounting','special:personnel-officer']);
 // Realm role mapping writes should only contain the two stable required fields.
 // Keycloak GET RoleRepresentation may contain server-owned metadata.
 $check(KeycloakAuthorizationSync::mappingRole([
