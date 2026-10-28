@@ -116,7 +116,8 @@ final class TimesheetsContext
             $assignedAccess['roles'] ?? [],
         )));
         $employeeId = (int) $employee['id'];
-        $platformAdmin = in_array('platform-admin', $roles, true);
+        $platformAdmin = in_array('platform-admin', $roles, true)
+            || ($localEnabled && in_array('special:platform-admin', $roles, true));
         // V2 derives leadership scope from CURRENT trusted Employees manager
         // relationships, never from the legacy global scope:* JWT grant.
         $managedDepartmentIds = $localEnabled
