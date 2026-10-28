@@ -27,7 +27,7 @@ app = FastAPI(title="IRLIX Storage Pilot", docs_url=None, redoc_url=None, openap
 ROOT = "pilot-ui/"
 META_ROOT = "pilot-ui-meta/"  # API-private display labels; S3 objects and their keys stay unchanged.
 IMAGE_MIMES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
-Image.MAX_IMAGE_PIXELS = 25_000_000
+Image.MAX_IMAGE_PIXELS = 12_000_000
 MAX_FILE = 10 * 1024 * 1024
 MAX_NAME = 160
 MAX_DEPTH = 8
@@ -296,6 +296,8 @@ def thumbnail(key: str = Query(...)):
 
     try:
         with Image.open(BytesIO(source)) as original:
+            if original.width * original.height > 12_000_000:
+                raise HTTPException(413, "Изображение слишком большое для миниатюры")
             original.seek(0)
             picture = ImageOps.exif_transpose(original)
             picture.thumbnail((320, 240), Image.Resampling.LANCZOS)
