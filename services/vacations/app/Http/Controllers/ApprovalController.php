@@ -59,6 +59,30 @@ final class ApprovalController extends Controller
                 }
             }
 
+            $localPermissions = $request->attributes->get('vacations_local_permissions');
+            if (is_array($localPermissions)) {
+                // A general HR/manager/personnel role must not turn an OWN
+                // approvals grant into a cross-employee task list. Personnel
+                // still needs an explicit per-action scope in this service.
+                $scope = (string) ($localPermissions['vacations.approvals.view']['scope'] ?? 'none');
+                if ($scope === 'own') {
+                    $filtered = array_values(array_filter($filtered, static fn (array $item): bool =>
+                        (int) ($item['approver_employee_id'] ?? 0) === $employeeId
+                        && (int) ($item['employee_id'] ?? 0) !== $employeeId));
+                } elseif ($scope === 'team') {
+                    $org = $this->employees->vacationsDirectory($request);
+                    $departments = array_values($org['departments'] ?? []);
+                    $people = array_values($org['employees'] ?? []);
+                    $filtered = array_values(array_filter($filtered, static fn (array $item): bool =>
+                        ((int) ($item['approver_employee_id'] ?? 0) === $employeeId
+                            && (int) ($item['employee_id'] ?? 0) !== $employeeId)
+                        || \App\Services\VacationsObjectScope::allows('team', $employeeId,
+                            (int) ($item['employee_id'] ?? 0), $departments, $people)));
+                } elseif ($scope !== 'all') {
+                    $filtered = [];
+                }
+            }
+
             $directory = [];
             try {
                 $directoryPayload = $this->employees->vacationsDirectory($request);
