@@ -15,7 +15,7 @@ const roleValid = computed(() => /^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/
   && newRole.value.trim() !== 'special:platform-admin');
 const matrixScope = (role, permission) => {
   const entry = policy.value.matrix.find(item => item.role === role && item.permission === permission);
-  return entry?.allowed ? entry.scope : 'none';
+  return !entry ? 'inherit' : (entry.allowed ? entry.scope : 'deny');
 };
 async function request(init={}) {
   const response = await auth.fetch('/api/timesheets/permissions', {
@@ -35,9 +35,11 @@ async function change(role,permission,scope) {
   if (saving.value) return;
   saving.value = role+permission; error.value = '';
   try {
-    policy.value = await request({method:'PUT',body:JSON.stringify({
-      role,permission,allowed:scope!=='none',scope,
-    })});
+    policy.value = await request(scope === 'inherit'
+      ? {method:'DELETE',body:JSON.stringify({role,permission})}
+      : {method:'PUT',body:JSON.stringify({
+          role,permission,allowed:scope!=='deny',scope:scope==='deny'?'none':scope,
+        })});
   } catch (e) { error.value = e.message; }
   finally { saving.value = ''; }
 }
@@ -70,7 +72,8 @@ onMounted(load);
               <td v-for="role in roles" :key="role">
                 <select :value="matrixScope(role,permission)" :disabled="!!saving"
                   :aria-label="role+' — '+permission" @change="change(role,permission,$event.target.value)">
-                  <option value="none">Нет</option>
+                  <option value="inherit">Не задано</option>
+                  <option value="deny">Запретить</option>
                   <option value="own">Свои</option>
                   <option value="team">Команда</option>
                   <option value="all">Все</option>
