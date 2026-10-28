@@ -3,6 +3,7 @@ import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router';
 import { UiAppShell, UiButton, UiBadge, UiSearchSelect, UiPeriodPicker, UiDrawer, UiErrorState, UiLoader } from '@irlix/ui';
 import { auth } from './auth';
+import FinancePermissionsView from './components/FinancePermissionsView.vue';
 
 const sections = [
   { id:'overview', label:'Обзор', icon:'dashboard', groupStart:false },
@@ -14,6 +15,7 @@ const sections = [
   { id:'cash-flow', label:'ДДС', icon:'audit' },
   { id:'planning', label:'Планирование', icon:'calendar', groupStart:true },
   { id:'settings', label:'Настройки', icon:'settings' },
+  { id:'permissions', label:'Разрешения', icon:'shield', groupStart:true },
 ];
 const route = useRoute();
 const router = useRouter();
@@ -52,6 +54,7 @@ const budget = reactive({name:'',scenario:'base',lines:[{month:month.value,cost_
 const operationState = ref(null);
 
 const permissions = ref({});
+const canManageFinanceRoles = ref(false);
 const openForm = ref('');
 const invoice = reactive({client_id:'',reporting_period_id:'',number:'',payer:'',issued_on:'',due_on:'',amount:'',vat_amount:'0',comment:''});
 const newRequestId = () => {
@@ -68,7 +71,8 @@ const account = reactive({name:'',type:'bank',opening_on:new Date().toISOString(
 const euro = value => value == null ? 'Нет данных' : new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(Number(value));
 const can = name => permissions.value[name] === true;
 const sectionAllowed = id => can('finance.view')
-  && (id!=='profitability' || can('finance.salary.view'));
+  && (id!=='profitability' || can('finance.salary.view'))
+  && (id!=='permissions' || canManageFinanceRoles.value);
 const visible = computed(()=>sections.filter(s=>sectionAllowed(s.id))
   .map(s=>({...s,href:'/finance/'+s.id+'/'})));
 const formTitle=computed(()=>({
@@ -161,6 +165,10 @@ async function load(){
     const me=await call('me');
     if(requestId!==loadSequence)return;
     permissions.value=me.permissions||{};
+    // Protected Finance endpoint is authoritative for admin-only UI.
+    // Standard accountants receive 403; this does not affect their registers.
+    canManageFinanceRoles.value = !!(await call('permissions').catch(() => null))?.can_manage;
+    if(requestId!==loadSequence)return;
     if(!can('finance.view')){
       error.value='У вас нет доступа к финансовому сервису.';
       return;
@@ -429,6 +437,9 @@ onBeforeUnmount(()=>{loadSequence++;});
       <div v-if="notice" class="finance-success" role="status">{{notice}}</div>
       <UiErrorState v-if="section==='not-found'" :status="404" back-href="/finance/overview/" back-label="К обзору" />
       <UiErrorState v-else-if="!busy && !sectionAllowed(section)" :status="403" />
+      <template v-else-if="section==='permissions'">
+        <FinancePermissionsView />
+      </template>
       <template v-else-if="section==='overview'">
         <div class="finance-kpis">
           <div><small>Выставлено счетов (все даты)</small><strong>{{euro(overview?.issued_amount)}}</strong></div>
