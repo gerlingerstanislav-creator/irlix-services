@@ -21,6 +21,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 import httpx
+from .lifecycle import list_markers, read_marker, write_marker
 
 app = FastAPI(title="IRLIX Storage Pilot", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -155,6 +156,106 @@ def _set_alias(client, folder: str, item_key: str, value: str):
         raise HTTPException(503, "Не удалось сохранить название")
 
 
+def _ancestors(relative: str, include_self: bool) -> list[str]:
+    parts = relative.rstrip("/").split("/") if relative else []
+    if not include_self and parts:
+        parts = parts[:-1]
+    result = []
+    current = ""
+    for part in parts:
+        current += part + "/"
+        result.append(current)
+    return result
+
+
+def _is_hidden(client, kind: str, identity: str) -> bool:
+    if kind == "file":
+        relative = identity[len(ROOT):]
+        parents = _ancestors(relative, False)
+    else:
+        relative = prefix(identity)
+        parents = _ancestors(relative, True)
+    for parent in parents:
+        marker = read_marker(client, bucket(), "folder", parent)
+        if marker and marker["state"] == "deleted":
+            return True
+    marker = read_marker(client, bucket(), kind, identity)
+    return bool(marker and marker["state"] == "deleted")
+
+
+def _ensure_visible(client, kind: str, identity: str) -> None:
+    if _is_hidden(client, kind, identity):
+        raise HTTPException(404, "Файл или папка находятся в корзине")
+
+
+def _ensure_folder_visible(client, folder: str) -> None:
+    if folder:
+        _ensure_visible(client, "folder", prefix(folder))
+
+
+def _head_existing(client, kind: str, identity: str) -> None:
+    obj_key = identity if kind == "file" else ROOT + identity + ".irlix-folder"
+    try:
+        client.head_object(Bucket=bucket(), Key=obj_key)
+    except ClientError as err:
+        if err.response.get("Error", {}).get("Code") in {"NoSuchKey", "404", "NotFound"}:
+            raise HTTPException(404, "Файл или папка не найдены")
+        raise HTTPException(503, "Не удалось проверить объект")
+    except BotoCoreError:
+        raise HTTPException(503, "Не удалось проверить объект")
+
+
+def _identity(kind: str, key: str, path: str) -> str:
+    if kind == "file":
+        return file_key(key)
+    if kind == "folder":
+        target = prefix(path)
+        if not target:
+            raise HTTPException(422, "Корневая папка не перемещается в корзину")
+        return target
+    raise HTTPException(422, "Неизвестный тип объекта")
+
+
+def _parent(kind: str, identity: str) -> str:
+    if kind == "file":
+        relative = identity[len(ROOT):]
+        return relative.rsplit("/", 1)[0] + "/" if "/" in relative else ""
+    return identity.rstrip("/").rsplit("/", 1)[0] + "/" if "/" in identity.rstrip("/") else ""
+
+
+@app.get("/trash", dependencies=[Depends(guard)])
+def trash(continuation: str | None = None):
+    return list_markers(s3(), bucket(), continuation)
+
+
+@app.post("/trash", dependencies=[Depends(guard)])
+def move_to_trash(kind: str = Form(...), key: str = Form(""), path: str = Form("")):
+    identity = _identity(kind, key, path)
+    client = s3()
+    _ensure_visible(client, kind, identity)
+    _head_existing(client, kind, identity)
+    parent = _parent(kind, identity)
+    labels = _aliases(client, parent)
+    default = identity.rstrip("/").rsplit("/", 1)[-1] if kind == "folder" else identity.rsplit("/", 1)[-1][34:]
+    display = labels.get(kind + ":" + identity, default)
+    return write_marker(client, bucket(), kind, identity, "deleted", display)
+
+
+@app.post("/restore", dependencies=[Depends(guard)])
+def restore(kind: str = Form(...), key: str = Form(""), path: str = Form("")):
+    identity = _identity(kind, key, path)
+    client = s3()
+    marker = read_marker(client, bucket(), kind, identity)
+    if not marker or marker["state"] != "deleted":
+        raise HTTPException(404, "Объект не находится в корзине")
+    parent = _parent(kind, identity)
+    _ensure_folder_visible(client, parent)
+    _head_existing(client, kind, identity)
+    record = write_marker(client, bucket(), kind, identity, "restored",
+                          marker["name"], marker["deleted_at"])
+    return {"kind": record["kind"], "name": record["name"], "restored": True}
+
+
 @app.get("/items", dependencies=[Depends(guard)])
 def items(folder: str = "", continuation: str | None = None):
     path = ROOT + prefix(folder)
@@ -164,6 +265,7 @@ def items(folder: str = "", continuation: str | None = None):
             raise HTTPException(422, "Недопустимый маркер")
         args["ContinuationToken"] = continuation
     client = s3()
+    _ensure_folder_visible(client, folder)
     try:
         result = client.list_objects_v2(**args)
     except (ClientError, BotoCoreError):
@@ -173,12 +275,13 @@ def items(folder: str = "", continuation: str | None = None):
                                     obj["Prefix"][len(path):-1]),
                 "path": obj["Prefix"][len(ROOT):]}
                for obj in result.get("CommonPrefixes", [])
-               if obj["Prefix"] != path and obj["Prefix"].startswith(path)]
+               if obj["Prefix"] != path and obj["Prefix"].startswith(path)
+               and not _is_hidden(client, "folder", obj["Prefix"][len(ROOT):])]
     files = []
     for obj in result.get("Contents", []):
         key = obj["Key"]
         leaf = key[len(path):]
-        if not IDENTIFIER.fullmatch(leaf) or "/" in leaf:
+        if not IDENTIFIER.fullmatch(leaf) or "/" in leaf or _is_hidden(client, "file", key):
             continue
         files.append({"key": key, "name": aliases.get("file:" + key, leaf[34:]), "size": obj["Size"],
                       "modified": obj["LastModified"].isoformat() if obj.get("LastModified") else None,
@@ -191,8 +294,13 @@ def items(folder: str = "", continuation: str | None = None):
 def add_folder(folder: str = Form(""), folder_name: str = Form(...)):
     destination = ROOT + prefix(folder) + name(folder_name) + "/"
     # A marker is used so an empty folder remains visible.
+    client = s3()
+    _ensure_folder_visible(client, folder)
+    previous = read_marker(client, bucket(), "folder", destination[len(ROOT):])
+    if previous and previous["state"] == "deleted":
+        raise HTTPException(409, "Папка находится в корзине. Сначала восстановите её")
     try:
-        s3().put_object(Bucket=bucket(), Key=destination + ".irlix-folder", Body=b"")
+        client.put_object(Bucket=bucket(), Key=destination + ".irlix-folder", Body=b"")
     except (ClientError, BotoCoreError):
         raise HTTPException(503, "Не удалось создать папку")
     return {"path": destination[len(ROOT):]}
@@ -208,8 +316,10 @@ async def upload(folder: str = Form(""), file: UploadFile = File(...)):
     key = dest + uuid.uuid4().hex + "__" + filename
     mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
     # Never accept a browser-supplied HTML/script Content-Type for inline preview.
+    client = s3()
+    _ensure_folder_visible(client, folder)
     try:
-        s3().put_object(Bucket=bucket(), Key=key, Body=data, ContentType=mime,
+        client.put_object(Bucket=bucket(), Key=key, Body=data, ContentType=mime,
                         Metadata={"sha256": hashlib.sha256(data).hexdigest()})
     except (ClientError, BotoCoreError):
         raise HTTPException(503, "Не удалось загрузить файл")
@@ -228,6 +338,7 @@ def rename(kind: str = Form(...), key: str = Form(""), path: str = Form(""),
             raise HTTPException(422, "При переименовании файла нельзя менять расширение")
         label_key = "file:" + identity
         client = s3()
+        _ensure_visible(client, "file", identity)
         try:
             client.head_object(Bucket=bucket(), Key=identity)
         except ClientError as err:
@@ -243,6 +354,7 @@ def rename(kind: str = Form(...), key: str = Form(""), path: str = Form(""),
         folder = relative.rsplit("/", 2)[0] + "/" if relative.count("/") > 1 else ""
         label_key = "folder:" + relative
         client = s3()
+        _ensure_visible(client, "folder", relative)
         try:
             client.head_object(Bucket=bucket(), Key=ROOT + relative + ".irlix-folder")
         except ClientError as err:
@@ -277,6 +389,7 @@ def thumbnail(key: str = Query(...)):
     if (mimetypes.guess_type(filename)[0] or "") not in IMAGE_MIMES:
         raise HTTPException(415, "Миниатюры доступны только для изображений")
     client = s3()
+    _ensure_visible(client, "file", identity)
     try:
         obj = client.get_object(Bucket=bucket(), Key=identity)
         try:
@@ -314,11 +427,13 @@ def read_file(key: str = Query(...), preview: bool = False):
     key = file_key(key)
     physical_name = key.rsplit("/", 1)[-1][34:]  # keep original MIME/type for preview safety
     folder = key[len(ROOT):].rsplit("/", 1)[0] + "/" if "/" in key[len(ROOT):] else ""
-    filename = _aliases(s3(), folder).get("file:" + key, physical_name)
+    client = s3()
+    _ensure_visible(client, "file", key)
+    filename = _aliases(client, folder).get("file:" + key, physical_name)
     mime = mimetypes.guess_type(physical_name)[0] or "application/octet-stream"
     inline = preview and mime in SAFE_INLINE
     try:
-        obj = s3().get_object(Bucket=bucket(), Key=key)
+        obj = client.get_object(Bucket=bucket(), Key=key)
     except ClientError as err:
         if err.response.get("Error", {}).get("Code") in {"NoSuchKey", "404"}:
             raise HTTPException(404, "Файл не найден")

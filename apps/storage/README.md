@@ -25,3 +25,14 @@ Inside the file view, filters and compact shared `UiButton` actions share one to
 - Browser smoke: direct/deep URL, refresh, Back/Forward, folder path breadcrumb links, unauthorized pilot access, unknown path 404, upload/folder success/errors and toast expiration. Do not claim these checks passed unless actually run.
 
 This UI update does not implement sharing, delegated access, versions, public links or a production Storage rollout.
+
+## Pilot recycle bin (P0 foundation)
+
+The admin-only pilot supports **reversible** moves to the bin:
+- `POST /trash` accepts validated `kind=file + key` or `kind=folder + path` with the existing server-side cookie gate and CSRF/origin policy. It writes a separate metadata marker, never deleting or relocating the S3 content. A trashed folder implicitly hides every descendant.
+- The list endpoint `GET /trash` shows active trash markers, and `POST /restore` clears the hidden state with another marker write. Original object keys remain stable. The UI supplies a confirmation dialog and a dedicated sidebar page.
+- Direct GET/download/preview/thumbnail and folder listing of trashed objects are revoked on the server, not just visually hidden. Uploading to a hidden folder is rejected, and a deleted folder name is reserved for recovery.
+- Markers live under `pilot-ui-trash/` and are invisible to user file reads. Restored markers are retained to avoid physical deletion.
+- **No permanent deletion, no automatic retention/purge, no non-admin sharing** is enabled. The intended recycle-bin lifetime is 30 days, but purge remains disabled until independently verified backup AND restore (including metadata). This is not yet the product-wide trash architecture. Retention, identity-bound audit, per-object ACLs, cross-service attachments, transactional metadata, version history and backup/restore remain separate release gates.
+
+Regression tests: `services/storage-api/tests/test_main.py` covers non-destructive file and folder recovery and direct-link denial. Do not publish outside the pilot or interpret a successful build as a security signoff.

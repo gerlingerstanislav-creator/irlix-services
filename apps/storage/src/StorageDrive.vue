@@ -36,13 +36,15 @@ const input = ref(null);
 const editor = ref(null);
 const editedName = ref('');
 const properties = ref(null);
+const pendingTrash = ref(null);
 const failedThumbs = ref(new Set());
 let requestSerial = 0;
 const actionsFor = item => item.kind === 'file'
-  ? [{ id: 'rename', label: 'Переименовать' }, { id: 'details', label: 'Свойства' }, { id: 'download', label: 'Скачать' }]
-  : [{ id: 'rename', label: 'Переименовать' }, { id: 'details', label: 'Свойства' }];
+  ? [{ id: 'rename', label: 'Переименовать' }, { id: 'details', label: 'Свойства' }, { id: 'download', label: 'Скачать' }, { id: 'trash', label: 'В корзину', danger: true }]
+  : [{ id: 'rename', label: 'Переименовать' }, { id: 'details', label: 'Свойства' }, { id: 'trash', label: 'В корзину', danger: true }];
 function action(item, id) {
   if (id === 'download') return download(item);
+  if (id === 'trash') { pendingTrash.value = item; return; }
   if (id === 'details') { properties.value = item; return; }
   if (id === 'rename') {
     editor.value = item;
@@ -50,6 +52,23 @@ function action(item, id) {
   }
 }
 const thumbnailUrl = item => '/api/storage/thumbnails?key=' + encodeURIComponent(item.key);
+async function trashItem() {
+  if (!pendingTrash.value || busy.value) return;
+  const item = pendingTrash.value;
+  busy.value = true;
+  try {
+    const form = new FormData();
+    form.append('kind', item.kind);
+    form.append(item.kind === 'file' ? 'key' : 'path', item.kind === 'file' ? item.key : item.path);
+    await api('/trash', { method: 'POST', body: form });
+    pendingTrash.value = null;
+    selected.value = null;
+    notify('Перемещено в корзину');
+    await refresh();
+  } catch (err) { notify(err.message, 'error'); }
+  finally { busy.value = false; }
+}
+
 async function renameItem() {
   if (!editor.value || !editedName.value.trim() || busy.value) return;
   const item = editor.value;
@@ -274,6 +293,16 @@ onMounted(() => refresh());
         <label>Название папки<input v-model="folderName" placeholder="Например, Документы" maxlength="80" autofocus required /></label>
         <div class="storage-modal-actions"><button type="button" class="storage-button secondary" @click="createFolder=false">Отмена</button><button class="storage-button primary" :disabled="busy||!folderName.trim()">Создать</button></div>
       </form>
+    </div>
+    <div v-if="pendingTrash" class="storage-overlay" @click.self="!busy && (pendingTrash=null)">
+      <section class="storage-modal storage-small-modal" role="dialog" aria-modal="true" aria-label="Перемещение в корзину">
+        <div class="storage-modal-head"><h2>Переместить в корзину?</h2><button type="button" :disabled="busy" @click="pendingTrash=null">×</button></div>
+        <p class="storage-rename-hint">{{ pendingTrash.name }} будет скрыт из файлов, но его можно восстановить через раздел «Корзина».</p>
+        <div class="storage-modal-actions">
+          <UiButton variant="secondary" type="button" :disabled="busy" @click="pendingTrash=null">Отмена</UiButton>
+          <UiButton type="button" :disabled="busy" @click="trashItem">В корзину</UiButton>
+        </div>
+      </section>
     </div>
     <div v-if="editor" class="storage-overlay" @click.self="!busy && (editor=null)">
       <form class="storage-modal storage-small-modal" @submit.prevent="renameItem">
