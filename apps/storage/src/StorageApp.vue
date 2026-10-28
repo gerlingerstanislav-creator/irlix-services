@@ -5,6 +5,7 @@ import { UiAppShell, UiErrorState, isPlatformAdministratorAccess } from '@irlix/
 import { createBrowserAuth } from '@irlix/auth';
 import StorageDrive from './StorageDrive.vue';
 import StorageTrash from './StorageTrash.vue';
+import StorageV1 from './StorageV1.vue';
 
 // Same OIDC session as Dashboard and every other IRLIX service.
 // The short-lived HttpOnly Storage cookie is independently checked by nginx
@@ -20,6 +21,7 @@ const items = [
   { id: 'files', label: 'Мои файлы', icon: 'file-text', href: '/storage/' },
   { id: 'available', label: 'Доступные мне', icon: 'users', href: '/storage/available' },
   { id: 'trash', label: 'Корзина', icon: 'reset', href: '/storage/trash' },
+  { id: 'v1', label: 'Новый диск (пилот)', icon: 'file-clock', href: '/storage/v1' },
 ];
 const route = useRoute();
 const router = useRouter();
@@ -29,6 +31,7 @@ function onBreadcrumbs(crumbs) {
 }
 const activeSection = computed(() => route.meta.section || 'not-found');
 const breadcrumbs = computed(() => {
+  if (activeSection.value === 'v1') return [{ label: 'Новый диск (пилот)' }];
   if (activeSection.value === 'trash') return [{ label: 'Корзина' }];
   if (activeSection.value === 'available') return [{ label: 'Доступные мне' }];
   if (activeSection.value !== 'files') return [{ label: 'Страница не найдена' }];
@@ -45,7 +48,7 @@ const breadcrumbs = computed(() => {
   ];
 });
 function navigateSection(id) {
-  if (id === 'files' || id === 'available' || id === 'trash') router.push({ name: id });
+  if (['files','available','trash','v1'].includes(id)) router.push({ name: id });
 }
 
 onMounted(async () => {
@@ -90,6 +93,7 @@ onMounted(async () => {
   >
     <StorageDrive v-if="activeSection === 'files'" @breadcrumbs="onBreadcrumbs" />
     <StorageTrash v-else-if="activeSection === 'trash'" />
+    <StorageV1 v-else-if="activeSection === 'v1'" :access="access" :directory-fetch="(url) => auth.fetch(url, {cache: 'no-store'})" />
     <section v-else-if="activeSection === 'available'" class="storage-placeholder">
       <h2>Доступные мне</h2>
       <p>Раздел для файлов, к которым предоставлен доступ другими сотрудниками. Пока общий доступ не подключён — чужие файлы не отображаются.</p>
