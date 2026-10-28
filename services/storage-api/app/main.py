@@ -91,6 +91,16 @@ async def guard(request: Request):
                 headers={"Cookie": "irlix_storage_pilot=" + token})
         if resp.status_code != 204:
             raise HTTPException(401 if resp.status_code == 401 else 403, "Нет доступа к хранилищу")
+        # Actor identity comes only from the internal Employees gate response.
+        # Browser-supplied X-Storage-* headers are NEVER trusted.
+        actor_id = resp.headers.get("X-Storage-Employee-ID", "")
+        request.state.storage_actor_id = (int(actor_id) if actor_id.isascii()
+                                          and actor_id.isdecimal() and int(actor_id) > 0
+                                          else None)
+        request.state.storage_platform_admin = (
+            request.state.storage_actor_id is not None
+            and resp.headers.get("X-Storage-Platform-Admin") == "1"
+        )
     except httpx.RequestError:
         raise HTTPException(503, "Не удалось проверить доступ")
     if request.method not in ("GET", "HEAD", "OPTIONS"):
@@ -456,3 +466,41 @@ def read_file(key: str = Query(...), preview: bool = False):
         headers["Content-Length"] = str(obj["ContentLength"])
     # No active content as HTML/SVG: these are always downloaded.
     return StreamingResponse(stream(), media_type=mime if inline else "application/octet-stream", headers=headers)
+
+
+async def v1_guard(request: Request):
+    """A distinct five-minute Employees session, independently checked per call.
+
+    No X-Storage-* browser request header is trusted as actor identity.
+    """
+    token = request.cookies.get("irlix_storage_v1", "")
+    if not token or len(token) > 8192:
+        raise HTTPException(401, "Войдите в корпоративную систему")
+    try:
+        async with httpx.AsyncClient(timeout=3, trust_env=False) as client:
+            result = await client.get(
+                "http://employees:8000/_storage_v1_access",
+                headers={"Cookie": "irlix_storage_v1=" + token})
+    except httpx.RequestError:
+        raise HTTPException(503, "Недоступна проверка личности")
+    if result.status_code != 204:
+        raise HTTPException(401 if result.status_code == 401 else 403,
+                            "Нет доступа к Storage")
+    raw = result.headers.get("X-Storage-Employee-ID", "")
+    if not raw.isascii() or not raw.isdecimal() or int(raw) <= 0:
+        raise HTTPException(503, "Недостоверная личность")
+    request.state.storage_actor_id = int(raw)
+    request.state.storage_platform_admin = (
+        result.headers.get("X-Storage-Platform-Admin") == "1"
+    )
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        expected = os.environ.get("STORAGE_PUBLIC_ORIGIN", "http://services.lan")
+        if (request.headers.get("Origin") != expected
+                or request.headers.get("X-Irlix-Storage-Request") != "1"):
+            raise HTTPException(403, "Недопустимый источник запроса")
+
+
+# Keep new ACL endpoints isolated from the administrator-only legacy pilot.
+# They fail closed unless the new metadata DB and signed Employees actor are enabled.
+from .v1_api import router as v1_router
+app.include_router(v1_router, dependencies=[Depends(v1_guard)])

@@ -344,7 +344,7 @@ class EmployeesAccess
             'finance' => $financeVisible,
             'recruitment' => $canRecruitment,
             'cv-converter' => $privileged,
-            'storage' => $privileged,
+            'storage' => $privileged || (getenv('STORAGE_V1_ACCESS_ENABLED') === '1' && $employee !== null && BrandbookGate::active($employee)),
             'design-system' => true,
             'brandbook' => $privileged || in_array(SpecialRoles::TopManagement, $normalizedRoles, true),
             'migration' => in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true),

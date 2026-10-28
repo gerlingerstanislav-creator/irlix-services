@@ -78,6 +78,7 @@ test('Storage routes keep folders in history, reject unknown URLs and separate t
   assert.deepEqual(routes.map(route => [route.path, route.name]), [
     ['/', 'files'],
     ['/trash', 'trash'],
+    ['/v1', 'v1'],
     ['/available', 'available'],
     ['/:pathMatch(.*)*', 'not-found'],
   ]);
@@ -174,4 +175,19 @@ test('Pilot trash is reversible and denies direct reads, no physical object dele
   assert.ok(lifecycle.includes('state not in _ALLOWED_STATES'));
   assert.ok(!lifecycle.includes('delete_object('));
   assert.ok(!api.includes('delete_object('));
+});
+
+test('V1 is isolated from legacy files and uses shared employee picker', () => {
+  const app = text('../src/StorageApp.vue');
+  const screen = text('../src/StorageV1.vue');
+  const router = text('../src/routes.js');
+  assert.ok(router.includes("name: 'v1'"));
+  assert.ok(app.includes('<StorageV1 v-else-if="activeSection === \'v1\'"'));
+  assert.ok(screen.includes('UiSearchSelect v-model="shareRecipient"'));
+  assert.ok(screen.includes("request('/objects/'"));
+  assert.ok(screen.includes("request('/folders'"));
+  assert.ok(screen.includes("request('/files'"));
+  assert.ok(screen.includes("'/api/storage/v1'"));
+  assert.ok(screen.includes("mode.value === 'trash'"));
+  assert.ok(screen.includes("isAdmin.value || item.owner_employee_id === currentEmployeeId.value"));
 });
