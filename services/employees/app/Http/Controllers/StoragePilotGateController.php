@@ -13,7 +13,13 @@ final class StoragePilotGateController extends Controller
 
     public function check(Request $request): Response
     {
-        return response('', $this->access->statusForCookie((string) $request->header('Cookie', '')),
-            ['Cache-Control' => 'private, no-store', 'Vary' => 'Cookie']);
+        $context = $this->access->contextForCookie((string) $request->header('Cookie', ''));
+        $headers = ['Cache-Control' => 'private, no-store', 'Vary' => 'Cookie'];
+        // Only the server-to-server 204 response carries the verified identity.
+        if ($context['status'] === 204) {
+            $headers['X-Storage-Employee-ID'] = (string) $context['employee_id'];
+            $headers['X-Storage-Platform-Admin'] = '1';
+        }
+        return response('', $context['status'], $headers);
     }
 }
