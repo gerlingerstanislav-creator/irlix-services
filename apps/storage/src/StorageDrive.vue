@@ -1,14 +1,26 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { UiButton, UiIcon } from '@irlix/ui';
 
-const folder = ref('');
+const route = useRoute();
+const router = useRouter();
+const folder = computed(() => typeof route.query.folder === 'string' ? route.query.folder : '');
 const folders = ref([]);
 const files = ref([]);
 const next = ref(null);
 const loading = ref(false);
 const busy = ref(false);
-const error = ref('');
-const notice = ref('');
+const toast = ref(null);
+let toastTimer = null;
+function notify(message, kind = 'success') {
+  if (toastTimer !== null) window.clearTimeout(toastTimer);
+  toast.value = { message, kind };
+  toastTimer = window.setTimeout(() => { toast.value = null; toastTimer = null; }, 5000);
+}
+onBeforeUnmount(() => {
+  if (toastTimer !== null) window.clearTimeout(toastTimer);
+});
 const search = ref('');
 const layout = ref('list');
 const sortBy = ref('name');
@@ -21,14 +33,6 @@ const showDrop = ref(false);
 const input = ref(null);
 let requestSerial = 0;
 
-const segments = computed(() => folder.value.split('/').filter(Boolean));
-const breadcrumbs = computed(() => [
-  { name: 'Мои файлы', path: '' },
-  ...segments.value.map((segment, index) => ({
-    name: segment,
-    path: segments.value.slice(0, index + 1).join('/') + '/',
-  })),
-]);
 const visible = computed(() => {
   const term = search.value.trim().toLocaleLowerCase();
   const items = [
@@ -84,8 +88,8 @@ async function api(path, options = {}) {
   return response.json();
 }
 async function refresh(loadMore = false) {
-  if (loading.value) return;
-  loading.value = true; error.value = '';
+  if (loadMore && loading.value) return;
+  loading.value = true;
   const serial = ++requestSerial;
   try {
     const params = new URLSearchParams({ folder: folder.value });
@@ -95,15 +99,20 @@ async function refresh(loadMore = false) {
     folders.value = loadMore ? [...folders.value, ...result.folders] : result.folders;
     files.value = loadMore ? [...files.value, ...result.files] : result.files;
     next.value = result.next;
-  } catch (err) { error.value = err.message; }
-  finally { loading.value = false; }
+  } catch (err) {
+    if (serial === requestSerial) notify(err.message, 'error');
+  } finally {
+    if (serial === requestSerial) loading.value = false;
+  }
 }
 function go(path) {
-  if (path === folder.value) return;
-  folder.value = path; folders.value = []; files.value = []; next.value = null;
+  if (path !== folder.value) router.push({ name: 'files', query: path ? { folder: path } : {} });
+}
+watch(folder, () => {
+  folders.value = []; files.value = []; next.value = null;
   selected.value = null; preview.value = null; search.value = '';
   refresh();
-}
+});
 function open(item) {
   if (item.kind === 'folder') { go(item.path); return; }
   selected.value = item;
@@ -127,25 +136,25 @@ function download(item) {
 }
 async function addFolder() {
   if (!folderName.value.trim() || busy.value) return;
-  busy.value = true; error.value = '';
+  busy.value = true;
   try {
     const body = new FormData();
     body.append('folder', folder.value);
     body.append('folder_name', folderName.value);
     await api('/folders', { method: 'POST', body });
     createFolder.value = false; folderName.value = '';
-    notice.value = 'Папка создана';
+    notify('Папка создана');
     await refresh();
-  } catch (err) { error.value = err.message; }
+  } catch (err) { notify(err.message, 'error'); }
   finally { busy.value = false; }
 }
 async function upload(chosen) {
   const uploadFiles = Array.from(chosen || []);
   if (!uploadFiles.length || busy.value) return;
   if (uploadFiles.some(file => file.size > 10 * 1024 * 1024)) {
-    error.value = 'Максимальный размер одного файла — 10 МБ'; return;
+    notify('Максимальный размер одного файла — 10 МБ', 'error'); return;
   }
-  busy.value = true; error.value = ''; notice.value = '';
+  busy.value = true;
   try {
     for (const file of uploadFiles) {
       const body = new FormData();
@@ -153,9 +162,9 @@ async function upload(chosen) {
       body.append('file', file, file.name);
       await api('/files', { method: 'POST', body });
     }
-    notice.value = 'Загружено файлов: ' + uploadFiles.length;
+    notify('Загружено файлов: ' + uploadFiles.length);
     await refresh();
-  } catch (err) { error.value = err.message; }
+  } catch (err) { notify(err.message, 'error'); }
   finally { busy.value = false; if (input.value) input.value.value = ''; }
 }
 function dropped(event) {
@@ -168,30 +177,21 @@ onMounted(() => refresh());
 <template>
   <div class="storage-shell" @dragenter.prevent="showDrop = true" @dragover.prevent @dragleave="showDrop = false" @drop.prevent="dropped">
       <main class="storage-main">
-        <div class="storage-main-top">
-          <div class="storage-heading"><h1>Файлы</h1><p>Хранение и просмотр документов в корпоративной инфраструктуре</p></div>
+        <div class="storage-toolbar">
+          <div class="storage-toolbar-tools">
+            <label class="storage-search"><UiIcon name="search" /><input v-model="search" placeholder="Поиск в папке" aria-label="Поиск в папке" /></label>
+            <select v-model="sortBy" aria-label="Сортировка"><option value="name">По названию</option><option value="date">По дате</option><option value="size">По размеру</option></select>
+            <div class="storage-switch" role="group" aria-label="Вид файлов">
+              <button type="button" :class="{ active:layout==='list' }" :aria-pressed="layout==='list'" aria-label="Список" title="Список" @click="layout = 'list'"><UiIcon name="list" /></button>
+              <button type="button" :class="{ active:layout==='grid' }" :aria-pressed="layout==='grid'" aria-label="Плитки" title="Плитки" @click="layout = 'grid'">▦</button>
+            </div>
+          </div>
           <div class="storage-actions">
-            <button type="button" class="storage-button secondary" @click="createFolder = true" :disabled="busy">＋ Папка</button>
-            <button type="button" class="storage-button primary" @click="input?.click()" :disabled="busy">{{ busy ? 'Загрузка…' : '↑ Загрузить файлы' }}</button>
+            <UiButton variant="secondary" type="button" @click="createFolder = true" :disabled="busy">＋ Папка</UiButton>
+            <UiButton type="button" @click="input?.click()" :disabled="busy">{{ busy ? 'Загрузка…' : '↑ Загрузить файлы' }}</UiButton>
             <input ref="input" type="file" hidden multiple @change="upload($event.target.files)" />
           </div>
         </div>
-        <div class="storage-toolbar">
-          <nav class="storage-crumbs" aria-label="Путь"><template v-for="(part, idx) in breadcrumbs" :key="part.path">
-            <span v-if="idx" class="storage-separator">/</span>
-            <button @click="go(part.path)" :class="{ current: idx === breadcrumbs.length - 1 }">{{ part.name }}</button>
-          </template></nav>
-          <div class="storage-toolbar-tools">
-            <label class="storage-search"><span>⌕</span><input v-model="search" placeholder="Поиск в папке" aria-label="Поиск в папке" /></label>
-            <select v-model="sortBy" aria-label="Сортировка"><option value="name">По названию</option><option value="date">По дате</option><option value="size">По размеру</option></select>
-            <div class="storage-switch" aria-label="Вид файлов">
-              <button :class="{ active:layout==='list' }" title="Список" @click="layout = 'list'">☰</button>
-              <button :class="{ active:layout==='grid' }" title="Плитки" @click="layout = 'grid'">▦</button>
-            </div>
-          </div>
-        </div>
-        <div v-if="error" class="storage-alert" role="alert">{{ error }} <a href="/" v-if="error.includes('Сессия')">На дашборд</a></div>
-        <div v-if="notice" class="storage-notice" role="status">{{ notice }} <button @click="notice=''">×</button></div>
         <div class="storage-content">
           <div v-if="loading && !visible.length" class="storage-empty">Загружаем файлы…</div>
           <div v-else-if="!visible.length" class="storage-empty">
@@ -245,6 +245,7 @@ onMounted(() => refresh());
         </div>
       </div>
     </div>
+    <div v-if="toast" class="storage-toast" :class="`storage-toast--${toast.kind}`" :role="toast.kind === 'error' ? 'alert' : 'status'"><span>{{ toast.message }}</span><a v-if="toast.message.includes('Сессия')" href="/">На дашборд</a><button type="button" aria-label="Закрыть уведомление" @click="toast = null">×</button></div>
     <div v-if="showDrop" class="storage-dropzone">Отпустите файлы, чтобы загрузить их в папку</div>
   </div>
 </template>
