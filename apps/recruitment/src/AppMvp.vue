@@ -5,6 +5,7 @@ import { UiAppSidebar, UiAppTopbar, UiRegistryTable, UiErrorState } from '@irlix
 import { auth } from './auth';
 import { recruitmentApi } from './api';
 import RecruitmentRolePermissionsView from './RecruitmentRolePermissionsView.vue';
+import { canRecruitment, candidateCreatePayload, offerCreatePayload } from './authorization.js';
 
 const standardNavItems = [
   { id: 'dashboard', label: 'Обзор', icon: 'dashboard' },
@@ -23,8 +24,7 @@ const standardNavItems = [
 const roleMatrixAdmin=ref(false);
 const authorizationMode=ref('unknown');
 const effectivePermissions=ref({});
-const can = permission => authorizationMode.value === 'legacy'
-  || (authorizationMode.value === 'local' && effectivePermissions.value?.[permission] === true);
+const can = permission => canRecruitment(authorizationMode.value, effectivePermissions.value, permission);
 const navItems=computed(()=>[
   ...standardNavItems,
   ...(roleMatrixAdmin.value?[{id:'role-permissions',label:'Разрешения',icon:'settings'}]:[]),
@@ -102,8 +102,7 @@ async function reload() {
 
 async function createCandidate() {
   if (!can('recruitment.candidates.manage')) return;
-  const payload = { ...candidateForm, stack: candidateForm.stack.split(',').map(v=>v.trim()).filter(Boolean) };
-  if (!can('recruitment.compensation.manage')) delete payload.salary_expectation;
+  const payload = candidateCreatePayload(candidateForm, authorizationMode.value, effectivePermissions.value);
   await recruitmentApi.createCandidate(payload);
   Object.keys(candidateForm).forEach(k => candidateForm[k] = k === 'stack' ? '' : '');
   modal.value = null; await reload();
@@ -135,10 +134,7 @@ async function scheduleInterview(process) {
 }
 async function createOffer(process) {
   if (!can('recruitment.offers.manage')) return;
-  const payload = { hiring_process_id:process.id, role:process.candidate.role || 'Специалист', planned_start_date:null };
-  if (can('recruitment.compensation.manage')) {
-    payload.compensation = process.candidate.salary_expectation || '';
-  }
+  const payload = offerCreatePayload(process, authorizationMode.value, effectivePermissions.value);
   await recruitmentApi.createOffer(payload);
   await reload();
 }
