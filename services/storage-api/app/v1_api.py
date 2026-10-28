@@ -71,6 +71,14 @@ def _authorize(repo, principal, object_id, permission):
     obj = _normalize_id(object_id)
     if not can_access(principal, obj, permission,
                       repo.load_objects(obj), repo.load_grants(obj)):
+        # Record a scoped failed authorization in an independent transaction:
+        # the HTTPException would otherwise roll back the caller's transaction.
+        try:
+            with metadata_connection() as log_conn:
+                log_repo = MetadataRepository(log_conn, lambda _: False)
+                _audit(log_repo, principal, obj, "access." + permission.value, "denied")
+        except Exception:
+            pass  # Still deny; a failed audit must not grant access.
         raise HTTPException(403, "Недостаточно прав на объект")
     return obj
 
@@ -207,6 +215,23 @@ def list_trashed(request: Request):
                 result.append({"id": oid, "kind": kind, "name": title,
                                "owner_employee_id": owner, "deleted_at": removed})
     return {"entries": result}
+
+
+@router.get("/objects/{object_id}/audit")
+def object_history(request: Request, object_id: UUID):
+    actor = _identity(request)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        oid = _authorize(repo, actor, object_id, Permission.AUDIT)
+        rows = conn.execute(
+            "SELECT actor_employee_id,action,outcome,occurred_at "
+            "FROM storage.audit_events WHERE object_id=%s ORDER BY occurred_at DESC LIMIT 200",
+            (oid,)
+        ).fetchall()
+    return {"events": [
+        {"actor_employee_id": actor_id, "action": action, "outcome": outcome,
+         "at": when.isoformat()} for actor_id, action, outcome, when in rows
+    ]}
 
 
 @router.post("/folders")
