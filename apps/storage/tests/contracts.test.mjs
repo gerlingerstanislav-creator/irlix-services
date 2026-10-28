@@ -77,6 +77,7 @@ test('Storage routes keep folders in history, reject unknown URLs and separate t
   const { routes } = await import('../src/routes.js');
   assert.deepEqual(routes.map(route => [route.path, route.name]), [
     ['/', 'files'],
+    ['/trash', 'trash'],
     ['/available', 'available'],
     ['/:pathMatch(.*)*', 'not-found'],
   ]);
@@ -150,4 +151,27 @@ test('Rename operations are server-backed with metadata-only persistence and no 
   assert.ok(api.includes('@app.get("/thumbnails", dependencies=[Depends(guard)])'));
   assert.ok(api.includes('Image.MAX_IMAGE_PIXELS = 12_000_000'));
   assert.doesNotMatch(api, /delete_object\s*\(/);
+});
+
+test('Pilot trash is reversible and denies direct reads, no physical object deletion', () => {
+  const screen = text('../src/StorageTrash.vue');
+  const lifecycle = text('../../../services/storage-api/app/lifecycle.py');
+  const routes = text('../src/routes.js');
+  const shell = text('../src/StorageApp.vue');
+  assert.ok(routes.includes("name: 'trash'"));
+  assert.ok(shell.includes('StorageTrash v-else-if="activeSection === \'trash\'"'));
+  assert.ok(shell.includes("id: 'trash', label: 'Корзина'"));
+  assert.ok(vue.includes("await api('/trash', { method: 'POST', body: form })"));
+  assert.ok(vue.includes('aria-label="Перемещение в корзину"'));
+  assert.ok(screen.includes("request('/restore', { method: 'POST', body: form })"));
+  assert.ok(api.includes('@app.get("/trash", dependencies=[Depends(guard)])'));
+  assert.ok(api.includes('@app.post("/trash", dependencies=[Depends(guard)])'));
+  assert.ok(api.includes('@app.post("/restore", dependencies=[Depends(guard)])'));
+  assert.ok(api.includes('_ensure_visible(client, "file", key)'));
+  assert.ok(api.includes('_ensure_visible(client, "file", identity)'));
+  assert.ok(api.includes('_ensure_folder_visible(client, folder)'));
+  assert.ok(lifecycle.includes('TRASH_ROOT = "pilot-ui-trash/"'));
+  assert.ok(lifecycle.includes('state not in _ALLOWED_STATES'));
+  assert.ok(!lifecycle.includes('delete_object('));
+  assert.ok(!api.includes('delete_object('));
 });
