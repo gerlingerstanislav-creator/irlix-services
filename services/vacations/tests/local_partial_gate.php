@@ -9,6 +9,26 @@ use Illuminate\Support\Facades\Http;
 $app = require __DIR__.'/../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
+// Unhandled exceptions must fail the image build. Laravel's global
+// handler can otherwise report a failed assertion but exit PHP with 0.
+set_exception_handler(static function (\Throwable $error): void {
+    fwrite(STDERR, 'Vacations local gate FAIL: '.$error->getMessage()."\n");
+    exit(1);
+});
+
+config()->set('database.default','sqlite');
+config()->set('database.connections.sqlite.database',':memory:');
+\Illuminate\Support\Facades\DB::purge('sqlite');
+\Illuminate\Support\Facades\Schema::connection('sqlite')->create('absences',
+    static function (\Illuminate\Database\Schema\Blueprint $table): void {
+        $table->id();
+        $table->unsignedBigInteger('employee_id');
+    });
+\Illuminate\Support\Facades\DB::table('absences')->insert([
+    ['id'=>15, 'employee_id'=>17],
+    ['id'=>16, 'employee_id'=>18],
+]);
+
 $oldLocal = getenv('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED');
 $oldJwt = getenv('IRLIX_AUTHZ_JWT_ENABLED');
 putenv('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED=true');
