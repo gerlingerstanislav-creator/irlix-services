@@ -10,9 +10,25 @@ use Illuminate\Support\Facades\Validator;
 function equipmentRoles(Request $request): array { return $request->attributes->get('identity')['realm_roles'] ?? []; }
 function equipmentActor(Request $request): string { $i=$request->attributes->get('identity') ?? []; return (string)($i['preferred_username'] ?? $i['email'] ?? $i['sub'] ?? 'unknown'); }
 function equipmentAllowedRoles(string $env, array $defaults): array { return array_values(array_filter(array_map('trim', explode(',', (string) env($env, implode(',', $defaults)))))); }
-function equipmentCanView(Request $request): bool { return ($request->attributes->get('identity')['service_access_granted'] ?? false) === true; }
-function equipmentCanManage(Request $request): bool { return equipmentCanView($request); }
-function equipmentCanOperate(Request $request): bool { $r=equipmentRoles($request); return equipmentCanView($request) && count(array_intersect(['platform-admin','platform-tester','system-admin'], $r))>0; }
+function equipmentCanView(Request $request): bool {
+    $access=$request->attributes->get('identity', []);
+    if (is_array($access['equipment_permissions'] ?? null))
+        return ($access['equipment_permissions']['equipment.view'] ?? false) === true;
+    return ($access['service_access_granted'] ?? false) === true;
+}
+function equipmentCanManage(Request $request): bool {
+    $access=$request->attributes->get('identity', []);
+    if (is_array($access['equipment_permissions'] ?? null))
+        return ($access['equipment_permissions']['equipment.manage'] ?? false) === true;
+    return equipmentCanView($request);
+}
+function equipmentCanOperate(Request $request): bool {
+    $access=$request->attributes->get('identity', []);
+    if (is_array($access['equipment_permissions'] ?? null))
+        return ($access['equipment_permissions']['equipment.operate'] ?? false) === true;
+    $r=equipmentRoles($request);
+    return equipmentCanView($request) && count(array_intersect(['platform-admin','platform-tester','system-admin'], $r))>0;
+}
 function equipmentGuard(bool $allowed) { return $allowed ? null : response()->json(['message'=>'Forbidden'],403); }
 function equipmentToken(Request $request): ?string { return $request->bearerToken() ?: $request->header('X-Irlix-Access-Token'); }
 function equipmentEmployeesRequest(Request $request) { return Http::withToken((string) equipmentToken($request))->acceptJson()->timeout(5); }
