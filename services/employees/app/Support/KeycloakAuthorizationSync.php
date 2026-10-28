@@ -23,6 +23,14 @@ final class KeycloakAuthorizationSync
     {
         $labels = array_values(array_filter((array) ($access['roles'] ?? []),
             static fn ($role) => $role !== SpecialRoles::PlatformTester));
+        // Publish V2 organizational hierarchy, head assignments and explicit
+        // special roles as namespaced identity claims alongside legacy roles.
+        // Consumers must not confuse these with service or scope grants.
+        foreach ((array) ($access['role_claims'] ?? []) as $claim) {
+            if (is_string($claim) && preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $claim)) {
+                $labels[] = $claim;
+            }
+        }
         // Tester is an operator marker, never a business/admin JWT role.
         if (in_array(SpecialRoles::PlatformTester, (array) ($access['roles'] ?? []), true)) {
             $labels[] = 'role-preview-operator';
@@ -74,6 +82,7 @@ final class KeycloakAuthorizationSync
         foreach ($previous as $name) if (is_string($name)) $known[$name] = true;
         return array_values(array_filter($current, static fn ($name) =>
             is_string($name) && (isset($known[$name])
+                || preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $name) === 1
                 || str_starts_with($name, 'service:') || str_starts_with($name, 'scope:')
                 || preg_match('/^employee-id:[1-9][0-9]*$/D', $name) === 1
                 || str_starts_with($name, 'permission:finance-'))
