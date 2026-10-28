@@ -14,7 +14,7 @@ final class StorageV1DirectoryController extends Controller
     private function allowed(Request $request): bool
     {
         $access = (array) $request->attributes->get('employees_access', []);
-        return (int) ($access['employee_id'] ?? 0) > 0
+        return $this->directory->actorActive((int) ($access['employee_id'] ?? 0))
             && ($access['services']['storage'] ?? false) === true;
     }
 
