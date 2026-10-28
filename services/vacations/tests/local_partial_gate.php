@@ -28,6 +28,18 @@ config()->set('database.connections.sqlite.database',':memory:');
     ['id'=>15, 'employee_id'=>17],
     ['id'=>16, 'employee_id'=>18],
 ]);
+\Illuminate\Support\Facades\Schema::connection('sqlite')->create('vacations_role_permissions',
+    static function (\Illuminate\Database\Schema\Blueprint $table): void {
+        $table->id();
+        $table->string('role');
+        $table->string('permission');
+        $table->boolean('allowed');
+        $table->string('scope');
+    });
+\Illuminate\Support\Facades\DB::table('vacations_role_permissions')->insert([
+    ['role'=>'org:irlix','permission'=>'vacations.mine.view','allowed'=>true,'scope'=>'own'],
+    ['role'=>'org:irlix','permission'=>'vacations.documents.view','allowed'=>true,'scope'=>'own'],
+]);
 
 $oldLocal = getenv('IRLIX_VACATIONS_LOCAL_AUTHZ_ENABLED');
 $oldJwt = getenv('IRLIX_AUTHZ_JWT_ENABLED');
@@ -51,13 +63,15 @@ Http::fake(static function ($req) use (&$live, &$profileId) {
 });
 
 $gate = new ServiceEntitlement();
-$assert = static function (int $expected, string $method, string $path, array $data = []) use ($gate): void {
+$assert = static function (
+    int $expected, string $method, string $path, array $data = [], array $signed = []
+) use ($gate): void {
     $request = Request::create($path, $method, $data, [], [], [
         'HTTP_AUTHORIZATION' => 'Bearer synthetic-signed-jwt',
     ]);
-    $request->attributes->set('identity', ['realm_roles'=>[
+    $request->attributes->set('identity', ['realm_roles'=>($signed ?: [
         'employee-id:17','org:irlix','special:platform-admin',
-    ]]);
+    ])]);
     $response = $gate->handle($request,
         static fn () => response()->json(['data'=>['authorized'=>true]],200));
     if ($response->getStatusCode() !== $expected) {
@@ -93,6 +107,25 @@ if ($scoped->permits(Request::create('/api/random','GET'), 'all', 17)) {
     throw new RuntimeException('Unknown Vacations API path was authorized');
 }
 
+
+// Real signed non-admin actor with own scope: other absences and
+// documents stay forbidden, even when a URL is guessed directly.
+$live['roles']=[];
+$live['role_claims']=['org:irlix'];
+$own=['employee-id:17','org:irlix'];
+$assert(200,'GET','/api/workspace',[],$own);
+$assert(200,'GET','/api/absences/15',[],$own);
+$assert(403,'GET','/api/absences/16',[],$own);
+$assert(200,'GET','/api/absences/15/attachments',[],$own);
+$assert(403,'GET','/api/absences/16/attachments',[],$own);
+$assert(403,'GET','/api/approvals',[],$own);
+$assert(403,'GET','/api/calendar-absences',[],$own);
+$assert(403,'GET','/api/history',[],$own);
+$assert(403,'POST','/api/absences',[],$own);
+
+// Restore the administrative actor for stale-token revocation tests.
+$live['roles']=['platform-admin'];
+$live['role_claims']=['org:irlix','special:platform-admin'];
 
 $live['role_claims']=['org:irlix'];
 $assert(403, 'GET', '/api/me');
