@@ -105,3 +105,4 @@
 .storage-v1-version-actions{padding:4px 0 14px}
 .storage-v1-history{max-height:85vh;overflow:auto;width:min(760px,94vw)}
 @media(max-width:700px){.storage-v1-search{width:100%}.storage-v1-search input{min-width:130px}}
+.storage-v1-video{max-width:100%;max-height:100%;display:block;background:#111;border-radius:var(--irlix-control-radius)}
