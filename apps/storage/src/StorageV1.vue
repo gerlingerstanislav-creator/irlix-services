@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { UiButton, UiActionMenu, UiSearchSelect, UiCheckbox } from '@irlix/ui';
 
@@ -32,6 +32,10 @@ const grants = ref([]);
 const historyItem = ref(null);
 const historyEvents = ref([]);
 const versionsItem = ref(null);
+const previewItem = ref(null);
+const previewUrl = ref('');
+const previewMime = ref('');
+const previewText = ref('');
 const fileVersions = ref([]);
 const newVersionInput = ref(null);
 const operationItem = ref(null);
@@ -194,9 +198,41 @@ function open(item) {
   if (item.kind === 'folder' && mode.value !== 'trash') {
     router.push({ name: 'v1', query: { folder_id: item.id } });
   } else if (item.kind === 'file' && mode.value !== 'trash') {
-    download(item);
+    openPreview(item);
   }
 }
+function closePreview() {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
+  previewUrl.value = '';
+  previewItem.value = null;
+  previewText.value = '';
+  previewMime.value = '';
+}
+async function openPreview(item) {
+  closePreview();
+  previewItem.value = item;
+  error.value = '';
+  const extension = String(item.name).split('.').pop().toLowerCase();
+  const kinds = {
+    pdf: 'pdf', png: 'image', jpg: 'image', jpeg: 'image',
+    gif: 'image', webp: 'image', txt: 'text', csv: 'text',
+    log: 'text', mp4: 'video', webm: 'video',
+  };
+  if (!kinds[extension]) { previewMime.value = 'unsupported'; return; }
+  try {
+    const response = await authenticatedFetch('/preview/' + encodeURIComponent(item.id));
+    if (!response.ok) throw new Error('Безопасный предпросмотр не доступен');
+    const bytes = await response.blob();
+    if (previewItem.value?.id !== item.id) return;
+    previewMime.value = kinds[extension];
+    if (kinds[extension] === 'text') {
+      previewText.value = await bytes.text();
+    } else {
+      previewUrl.value = URL.createObjectURL(bytes);
+    }
+  } catch (err) { error.value = err.message; previewMime.value = 'unsupported'; }
+}
+onBeforeUnmount(closePreview);
 async function download(item) {
   error.value = '';
   try {
@@ -506,6 +542,24 @@ onMounted(() => refresh());
           <UiButton :disabled="busy || (operationKind !== 'move' && !operationName.trim())">Сохранить</UiButton>
         </div>
       </form>
+    </div>
+    <div v-if="previewItem" class="storage-overlay" @click.self="closePreview">
+      <section class="storage-modal storage-preview-modal" role="dialog" aria-modal="true" aria-label="Просмотр файла">
+        <div class="storage-modal-head">
+          <h2>{{ previewItem.name }}</h2>
+          <div><UiButton type="button" variant="secondary" @click="download(previewItem)">Скачать</UiButton>
+            <button type="button" aria-label="Закрыть" @click="closePreview">×</button></div>
+        </div>
+        <div class="storage-preview-content">
+          <img v-if="previewUrl && previewMime === 'image'" :src="previewUrl" :alt="previewItem.name" />
+          <iframe v-else-if="previewUrl && previewMime === 'pdf'" :src="previewUrl" :title="previewItem.name" sandbox="" />
+          <video v-else-if="previewUrl && previewMime === 'video'" :src="previewUrl" controls preload="metadata" class="storage-v1-video"></video>
+          <pre v-else-if="previewMime === 'text'">{{ previewText }}</pre>
+          <div v-else class="storage-preview-fallback">
+            Просмотр этого формата не поддерживается. Файл можно безопасно скачать.
+          </div>
+        </div>
+      </section>
     </div>
     <div v-if="versionsItem" class="storage-overlay" @click.self="versionsItem=null">
       <section class="storage-modal storage-small-modal storage-v1-history" role="dialog" aria-modal="true" aria-label="Версии файла">
