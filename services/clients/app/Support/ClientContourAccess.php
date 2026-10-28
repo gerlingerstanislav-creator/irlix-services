@@ -328,6 +328,15 @@ class ClientContourAccess
             }
         }
 
+        // Route-specific workflow mapping is only an implementation detail:
+        // it must never resurrect a permission that an administrator explicitly
+        // denied to one of the actor's effective matrix roles.
+        if (!in_array('platform-admin', $roles, true)) {
+            foreach (array_keys($explicitDenies) as $permission) {
+                unset($permissions[$permission], $clientServicePermissions[$permission]);
+            }
+        }
+
         if (!$managedProductionRoots && ($permissions['attempts.manage']['allowed'] ?? false)) {
             $attemptDepartmentIds = array_map(fn ($row) => (int) $row['id'], $productionDirections);
             $attemptEmployeeIds = $directoryEmployees
