@@ -156,6 +156,31 @@ final class WorkspaceController extends Controller
             foreach ($directory as $person) $byId[(int) $person['id']] = $person;
             $employeeIds = array_keys($byId);
 
+            $localGrants = $request->attributes->get('vacations_local_permissions');
+            if (is_array($localGrants)) {
+                $scope = (string) ($localGrants['vacations.manage.view']['scope'] ?? 'none');
+                $actorIdForScope = (int) $employee['id'];
+                if ($historical && $scope !== 'all') {
+                    // A current department cannot be assumed to match
+                    // membership during a historical employment segment.
+                    throw new DomainException('Исторический реестр доступен только с общим разрешением');
+                }
+                if ($scope === 'own') {
+                    $employeeIds = in_array($actorIdForScope, $employeeIds, true)
+                        ? [$actorIdForScope] : [];
+                } elseif ($scope === 'team') {
+                    $org = $this->employees->vacationsDirectory($request);
+                    $orgPeople = array_values($org['employees'] ?? []);
+                    $orgDepartments = array_values($org['departments'] ?? []);
+                    $employeeIds = array_values(array_filter($employeeIds, static fn (int $id): bool =>
+                        \App\Services\VacationsObjectScope::allows(
+                            'team', $actorIdForScope, $id, $orgDepartments, $orgPeople
+                        )));
+                } elseif ($scope !== 'all') {
+                    $employeeIds = [];
+                }
+            }
+
             if ($departmentId = (int) $request->query('department_id', 0)) {
                 $employeeIds = array_values(array_filter($employeeIds, fn (int $id) => (int) ($byId[$id]['department_id'] ?? 0) === $departmentId));
             }
