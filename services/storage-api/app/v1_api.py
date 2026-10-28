@@ -640,6 +640,9 @@ async def replace_version(request: Request, object_id: UUID, file: UploadFile = 
         old = repo.object_summary(oid)
         if not old or old[1] != "file" or old[6] != "active" or not old[5].startswith(S3_ROOT):
             raise HTTPException(404, "Файл не найден")
+        # A version changes bytes, not the established document type.
+        if os.path.splitext(str(file.filename or ""))[1].lower() != os.path.splitext(old[4])[1].lower():
+            raise HTTPException(422, "Расширение новой версии должно совпадать с исходным")
         _register_current_if_missing(repo, actor, oid, old[5])
         mime = mimetypes.guess_type(old[4])[0] or "application/octet-stream"
         try:
