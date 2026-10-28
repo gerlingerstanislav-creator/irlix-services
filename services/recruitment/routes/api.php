@@ -4,8 +4,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\RecruitmentPermissionsController;
+use App\Http\Controllers\RecruitmentAccessController;
 
 Route::get('/health', fn () => ['data' => ['status' => 'ok', 'service' => 'recruitment']]);
+Route::get('/permissions/me',[RecruitmentAccessController::class,'me']);
 Route::get('/role-permissions',[RecruitmentPermissionsController::class,'index']);
 Route::put('/role-permissions',[RecruitmentPermissionsController::class,'update']);
 Route::delete('/role-permissions',[RecruitmentPermissionsController::class,'remove']);
