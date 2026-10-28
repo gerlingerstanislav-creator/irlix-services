@@ -212,6 +212,10 @@ def main():
     ).splitlines()[-1]
     host = origin_line.split("=", 1)[1].split("://", 1)[-1].split("/", 1)[0]
     selected = verification_services(plan["services"])
+    # Read-only cutover evidence on every production release, even a
+    # script-only rollout. Never log DSNs, passwords or employee metadata.
+    subprocess.run([*sudo, "python3", str(ROOT / "scripts/storage/inspect-v1-readiness.py")],
+                   check=True, cwd=ROOT, timeout=90)
     for service in sorted(selected):
         assert re.fullmatch(r"[a-z0-9][a-z0-9-]*", service)
         container = subprocess.check_output([*sudo, *compose, "ps", "-q", service], cwd=ROOT, text=True).strip()
