@@ -1,6 +1,7 @@
 <script setup>
-import { onMounted, ref } from 'vue';
-import { UiAppShell, isPlatformAdministratorAccess } from '@irlix/ui';
+import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { UiAppShell, UiErrorState, isPlatformAdministratorAccess } from '@irlix/ui';
 import { createBrowserAuth } from '@irlix/auth';
 import StorageDrive from './StorageDrive.vue';
 
@@ -14,7 +15,31 @@ const auth = createBrowserAuth({
 const loading = ref(true);
 const access = ref(null);
 const error = ref('');
-const items = [{ id: 'files', label: 'Мои файлы', icon: 'document' }];
+const items = [
+  { id: 'files', label: 'Мои файлы', icon: 'document', href: '/storage/' },
+  { id: 'available', label: 'Доступные мне', icon: 'users', href: '/storage/available' },
+];
+const route = useRoute();
+const router = useRouter();
+const activeSection = computed(() => route.meta.section || 'not-found');
+const breadcrumbs = computed(() => {
+  if (activeSection.value === 'available') return [{ label: 'Доступные мне' }];
+  if (activeSection.value !== 'files') return [{ label: 'Страница не найдена' }];
+  const path = typeof route.query.folder === 'string' ? route.query.folder : '';
+  const segments = path.split('/').filter(Boolean);
+  return [
+    { label: 'Мои файлы', href: segments.length ? '/storage/' : undefined },
+    ...segments.map((label, index) => ({
+      label,
+      href: index < segments.length - 1
+        ? '/storage/?folder=' + encodeURIComponent(segments.slice(0, index + 1).join('/') + '/')
+        : undefined,
+    })),
+  ];
+});
+function navigateSection(id) {
+  if (id === 'files' || id === 'available') router.push({ name: id });
+}
 
 onMounted(async () => {
   try {
@@ -46,15 +71,21 @@ onMounted(async () => {
     v-else
     service="storage"
     service-name="Хранилище"
-    section="files"
+    :section="activeSection"
     :items="items"
     :current-user="auth.user"
     :platform-admin="true"
     :service-access="access"
     :report-submit="(url, options) => auth.fetch(url, options)"
-    :breadcrumbs="[{ label: 'Мои файлы' }]"
+    :breadcrumbs="breadcrumbs"
+    @update:section="navigateSection"
     @logout="auth.logout()"
   >
-    <StorageDrive />
+    <StorageDrive v-if="activeSection === 'files'" />
+    <section v-else-if="activeSection === 'available'" class="storage-placeholder">
+      <h2>Доступные мне</h2>
+      <p>Раздел для файлов, к которым предоставлен доступ другими сотрудниками. Пока общий доступ не подключён — чужие файлы не отображаются.</p>
+    </section>
+    <UiErrorState v-else :status="404" back-href="/storage/" back-label="Мои файлы" />
   </UiAppShell>
 </template>
