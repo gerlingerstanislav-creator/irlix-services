@@ -5,7 +5,7 @@ import { auth } from './auth';
 const loading=ref(false),saving=ref(''),error=ref('');
 const policy=ref({permissions:[],matrix:[],enabled:false});
 const newRole=ref(''),addedRoles=ref([]);
-const defaultRoles=['org:irlix','head:backend','head:frontend','head:qa','special:platform-tester'];
+const defaultRoles=['org:irlix','org:backend','head:backend','head:frontend','head:qa'];
 const roles=computed(()=>[...new Set([...defaultRoles,...addedRoles.value,
   ...policy.value.matrix.map(row=>row.role)])].filter(role=>role!=='special:platform-admin').sort());
 const validRole=computed(()=>/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/.test(newRole.value.trim())
