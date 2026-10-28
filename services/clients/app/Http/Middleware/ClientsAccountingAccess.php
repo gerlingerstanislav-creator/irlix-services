@@ -20,7 +20,8 @@ class ClientsAccountingAccess
     public function handle(Request $request, Closure $next): Response
     {
         if ($request->is('api/health')) return $next($request);
-        $access = $this->accessResolver->resolve($request);
+        $access = $request->attributes->get('client_contour_access');
+        if (!is_array($access)) $access = $this->accessResolver->resolve($request);
         $request->attributes->set('client_contour_access', $access);
         if ($access['clients_service_blocked'] ?? false) {
             // Minimal read contracts used by Timesheets and Vacations, without client cards,
