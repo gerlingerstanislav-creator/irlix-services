@@ -98,3 +98,11 @@
 .storage-v1-share h3{font-size:13px;margin:18px 0 8px}
 .storage-v1-grant{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--irlix-color-border);font-size:12px}
 @media(max-width:700px){.storage-v1-toolbar{padding-inline:12px}.storage-v1-notice,.storage-v1-error{padding-inline:12px}.storage-v1-share{padding:18px}}
+
+.storage-v1-search{display:flex;align-items:center;gap:6px;min-width:280px;flex-wrap:wrap}
+.storage-v1-search input{height:var(--irlix-control-height);border-radius:var(--irlix-control-radius);border:1px solid var(--irlix-color-border);background:var(--irlix-color-surface);color:var(--irlix-color-text);font-size:12px;padding:0 10px;flex:1;min-width:170px}
+.storage-v1-search input:focus-visible{outline:2px solid var(--irlix-color-primary);outline-offset:2px}
+.storage-v1-version-actions{padding:4px 0 14px}
+.storage-v1-history{max-height:85vh;overflow:auto;width:min(760px,94vw)}
+@media(max-width:700px){.storage-v1-search{width:100%}.storage-v1-search input{min-width:130px}}
+.storage-v1-video{max-width:100%;max-height:100%;display:block;background:#111;border-radius:var(--irlix-control-radius)}

@@ -86,6 +86,10 @@ def _authorize(repo, principal, object_id, permission):
 def _name(value):
     if not isinstance(value, str):
         raise HTTPException(422, "Недопустимое название")
+    # Reject control characters in the *original* input. Stripping first
+    # would silently accept a trailing newline and bypass name validation.
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise HTTPException(422, "Недопустимое название")
     v = value.strip()
     if not v or v in {".", ".."} or len(v.encode("utf-8")) > 160 or any(
         ord(c) < 32 or c in "/\\\x7f" for c in v
@@ -176,7 +180,9 @@ def list_items(request: Request, parent_id: UUID | None = None, scope: str = "al
         for oid, kind, owner, parent, title, state in rows:
             if can_access(actor, oid, Permission.READ, repo.load_objects(oid), repo.load_grants(oid)):
                 result.append({"id": oid, "kind": kind, "owner_employee_id": owner,
-                               "parent_id": parent, "name": title, "state": state})
+                               "parent_id": parent, "name": title, "state": state,
+                               "can_edit": can_access(actor, oid, Permission.EDIT,
+                                                      repo.load_objects(oid), repo.load_grants(oid))})
     return {"entries": result}
 
 
@@ -193,7 +199,9 @@ def available(request: Request):
             "ORDER BY o.display_name LIMIT 200",
             (actor.employee_id, actor.employee_id)
         ).fetchall()
-        result = [{"id": oid, "kind": kind, "owner_employee_id": owner, "name": title}
+        result = [{"id": oid, "kind": kind, "owner_employee_id": owner, "name": title,
+                   "can_edit": can_access(actor, oid, Permission.EDIT,
+                                          repo.load_objects(oid), repo.load_grants(oid))}
                   for oid, kind, owner, title in rows
                   if can_access(actor, oid, Permission.READ,
                                 repo.load_objects(oid), repo.load_grants(oid))]
@@ -277,6 +285,7 @@ async def upload(request: Request, file: UploadFile = File(...),
         repo = _repo(conn, request)
         repo.lock()
         parent, owner = _parent_for_create(repo, actor, _normalize_id(parent_id) if parent_id else None)
+        _require_capacity(repo, owner, len(data))
         try:
             # An object created in S3 but not committed to metadata is
             # intentionally unreachable; operator reconciliation, not deletion.
@@ -291,8 +300,72 @@ async def upload(request: Request, file: UploadFile = File(...),
                          (oid, owner, parent, title, key))
         except psycopg.errors.UniqueViolation:
             raise HTTPException(409, "Название уже существует")
+        _register_version(repo, actor, oid, key, len(data), hashlib.sha256(data).hexdigest())
         _audit(repo, actor, oid, "file.upload")
     return {"id": oid, "name": title, "kind": "file", "size": len(data)}
+
+
+@router.get("/preview/{object_id}")
+def preview_safe(request: Request, object_id: UUID):
+    """Authenticated bounded preview. HTML/SVG/Office macros are never inline."""
+    actor = _identity(request)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        oid = _authorize(repo, actor, object_id, Permission.READ)
+        row = repo.object_summary(oid)
+        if not row or row[1] != "file" or row[6] != "active" or not row[5]:
+            raise HTTPException(404, "Файл не найден")
+        title, key = row[4], row[5]
+        if not key.startswith(S3_ROOT):
+            raise HTTPException(404, "Файл не найден")
+        extension = os.path.splitext(title)[1].lower()
+        types = {
+            ".pdf": "application/pdf", ".png": "image/png",
+            ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".gif": "image/gif", ".webp": "image/webp",
+            ".txt": "text/plain", ".csv": "text/plain", ".log": "text/plain",
+            ".mp4": "video/mp4", ".webm": "video/webm",
+        }
+        mime = types.get(extension)
+        if mime is None:
+            raise HTTPException(415, "Просмотр формата пока недоступен")
+        _audit(repo, actor, oid, "file.preview")
+    try:
+        obj = _s3().get_object(Bucket=_bucket(), Key=key)
+        stream = obj["Body"]
+        try:
+            if int(obj.get("ContentLength", LIMIT + 1)) > LIMIT:
+                raise HTTPException(413, "Файл слишком большой для просмотра")
+            raw = stream.read(LIMIT + 1)
+        finally:
+            stream.close()
+    except (ClientError, BotoCoreError):
+        raise HTTPException(503, "Не удалось прочитать файл")
+    if len(raw) > LIMIT:
+        raise HTTPException(413, "Файл слишком большой для просмотра")
+    signatures = {
+        ".pdf": raw.startswith(b"%PDF-"),
+        ".png": raw.startswith(b"\x89PNG\r\n\x1a\n"),
+        ".jpg": raw.startswith(b"\xff\xd8\xff"),
+        ".jpeg": raw.startswith(b"\xff\xd8\xff"),
+        ".gif": raw.startswith((b"GIF87a", b"GIF89a")),
+        ".webp": raw.startswith(b"RIFF") and raw[8:12] == b"WEBP",
+    }
+    if extension in signatures and not signatures[extension]:
+        raise HTTPException(415, "Несоответствие содержимого и расширения")
+    if extension in {".txt", ".csv", ".log"}:
+        try:
+            raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(415, "Текстовый предпросмотр требует UTF-8")
+        # Text is displayed as text/plain, not as active HTML or JS.
+        mime = "text/plain; charset=utf-8"
+    return Response(raw, media_type=mime, headers={
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": "inline",
+        "Content-Security-Policy": "sandbox; default-src 'none'; base-uri 'none'",
+    })
 
 
 @router.get("/files/{object_id}")
@@ -396,3 +469,350 @@ def restore(request: Request, object_id: UUID):
         except AccessDenied:
             raise HTTPException(403, "Недостаточно прав")
     return {"restored": True}
+
+
+@router.get("/folders/targets")
+def folder_targets(request: Request):
+    actor = _identity(request)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        if actor.platform_admin:
+            rows = conn.execute(
+                "SELECT id::text,owner_employee_id,display_name,parent_id::text "
+                "FROM storage.objects WHERE kind='folder' AND state='active' "
+                "ORDER BY display_name LIMIT 400"
+            ).fetchall()
+        else:
+            # Include descendants of shared folders, but never trust this query
+            # alone: each candidate still passes full ancestor ACL validation.
+            rows = conn.execute(
+                "SELECT id::text,owner_employee_id,display_name,parent_id::text "
+                "FROM storage.objects WHERE kind='folder' AND state='active' "
+                "ORDER BY display_name LIMIT 400"
+            ).fetchall()
+        options = [
+            {"id": oid, "owner_employee_id": owner, "name": label, "parent_id": parent}
+            for oid, owner, label, parent in rows
+            if can_access(actor, oid, Permission.UPLOAD,
+                          repo.load_objects(oid), repo.load_grants(oid))
+        ]
+    return {"entries": options}
+
+
+@router.get("/search")
+def search_objects(request: Request, q: str = Query(..., min_length=2, max_length=80)):
+    actor = _identity(request)
+    term = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        if actor.platform_admin:
+            rows = conn.execute(
+                "SELECT id::text,kind,owner_employee_id,parent_id::text,display_name "
+                "FROM storage.objects WHERE state='active' AND "
+                "display_name ILIKE %s ESCAPE '\\' ORDER BY display_name LIMIT 200", (term,)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "WITH RECURSIVE scope AS ("
+                " SELECT o.id,o.owner_employee_id,0 AS depth,ARRAY[o.id] AS seen "
+                " FROM storage.objects o WHERE o.owner_employee_id=%s OR EXISTS ("
+                " SELECT 1 FROM storage.grants g WHERE g.object_id=o.id "
+                " AND g.employee_id=%s AND g.revoked_at IS NULL)"
+                " UNION ALL "
+                " SELECT o.id,o.owner_employee_id,s.depth+1,s.seen||o.id "
+                " FROM storage.objects o JOIN scope s ON o.parent_id=s.id "
+                " WHERE o.owner_employee_id=s.owner_employee_id AND o.state='active'"
+                " AND s.depth<32 AND NOT o.id=ANY(s.seen)"
+                ") SELECT DISTINCT o.id::text,o.kind,o.owner_employee_id,"
+                "o.parent_id::text,o.display_name FROM storage.objects o "
+                "JOIN scope s ON s.id=o.id WHERE o.state='active' "
+                "AND o.display_name ILIKE %s ESCAPE '\\' ORDER BY o.display_name LIMIT 200",
+                (actor.employee_id, actor.employee_id, term)
+            ).fetchall()
+        result = []
+        for oid, kind, owner, parent, title in rows:
+            objects, grants = repo.load_objects(oid), repo.load_grants(oid)
+            if can_access(actor, oid, Permission.READ, objects, grants):
+                result.append({"id": oid, "kind": kind, "owner_employee_id": owner,
+                               "parent_id": parent, "name": title,
+                               "can_edit": can_access(actor, oid, Permission.EDIT, objects, grants)})
+    return {"entries": result}
+
+
+# P1: logical relocation never alters existing S3 object keys or file bytes.
+class MoveInput(BaseModel):
+    parent_id: UUID | None = None
+
+
+class RenameInput(BaseModel):
+    name: str
+
+
+class CopyInput(BaseModel):
+    parent_id: UUID | None = None
+    name: str | None = None
+
+
+@router.post("/objects/{object_id}/move")
+def move_object(request: Request, object_id: UUID, data: MoveInput):
+    actor = _identity(request)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        repo.lock()
+        oid = _authorize(repo, actor, object_id, Permission.MOVE)
+        source = repo.object_summary(oid)
+        if not source or source[6] != "active":
+            raise HTTPException(404, "Объект не найден")
+        if data.parent_id:
+            dest = _authorize(repo, actor, data.parent_id, Permission.READ)
+            target = repo.object_summary(dest)
+            if not target or target[1] != "folder" or target[6] != "active":
+                raise HTTPException(409, "Недоступная папка назначения")
+            if source[2] != target[2]:
+                raise HTTPException(403, "Перемещение между владельцами запрещено")
+            if oid in repo.load_objects(dest):
+                raise HTTPException(409, "Нельзя переместить папку внутрь себя")
+        else:
+            dest = None
+        try:
+            conn.execute("UPDATE storage.objects SET parent_id=%s,updated_at=now(),"
+                         "revision=revision+1 WHERE id=%s", (dest, oid))
+        except psycopg.errors.UniqueViolation:
+            raise HTTPException(409, "Объект с таким названием уже существует")
+        _audit(repo, actor, oid, "object.move")
+    return {"moved": True, "id": oid, "parent_id": dest}
+
+
+@router.patch("/objects/{object_id}")
+def rename_object(request: Request, object_id: UUID, data: RenameInput):
+    actor = _identity(request)
+    title = _name(data.name)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        repo.lock()
+        oid = _authorize(repo, actor, object_id, Permission.EDIT)
+        old = repo.object_summary(oid)
+        if not old or old[6] != "active":
+            raise HTTPException(404, "Объект не найден")
+        if old[1] == "file":
+            from pathlib import PurePath
+            if PurePath(old[4]).suffix.lower() != PurePath(title).suffix.lower():
+                raise HTTPException(422, "Расширение файла нельзя изменять")
+        try:
+            conn.execute("UPDATE storage.objects SET display_name=%s,updated_at=now(),"
+                         "revision=revision+1 WHERE id=%s", (title, oid))
+        except psycopg.errors.UniqueViolation:
+            raise HTTPException(409, "Название уже занято")
+        _audit(repo, actor, oid, "object.rename")
+    return {"name": title, "id": oid}
+
+
+@router.post("/objects/{object_id}/copy")
+def copy_file(request: Request, object_id: UUID, data: CopyInput):
+    actor = _identity(request)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        repo.lock()
+        oid = _authorize(repo, actor, object_id, Permission.COPY)
+        source = repo.object_summary(oid)
+        if not source or source[1] != "file" or source[6] != "active":
+            raise HTTPException(422, "Копирование папки пока не поддерживается")
+        if not source[5] or not source[5].startswith(S3_ROOT):
+            raise HTTPException(404, "Недоступный файл")
+        parent, owner = _parent_for_create(repo, actor, data.parent_id)
+        size_row = conn.execute("SELECT size_bytes FROM storage.file_versions WHERE s3_key=%s",
+                                (source[5],)).fetchone()
+        if not size_row:
+            raise HTTPException(503, "Размер оригинала не подтверждён")
+        _require_capacity(repo, owner, size_row[0])
+        title = _name(data.name or ("Копия " + source[4]))
+        new_id = str(uuid4())
+        target_key = S3_ROOT + new_id
+        try:
+            _s3().copy_object(Bucket=_bucket(), Key=target_key,
+                              CopySource={"Bucket": _bucket(), "Key": source[5]})
+        except (ClientError, BotoCoreError):
+            raise HTTPException(503, "Не удалось скопировать файл")
+        try:
+            conn.execute("INSERT INTO storage.objects "
+                         "(id,kind,owner_employee_id,parent_id,display_name,s3_key) "
+                         "VALUES (%s,'file',%s,%s,%s,%s)",
+                         (new_id, owner, parent, title, target_key))
+        except psycopg.errors.UniqueViolation:
+            raise HTTPException(409, "Название уже существует")
+        try:
+            info = _s3().head_object(Bucket=_bucket(), Key=target_key)
+        except (ClientError, BotoCoreError):
+            raise HTTPException(503, "Не удалось проверить копию")
+        _register_version(repo, actor, new_id, target_key, info.get("ContentLength", 0),
+                          info.get("Metadata", {}).get("sha256"))
+        _audit(repo, actor, oid, "file.copy.source")
+        _audit(repo, actor, new_id, "file.copy.target")
+    return {"id": new_id, "name": title, "kind": "file", "copied": True}
+
+
+
+def _storage_usage(repo, owner_id):
+    row = repo.conn.execute(
+        "SELECT COALESCE(SUM(v.size_bytes),0)::bigint "
+        "FROM storage.file_versions v JOIN storage.objects o ON o.id=v.object_id "
+        "WHERE o.owner_employee_id=%s", (owner_id,)
+    ).fetchone()
+    return int(row[0] if row else 0)
+
+
+def _require_capacity(repo, owner_id, extra_bytes):
+    raw = os.environ.get("STORAGE_V1_QUOTA_BYTES", "0")
+    try:
+        cap = int(raw)
+    except ValueError:
+        raise HTTPException(503, "Некорректная конфигурация квот")
+    if cap < 0:
+        raise HTTPException(503, "Некорректная конфигурация квот")
+    if cap and _storage_usage(repo, owner_id) + extra_bytes > cap:
+        raise HTTPException(413, "Превышена квота хранилища")
+
+
+@router.get("/stats")
+def storage_statistics(request: Request, employee_id: int | None = None):
+    actor = _identity(request)
+    owner = actor.employee_id
+    if employee_id is not None:
+        if employee_id != actor.employee_id and not actor.platform_admin:
+            raise HTTPException(403, "Нет доступа к статистике сотрудника")
+        owner = employee_id
+    if owner <= 0:
+        raise HTTPException(422, "Некорректный владелец")
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        used = _storage_usage(repo, owner)
+        row = conn.execute(
+            "SELECT COUNT(*) FILTER (WHERE kind='file'), "
+            "COUNT(*) FILTER (WHERE kind='folder'), "
+            "COUNT(*) FILTER (WHERE state='trashed') "
+            "FROM storage.objects WHERE owner_employee_id=%s", (owner,)
+        ).fetchone()
+    raw = os.environ.get("STORAGE_V1_QUOTA_BYTES", "0")
+    try:
+        max_bytes = max(0, int(raw))
+    except ValueError:
+        max_bytes = 0
+    return {"owner_employee_id": owner, "bytes_with_versions": used,
+            "files": row[0], "folders": row[1], "trashed": row[2],
+            "quota_bytes": max_bytes or None}
+
+
+def _register_version(repo, actor, object_id, key, size, digest):
+    if not isinstance(digest, str) or len(digest) != 64:
+        raise HTTPException(503, "Не подтверждена целостность версии")
+    repo.conn.execute(
+        "INSERT INTO storage.file_versions "
+        "(id,object_id,s3_key,created_by_employee_id,size_bytes,sha256) "
+        "VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (s3_key) DO NOTHING",
+        (str(uuid4()), object_id, key, actor.employee_id, size, digest)
+    )
+
+
+def _register_current_if_missing(repo, actor, object_id, key):
+    existing = repo.conn.execute(
+        "SELECT 1 FROM storage.file_versions WHERE s3_key=%s", (key,)
+    ).fetchone()
+    if existing:
+        return
+    try:
+        info = _s3().head_object(Bucket=_bucket(), Key=key)
+    except (ClientError, BotoCoreError):
+        raise HTTPException(503, "Текущая версия не найдена")
+    _register_version(repo, actor, object_id, key, info.get("ContentLength", 0),
+                      info.get("Metadata", {}).get("sha256"))
+
+
+@router.get("/objects/{object_id}/versions")
+def versions(request: Request, object_id: UUID):
+    actor = _identity(request)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        oid = _authorize(repo, actor, object_id, Permission.READ)
+        row = repo.object_summary(oid)
+        if not row or row[1] != "file":
+            raise HTTPException(404, "Файл не найден")
+        values = conn.execute(
+            "SELECT id::text,size_bytes,sha256,created_at,s3_key "
+            "FROM storage.file_versions WHERE object_id=%s "
+            "ORDER BY created_at DESC LIMIT 100", (oid,)
+        ).fetchall()
+        result = [{"id": vid, "size_bytes": size, "sha256": digest,
+                   "created_at": created.isoformat(), "current": key == row[5]}
+                  for vid, size, digest, created, key in values]
+    return {"versions": result}
+
+
+@router.post("/objects/{object_id}/versions")
+async def replace_version(request: Request, object_id: UUID, file: UploadFile = File(...)):
+    actor = _identity(request)
+    payload = await file.read(LIMIT + 1)
+    await file.close()
+    if len(payload) > LIMIT:
+        raise HTTPException(413, "Версия больше 10 МБ")
+    new_key = S3_ROOT + "versions/" + str(uuid4())
+    digest = hashlib.sha256(payload).hexdigest()
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        repo.lock()
+        oid = _authorize(repo, actor, object_id, Permission.EDIT)
+        old = repo.object_summary(oid)
+        if not old or old[1] != "file" or old[6] != "active" or not old[5].startswith(S3_ROOT):
+            raise HTTPException(404, "Файл не найден")
+        # A version changes bytes, not the established document type.
+        if os.path.splitext(str(file.filename or ""))[1].lower() != os.path.splitext(old[4])[1].lower():
+            raise HTTPException(422, "Расширение новой версии должно совпадать с исходным")
+        _register_current_if_missing(repo, actor, oid, old[5])
+        _require_capacity(repo, old[2], len(payload))
+        mime = mimetypes.guess_type(old[4])[0] or "application/octet-stream"
+        try:
+            _s3().put_object(Bucket=_bucket(), Key=new_key, Body=payload, ContentType=mime,
+                             Metadata={"sha256": digest})
+        except (BotoCoreError, ClientError):
+            raise HTTPException(503, "Не удалось сохранить версию")
+        _register_version(repo, actor, oid, new_key, len(payload), digest)
+        conn.execute(
+            "UPDATE storage.objects SET s3_key=%s,updated_at=now(),revision=revision+1 WHERE id=%s",
+            (new_key, oid)
+        )
+        _audit(repo, actor, oid, "version.replace")
+    return {"replaced": True, "id": oid}
+
+
+@router.post("/objects/{object_id}/versions/{version_id}/restore")
+def restore_version(request: Request, object_id: UUID, version_id: UUID):
+    actor = _identity(request)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        repo.lock()
+        oid = _authorize(repo, actor, object_id, Permission.EDIT)
+        old = repo.object_summary(oid)
+        if not old or old[1] != "file" or old[6] != "active":
+            raise HTTPException(404, "Файл не найден")
+        version = conn.execute(
+            "SELECT s3_key,size_bytes,sha256 FROM storage.file_versions "
+            "WHERE id=%s AND object_id=%s", (str(version_id), oid)
+        ).fetchone()
+        if not version:
+            raise HTTPException(404, "Версия не найдена")
+        _register_current_if_missing(repo, actor, oid, old[5])
+        _require_capacity(repo, old[2], version[1])
+        new_key = S3_ROOT + "versions/" + str(uuid4())
+        if not version[0].startswith(S3_ROOT):
+            raise HTTPException(403, "Неверное пространство хранения")
+        try:
+            _s3().copy_object(Bucket=_bucket(), Key=new_key,
+                              CopySource={"Bucket": _bucket(), "Key": version[0]})
+        except (BotoCoreError, ClientError):
+            raise HTTPException(503, "Не удалось восстановить версию")
+        _register_version(repo, actor, oid, new_key, version[1], version[2])
+        conn.execute(
+            "UPDATE storage.objects SET s3_key=%s,updated_at=now(),revision=revision+1 WHERE id=%s",
+            (new_key, oid)
+        )
+        _audit(repo, actor, oid, "version.restore")
+    return {"restored": True, "id": oid}
