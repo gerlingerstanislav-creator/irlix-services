@@ -9,7 +9,7 @@ const frontendNodes = Object.fromEntries(frontends.map(service => [service.key, 
 // Curated logical dependencies; never infer runtime reachability from this illustration.
 export const contours = [
   {id:'ui',title:'Пользовательский контур',subtitle:'Веб-приложения',items:frontends.map(service => service.key)},
-  {id:'business',title:'Бизнес-сервисы',subtitle:'API и бизнес-логика',items:['migration-api','migration-ops','employees-api','employees-auth-sync','vacations-api','clients-api','timesheets-api','specialists-api','equipment-api','finance-api','recruitment-api','cv-api','storage-filestash','storage-api','storage-s3-api']},
+  {id:'business',title:'Бизнес-сервисы',subtitle:'API и бизнес-логика',items:['migration-api','migration-ops','employees-api','employees-auth-sync','vacations-api','clients-api','timesheets-api','specialists-api','equipment-api','finance-api','recruitment-api','cv-api','storage-api','storage-s3-api']},
   {id:'platform',title:'Платформенное ядро и интеграции',subtitle:'Общие компоненты',items:['platform-core','resource-monitor','cv-llm','keycloak','rabbitmq','redis']},
   {id:'data',title:'Данные и хранение',subtitle:'Общая инфраструктура',items:['postgres','files','volumes']},
 ];
@@ -19,7 +19,6 @@ export const nodes = {
  'employees-api':['Employees API'],'vacations-api':['Vacations API'],'clients-api':['Clients API'],
  'timesheets-api':['Timesheets API'],'specialists-api':['Specialists API'],
  'equipment-api':['Equipment API'],'finance-api':['Finance API'],'recruitment-api':['Recruitment API'],
- 'storage-filestash':['Filestash / technical loopback-only tool'],
  'storage-api':['Storage pilot API / gated S3 adapter'],
  'storage-s3-api':['SeaweedFS / private S3 endpoint'],
  'cv-api':['CV API'],'migration-api':['Migration API'],'migration-ops':['Migration Ops / rollback'],
@@ -31,7 +30,7 @@ export const links = [
  ['dashboard','employees-api'],['dashboard','vacations-api'],['dashboard','timesheets-api'],
  // System hosts monitoring, map and embedded migration console; no standalone /migration/ UI.
  ['system','employees-api'],['system','platform-core'],['system','migration-api'],
- ['design-system','employees-api'],['storage','employees-api'],['storage','storage-api'],['storage-api','employees-api'],['storage-api','storage-s3-api'],['storage-filestash','storage-s3-api'],['storage-s3-api','volumes'],
+ ['design-system','employees-api'],['storage','employees-api'],['storage','storage-api'],['storage-api','employees-api'],['storage-api','storage-s3-api'],['storage-s3-api','volumes'],
  // Every authenticated frontend can submit a report to Platform Core.
  ...['dashboard','employees','vacations','clients','timesheets','specialists','equipment','finance','recruitment','cv-converter','design-system','brandbook'].map(id=>[id,'platform-core']),
  ['employees','employees-api'],['vacations','vacations-api'],
@@ -51,7 +50,7 @@ export const links = [
 // Cross-lane business domains: one horizontal contour spans Frontend and Backend.
 // Shared infrastructure remains in its own vertical lane.
 export const domainContours = [
- {id:'platform',label:'Платформа',items:['system','design-system','brandbook','storage','storage-filestash','storage-api','storage-s3-api','platform-core','migration-api','migration-ops']},
+ {id:'platform',label:'Платформа',items:['system','design-system','brandbook','storage','storage-api','storage-s3-api','platform-core','migration-api','migration-ops']},
  {id:'people',label:'Сотрудники',items:['dashboard','employees','vacations','employees-api','employees-auth-sync','vacations-api']},
  {id:'clients',label:'Клиентский контур',items:['clients','timesheets','clients-api','timesheets-api']},
  {id:'it',label:'IT',items:['specialists','equipment','specialists-api','equipment-api']},
@@ -79,7 +78,6 @@ export const serviceDescriptions = {
  system:'Административная Система: ресурсный монитор, интерактивная карта, единый контроль переноса (/system/migration/control/).',
  'design-system':'Внутренняя витрина визуальных компонентов: Keycloak/Employees SSO, серверная авторизация, меню по эффективным правам. Примеры синтетические.',
  storage:'Изолированный файловый менеджер IRLIX на Vue: папки, тестовые файлы и защищённый предпросмотр (только platform-admin).',
- 'storage-filestash':'Прежний Filestash в приватном техническом контуре без пользовательского URL.',
  'storage-api':'Гейтированный Storage API пилота: проверка cookie через Employees и доступ к отдельному S3-префиксу.',
  'storage-s3-api':'SeaweedFS S3, отдельный pilot bucket, доступ только по внутреннему сервисному ключу.',
  brandbook:'Закрытый цифровой брендбук IRLIX: просмотр только для назначенного топ-менеджмента и администратора платформы; серверная проверка через Employees/Keycloak.',
