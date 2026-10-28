@@ -10,6 +10,11 @@ class StorageVerifyRouting(unittest.TestCase):
         source = VERIFY.read_text()
         self.assertIn("'storage-drive','storage-api'", source)
         self.assertIn("verify_storage_pilot(host)", source)
+        self.assertIn('frontend == "200"', source)
+        self.assertIn('v1_external == "401"', source)
+        self.assertIn('api_external == "302"', source)
+        self.assertIn('v1_gate == "404"', source)
+        self.assertNotIn('frontend == "302"', source)
         self.assertIn('"storage-api"', source)
         self.assertIn('health = json.loads(body)', source)
 
