@@ -63,6 +63,23 @@ Http::fake(static function ($req) use (&$live, &$profileId) {
     if (str_ends_with((string) $req->url(), '/self')) {
         return Http::response(['data'=>['id'=>$profileId,'full_name'=>'Synthetic']],200);
     }
+    if (str_ends_with((string) $req->url(), '/clients-directory')) {
+        return Http::response(['data'=>[
+            'actor'=>['id'=>17,'department_id'=>2],
+            'employees'=>[
+                ['id'=>17,'department_id'=>2],
+                ['id'=>18,'department_id'=>3],
+                ['id'=>19,'department_id'=>4],
+                ['id'=>20,'department_id'=>2],
+            ],
+            'departments'=>[
+                ['id'=>1,'parent_id'=>null,'manager_id'=>null],
+                ['id'=>2,'parent_id'=>1,'manager_id'=>17],
+                ['id'=>3,'parent_id'=>2,'manager_id'=>18],
+                ['id'=>4,'parent_id'=>1,'manager_id'=>19],
+            ],
+        ]],200);
+    }
     return Http::response([],404);
 });
 
@@ -112,6 +129,26 @@ if (!$scoped->permits(Request::create('/api/approvals','GET'), 'own', 17)) {
 }
 if ($scoped->permits(Request::create('/api/random','GET'), 'all', 17)) {
     throw new RuntimeException('Unknown Vacations API path was authorized');
+}
+$scopeRequest = Request::create('/api/calendar-absences', 'GET', [], [], [], [
+    'HTTP_AUTHORIZATION'=>'Bearer synthetic-signed-jwt',
+]);
+$scopeRequest->attributes->set('vacations_local_permissions', [
+    'vacations.department.view'=>['allowed'=>true,'scope'=>'team'],
+]);
+$teamIds = $scoped->visibleEmployeeIds($scopeRequest, 'team', 17);
+sort($teamIds);
+if ($teamIds !== [17,18,20]) {
+    throw new RuntimeException('Manager scope did not follow current department IDs');
+}
+if ($scoped->visibleEmployeeIds($scopeRequest, 'team', 17, [19]) !== []) {
+    throw new RuntimeException('Manager gained access to a foreign department');
+}
+if ($scoped->visibleEmployeeIds($scopeRequest, 'own', 17) !== [17]) {
+    throw new RuntimeException('Own scope returned someone else');
+}
+if ($scoped->visibleEmployeeIds($scopeRequest, 'all', 17) !== null) {
+    throw new RuntimeException('All scope did not preserve intentional global access');
 }
 
 
