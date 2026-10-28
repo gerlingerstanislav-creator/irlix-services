@@ -31,6 +31,20 @@ class ReadinessProbeTests(unittest.TestCase):
         self.assertNotIn("never-print", out.getvalue())
         self.assertEqual(run.call_count, 3)
 
+    @patch.object(mod.os, "geteuid", return_value=0)
+    @patch.object(mod.subprocess, "run")
+    def test_registered_compose_overlay_is_used(self, run, _):
+        run.side_effect = [
+            subprocess.CompletedProcess([], 0, '{"enabled":false,"db_configured":false,"schema":"not_configured"}', ""),
+            subprocess.CompletedProcess([], 0, '{"enabled":false}', ""),
+        ]
+        with contextlib.redirect_stdout(io.StringIO()):
+            mod.main(["docker-compose", "-f", "docker-compose.storage.yml"])
+        self.assertEqual(run.call_count, 2)
+        args = run.call_args_list[0].args[0]
+        self.assertEqual(args[:5], ["docker-compose", "-f", "docker-compose.storage.yml", "exec", "-T"])
+        self.assertEqual(args[5], "api")
+
     def test_probe_uses_read_only_schema_existence_query(self):
         self.assertIn("to_regclass('storage.objects')", mod.CHECK_API)
         self.assertIn("to_regclass('storage.file_versions')", mod.CHECK_API)
