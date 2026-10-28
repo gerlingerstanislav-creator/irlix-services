@@ -105,6 +105,46 @@ class StoragePilotApiTests(TestCase):
         self.assertFalse(self.store.records)
 
 
+
+class StorageSessionGateTests(TestCase):
+    def test_cookie_is_revalidated_and_csrf_is_enforced(self):
+        from starlette.requests import Request
+
+        class FakeResponse:
+            status_code = 204
+
+        class FakeClient:
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                return None
+            async def get(self, *args, **kwargs):
+                self.headers = kwargs["headers"]
+                return FakeResponse()
+
+        fake = FakeClient()
+
+        def request(method, origin, header):
+            headers = [(b"cookie", b"irlix_storage_pilot=synthetic-cookie")]
+            if origin:
+                headers.append((b"origin", origin.encode()))
+            if header:
+                headers.append((b"x-irlix-storage-request", header.encode()))
+            return Request({"type": "http", "method": method, "path": "/files",
+                            "headers": headers, "query_string": b""})
+
+        with patch("app.main.httpx.AsyncClient", return_value=fake):
+            asyncio.run(guard(request("GET", None, None)))
+            self.assertEqual(fake.headers, {"Cookie": "irlix_storage_pilot=synthetic-cookie"})
+            with self.assertRaises(HTTPException) as denied:
+                asyncio.run(guard(request("POST", "https://evil.example", "1")))
+            self.assertEqual(denied.exception.status_code, 403)
+            with self.assertRaises(HTTPException) as denied:
+                asyncio.run(guard(request("POST", "http://services.lan:8110", None)))
+            self.assertEqual(denied.exception.status_code, 403)
+            asyncio.run(guard(request("POST", "http://services.lan:8110", "1")))
+
+
 class StoragePathTests(TestCase):
     def test_validation(self):
         self.assertEqual(prefix("Счета/2026/"), "Счета/2026/")
