@@ -223,3 +223,19 @@ test('V1 operations support immutable versions, scoped search, bulk actions, and
   assert.ok(versions.includes('storage.reject_version_mutation'));
   assert.ok(!server.includes('delete_object('));
 });
+
+test('Storage production smoke distinguishes public static shell from protected data APIs', () => {
+  const smoke = text('../../../scripts/verify-stand.sh');
+  const uiRoute = ingress.split('location /storage/ {')[1]?.split('\n    }')[0];
+  assert.ok(uiRoute, 'Storage static UI route must exist');
+  assert.ok(!uiRoute.includes('auth_request'), 'Static V1 SPA is public but never contains file data');
+  assert.ok(ingress.includes('location /api/storage/ {'));
+  assert.ok(ingress.includes('location /api/storage/v1/ {'));
+  assert.ok(smoke.includes('Anonymous Storage static SPA'));
+  assert.ok(smoke.includes('Anonymous Storage static JS'));
+  assert.ok(smoke.includes('Anonymous Storage legacy API still admin gated" http://127.0.0.1/api/storage/items 302'));
+  assert.ok(smoke.includes('Anonymous Storage V1 API denied" http://127.0.0.1/api/storage/v1/items 401'));
+  assert.ok(smoke.includes('Storage pilot gate internal-only" http://127.0.0.1/_storage_pilot_gate 404'));
+  assert.ok(smoke.includes('Storage V1 gate internal-only" http://127.0.0.1/_storage_v1_gate 404'));
+  assert.ok(!smoke.includes('Anonymous Storage canonical route" http://127.0.0.1/storage/ 302'));
+});
