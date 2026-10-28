@@ -6,6 +6,28 @@ use App\Models\TimesheetsRolePermission;
 
 final class TimesheetsRoleAuthorization
 {
+    /**
+     * Only verified, still-current namespaced identity assignments may be
+     * passed to the Timesheets local permission engine. The Employees lookup
+     * is identity freshness, not a source of Timesheets business permissions.
+     */
+    public static function currentIdentityMatches(array $signed, array $live): bool
+    {
+        $ids = array_values(array_filter($signed, static fn ($role) =>
+            is_string($role) && preg_match('/^employee-id:[1-9][0-9]*$/D', $role) === 1));
+        if (count($ids) !== 1 || (int) substr($ids[0], strlen('employee-id:')) !== (int) ($live['employee_id'] ?? 0)
+            || !is_array($live['role_claims'] ?? null)
+            || !is_array($live['roles'] ?? null)) return false;
+        $current = array_fill_keys((array) $live['role_claims'], true);
+        foreach ($signed as $role) {
+            if (!is_string($role)) continue;
+            if ($role === 'platform-admin' && !in_array('platform-admin',$live['roles'],true)) return false;
+            if (preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $role) === 1
+                && !isset($current[$role])) return false;
+        }
+        return true;
+    }
+
     public const PERMISSIONS = [
         'timesheets.mine.view', 'timesheets.mine.manage',
         'timesheets.management.view', 'timesheets.management.manage',
