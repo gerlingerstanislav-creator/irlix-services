@@ -23,6 +23,8 @@ const shareItem = ref(null);
 const shareRecipient = ref('');
 const shareRole = ref('reader');
 const grants = ref([]);
+const historyItem = ref(null);
+const historyEvents = ref([]);
 const directoryOptions = ref([]);
 const currentEmployeeId = computed(() => Number(props.access?.employee_id || 0));
 const isAdmin = computed(() => Array.isArray(props.access?.roles) && props.access.roles.includes('platform-admin'));
@@ -30,7 +32,7 @@ const canManage = item => isAdmin.value || item.owner_employee_id === currentEmp
 const actionsFor = item => [
   ...(item.kind === 'file' && mode.value !== 'trash' ? [{ id: 'download', label: 'Скачать' }] : []),
   ...(canManage(item) && mode.value !== 'trash' ? [
-    { id: 'share', label: 'Настроить доступ' }, { id: 'trash', label: 'В корзину', danger: true },
+    { id: 'share', label: 'Настроить доступ' }, { id: 'history', label: 'История действий' }, { id: 'trash', label: 'В корзину', danger: true },
   ] : []),
   ...(mode.value === 'trash' && canManage(item) ? [{ id: 'restore', label: 'Восстановить' }] : []),
 ];
@@ -110,6 +112,7 @@ async function mutate(item, action) {
   if (busy.value) return;
   if (action === 'download') return download(item);
   if (action === 'share') return openSharing(item);
+  if (action === 'history') return openHistory(item);
   if (!['trash', 'restore'].includes(action)) return;
   if (action === 'trash' && !window.confirm('Переместить «' + item.name + '» в корзину? Файл можно восстановить.')) return;
   busy.value = true; error.value = '';
@@ -169,6 +172,13 @@ async function loadDirectory() {
 async function openSharing(item) {
   shareItem.value = item; grants.value = []; shareRecipient.value = '';
   await Promise.all([loadDirectory(), loadGrants(item)]);
+}
+async function openHistory(item) {
+  historyItem.value = item; historyEvents.value = []; error.value = '';
+  try {
+    const result = await request('/objects/' + encodeURIComponent(item.id) + '/audit');
+    historyEvents.value = result.events || [];
+  } catch (err) { error.value = err.message; }
 }
 async function loadGrants(item) {
   try {
@@ -245,6 +255,20 @@ onMounted(() => refresh());
       </form>
     </div>
 
+    <div v-if="historyItem" class="storage-overlay" @click.self="historyItem=null">
+      <section class="storage-modal storage-small-modal storage-v1-history" role="dialog" aria-modal="true" aria-label="История действий с файлом">
+        <div class="storage-modal-head"><h2>История: {{ historyItem.name }}</h2><button type="button" @click="historyItem=null">×</button></div>
+        <div v-if="!historyEvents.length" class="storage-empty">Записей пока нет</div>
+        <table v-else class="storage-table">
+          <thead><tr><th>Действие</th><th>Сотрудник</th><th>Дата</th></tr></thead>
+          <tbody><tr v-for="(event, index) in historyEvents" :key="index">
+            <td>{{ event.action }} · {{ event.outcome }}</td>
+            <td>#{{ event.actor_employee_id }}</td>
+            <td>{{ new Date(event.at).toLocaleString('ru-RU') }}</td>
+          </tr></tbody>
+        </table>
+      </section>
+    </div>
     <div v-if="shareItem" class="storage-overlay" @click.self="shareItem=null">
       <section class="storage-modal storage-v1-share" role="dialog" aria-modal="true" aria-label="Управление доступом">
         <div class="storage-modal-head"><h2>Доступ: {{ shareItem.name }}</h2><button type="button" @click="shareItem=null">×</button></div>
