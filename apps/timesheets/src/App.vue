@@ -79,7 +79,9 @@ const menuItems = computed(() => [
   { id: 'mine', icon: 'calendar', label: 'Мои таймшиты' },
   { id: 'management', icon: 'manage', label: 'Управление' },
   { id: 'analytics', icon: 'chart', label: 'Коммерческая загрузка' },
-].filter(item => item.id === 'mine' ? can('timesheets.mine.view') : can(`timesheets.${item.id}.view`)));
+].filter(item => item.id === 'mine' ? can('timesheets.mine.view')
+  : item.id === 'management' ? (can('timesheets.management.view') || (localAuthorization.value && can('timesheets.partner-hours.view')))
+  : can(`timesheets.${item.id}.view`)));
 const bottomItems = computed(() => [
   ...(can('timesheets.audit.view') ? [{ id: 'audit', icon: 'audit', label: 'История действий' }] : []),
   ...(canManageLocalMatrix.value ? [{ id: 'permissions', icon: 'settings', label: 'Разрешения' }] : []),
@@ -192,7 +194,10 @@ const loadManagement = async () => {
     } catch (e) { toast(`Не удалось загрузить производственный календарь: ${e.message}`, true); }
   }
   const [staffResponse, partnersResponse] = await Promise.all([
-    api(`/api/timesheets/management?month=${month.value}`),
+    can('timesheets.management.view')
+      ? api(`/api/timesheets/management?month=${month.value}`)
+      : Promise.resolve({ data: { assignments: [], entries: [], final_approvals: [],
+        final_approval_exceptions: [], employees: [], departments: [] } }),
     canViewPartnerHours()
       ? api(`/api/timesheets/partner-hours?month=${month.value}`)
       : Promise.resolve({ data: { members: [], entries: [], confirmations: [], final_approvals: [], final_approval_exceptions: [], locked_reporting_periods: [] } }),
@@ -217,7 +222,8 @@ const refresh = async () => {
     if (section.value === 'mine') await loadMine();
     else if (section.value === 'management') await loadManagement();
     else if (section.value === 'analytics') await loadAnalytics();
-    else await loadAudit();
+    else if (section.value === 'audit') await loadAudit();
+    // Permissions editor performs its own read and needs no audit grant.
   } catch (e) {
     toast(e.message, true);
   } finally {
