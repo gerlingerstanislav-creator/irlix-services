@@ -42,6 +42,10 @@ services:
       STORAGE_S3_ENDPOINT: http://storage-s3:8333
       STORAGE_EMPLOYEES_GATE: http://employees:8000/_storage_pilot_access
       STORAGE_PUBLIC_ORIGIN: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}
+      # V1 is disabled until isolated Storage DB provisioning and restore rehearsal.
+      STORAGE_V1_ENABLED: ${STORAGE_V1_ENABLED:-0}
+      STORAGE_V1_DB_DSN: ${STORAGE_V1_DB_DSN:-}
+      STORAGE_EMPLOYEES_RECIPIENT_BASE: http://employees:8000/_storage_pilot_recipient/
     ports:
       - "127.0.0.1:8114:8000"
     mem_limit: 256m
