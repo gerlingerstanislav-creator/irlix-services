@@ -24,4 +24,28 @@ $test(!Authz::evaluate(['service:vacations','personnel-officer'],$rows)['vacatio
     'Legacy service admission/role must not grant V2 permissions');
 $test(Authz::evaluate(['platform-admin'],[])['vacations.documents.view']['scope']==='all',
     'Platform admin policy must retain emergency access');
+$routes=[
+    ['GET','api/workspace','vacations.mine.view'],
+    ['POST','api/absences','vacations.mine.manage'],
+    ['POST','api/absences/for-employee','vacations.department.manage'],
+    ['GET','api/department-roster','vacations.department.view'],
+    ['GET','api/registry','vacations.manage.view'],
+    ['GET','api/approvals','vacations.approvals.view'],
+    ['POST','api/approvals/18/approve','vacations.approvals.manage'],
+    ['GET','api/absences/5/attachments/7/download','vacations.documents.view'],
+    ['DELETE','api/absences/5/attachments/7','vacations.documents.manage'],
+    ['GET','api/history','vacations.history.view'],
+    ['GET','api/client-service-calendar','vacations.client-calendar.view'],
+    ['DELETE','api/absences/5','vacations.manage.manage'],
+];
+foreach ($routes as [$method,$path,$permission]) {
+    $test(Authz::requiredPermission($method,$path)===$permission,
+        "Vacations route mapped to wrong permission: {$method} {$path}");
+}
+$test(Authz::requiredPermission('POST','api/approvals/5/download')===null,
+    'Unknown approval route inherited a write permission');
+$test(Authz::requiredPermission('POST','api/absences/5/attachments/7/download')===null,
+    'Document download with wrong HTTP method inherited access');
+$test(Authz::requiredPermission('GET','api/permissions')===null,
+    'Matrix administration must remain a separate protected endpoint');
 echo "Vacations local roles: PASS\n";
