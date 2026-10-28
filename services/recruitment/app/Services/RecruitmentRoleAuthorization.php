@@ -8,6 +8,7 @@ final class RecruitmentRoleAuthorization
 {
     public const PERMISSIONS=[
         'recruitment.workspace.view',
+        'recruitment.compensation.view',
         'recruitment.candidates.manage',
         'recruitment.requests.manage',
         'recruitment.hiring.manage',
