@@ -12,6 +12,8 @@ from service_plan import ROOT, registry, compose_command
 # Runtime verification dependencies only: do not restart, rebuild or migrate Finance
 # when a source backend changes. Frontends and unrelated releases stay selective.
 FINANCE_SOURCES = {"finance", "finance-web", "clients", "timesheets", "employees"}
+# Storage V1 preflight needs the full registered Compose overlay stack.
+STORAGE_PREFLIGHT_SERVICES = {'employees', 'storage-s3', 'storage-drive', 'storage-api'}
 
 
 def verification_services(services):
@@ -214,7 +216,7 @@ def main():
     selected = verification_services(plan["services"])
     # Read-only cutover evidence on every production release, even a
     # script-only rollout. Never log DSNs, passwords or employee metadata.
-    if not selected or selected.intersection({'employees', 'storage-s3', 'storage-drive', 'storage-api'}):
+    if not selected or selected.intersection(STORAGE_PREFLIGHT_SERVICES):
         subprocess.run([*sudo, "python3", str(ROOT / "scripts/storage/inspect-v1-readiness.py"), *compose],
                        check=True, cwd=ROOT, timeout=90)
     # Record *effective running-container* AuthZ switches and aggregate matrix
