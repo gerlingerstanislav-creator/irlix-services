@@ -169,7 +169,9 @@ def list_items(request: Request, parent_id: UUID | None = None):
         for oid, kind, owner, parent, title, state in rows:
             if can_access(actor, oid, Permission.READ, repo.load_objects(oid), repo.load_grants(oid)):
                 result.append({"id": oid, "kind": kind, "owner_employee_id": owner,
-                               "parent_id": parent, "name": title, "state": state})
+                               "parent_id": parent, "name": title, "state": state,
+                               "can_edit": can_access(actor, oid, Permission.EDIT,
+                                                      repo.load_objects(oid), repo.load_grants(oid))})
     return {"entries": result}
 
 
@@ -186,7 +188,9 @@ def available(request: Request):
             "ORDER BY o.display_name LIMIT 200",
             (actor.employee_id, actor.employee_id)
         ).fetchall()
-        result = [{"id": oid, "kind": kind, "owner_employee_id": owner, "name": title}
+        result = [{"id": oid, "kind": kind, "owner_employee_id": owner, "name": title,
+                   "can_edit": can_access(actor, oid, Permission.EDIT,
+                                          repo.load_objects(oid), repo.load_grants(oid))}
                   for oid, kind, owner, title in rows
                   if can_access(actor, oid, Permission.READ,
                                 repo.load_objects(oid), repo.load_grants(oid))]
