@@ -17,6 +17,10 @@ const start = async () => {
     const authenticated = await auth.init();
     if (!authenticated) return;
     const response = await auth.fetch('/api/clients/permissions/me', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    if (response.status === 401 || response.status === 403) {
+      showForbidden();
+      return;
+    }
     if (!response.ok) throw new Error(`Clients access lookup failed (${response.status})`);
     const initialAccess = (await response.json())?.data;
     if (initialAccess?.clients_service_blocked) {
