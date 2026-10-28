@@ -148,9 +148,9 @@ class StorageSessionGateTests(TestCase):
                 asyncio.run(guard(request("POST", "https://evil.example", "1")))
             self.assertEqual(denied.exception.status_code, 403)
             with self.assertRaises(HTTPException) as denied:
-                asyncio.run(guard(request("POST", "http://services.lan:8110", None)))
+                asyncio.run(guard(request("POST", "http://services.lan", None)))
             self.assertEqual(denied.exception.status_code, 403)
-            asyncio.run(guard(request("POST", "http://services.lan:8110", "1")))
+            asyncio.run(guard(request("POST", "http://services.lan", "1")))
 
 
 class StoragePathTests(TestCase):
