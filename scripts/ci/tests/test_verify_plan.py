@@ -55,13 +55,15 @@ class FinanceVerificationTests(unittest.TestCase):
                     if finance_status == "ok":
                         v.main()
                         self.assertEqual(run.call_count, 2)
-                        self.assertIn("scripts/authz/inspect_runtime.py", run.call_args_list[0].args[0])
+                        self.assertTrue(any(str(x).endswith("scripts/authz/inspect_runtime.py")
+                                            for x in run.call_args_list[0].args[0]))
                         self.assertIn("tests/finance_integrations_smoke.php", run.call_args_list[1].args[0])
                     else:
                         with self.assertRaises(AssertionError):
                             v.main()
                         run.assert_called_once()
-                        self.assertIn("scripts/authz/inspect_runtime.py", run.call_args.args[0])
+                        self.assertTrue(any(str(x).endswith("scripts/authz/inspect_runtime.py")
+                                            for x in run.call_args.args[0]))
                     brandbook.assert_called_once_with("example.invalid")
                     design_system.assert_called_once_with("example.invalid")
                     self.assertTrue(any("^IRLIX_PUBLIC_URL=" in call.args[0] and "grep" in call.args[0]
