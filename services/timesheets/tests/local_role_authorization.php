@@ -2,6 +2,8 @@
 
 require __DIR__.'/../app/Services/TimesheetsRoleAuthorization.php';
 use App\Services\TimesheetsRoleAuthorization as Authz;
+require __DIR__.'/../app/Services/PartnerAccessService.php';
+use App\Services\PartnerAccessService as PartnerAuth;
 
 $check = static function (bool $condition, string $message): void {
     if (!$condition) throw new RuntimeException($message);
@@ -47,4 +49,18 @@ $check(!Authz::currentIdentityMatches($jwt,$live),'Mismatched actor was trusted'
 $live['employee_id']=54;
 $check(!Authz::currentIdentityMatches([...$jwt,'platform-admin'],$live),
     'Revoked platform admin role was trusted');
+$routes=[
+    ['GET','api/partner-hours','timesheets.partner-hours.view'],
+    ['PUT','api/partner-hours','timesheets.partner-hours.manage'],
+    ['POST','api/partner-hours/confirm','timesheets.partner-hours.manage'],
+    ['POST','api/partner-hours/final-approval','timesheets.partner-hours.approve'],
+];
+foreach($routes as [$method,$path,$required]){
+    $check(PartnerAuth::permissionFor($method,$path,true)===$required,
+        "V2 partner operation mapped to an incorrect permission: {$method} {$path}");
+}
+$check(PartnerAuth::permissionFor('POST','api/partner-hours',true)===null,
+    'A future/unknown partner endpoint must never inherit write permission');
+$check(PartnerAuth::permissionFor('GET','api/partner-hours',false)==='timesheets.management.view',
+    'Legacy partner-hours compatibility unexpectedly changed');
 echo "Timesheets V2 local authorization: PASS\n";
