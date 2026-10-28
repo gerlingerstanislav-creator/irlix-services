@@ -102,6 +102,10 @@ final class ApprovalController extends Controller
                 $item['available_actions'][] = ($item['stage'] ?? null) === 'hr_final_review' && $isPersonnelOfficer ? 'provide' : 'approve';
                 if ($isAdmin || $isPersonnelOfficer || $isManager) $item['available_actions'][] = 'return_to_planned';
                 if (($isAdmin || $isPersonnelOfficer) && $item['attachment_count'] > 0) $item['available_actions'][] = 'view_attachments';
+                $item['available_actions'] = \App\Services\VacationsActionPolicy::visible(
+                    $item['available_actions'],
+                    is_array($localPermissions) ? $localPermissions : null
+                );
                 $item['pending_approval_id'] = (int) $item['id'];
             }
             unset($item);
