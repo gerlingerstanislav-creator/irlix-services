@@ -25,6 +25,34 @@ final class ServiceEntitlement
         // zero dependency on Employees at request time.
         if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
             $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
+            if (filter_var(env('IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+                try {
+                    $permissions = app(\App\Services\TimesheetsRoleAuthorization::class)->forVerifiedRoles($roles);
+                } catch (\Throwable) {
+                    return response()->json(['message' => 'Timesheets authorization unavailable'], 503);
+                }
+                $path = $request->path();
+                $required = match (true) {
+                    $path === 'api/workspace' => 'timesheets.mine.view',
+                    in_array($path, ['api/entries','api/confirm','api/unconfirm'], true) => 'timesheets.mine.manage',
+                    $path === 'api/management' => 'timesheets.management.view',
+                    str_starts_with($path, 'api/management/') => 'timesheets.management.manage',
+                    $path === 'api/analytics' => 'timesheets.analytics.view',
+                    $path === 'api/audit' => 'timesheets.audit.view',
+                    in_array($path, ['api/permissions'], true) => null,
+                    default => null,
+                };
+                $admin = in_array('platform-admin', $roles, true)
+                    || in_array('special:platform-admin', $roles, true);
+                if ($required === null && !$admin) {
+                    return response()->json(['message' => 'Timesheets operation denied'], 403);
+                }
+                if ($required !== null && !($permissions[$required]['allowed'] ?? false)) {
+                    return response()->json(['message' => 'Timesheets access denied'], 403);
+                }
+                $request->attributes->set('timesheets_local_permissions', $permissions);
+                return $next($request);
+            }
             if (!in_array('service:timesheets', $roles, true)) {
                 return response()->json(['message' => 'Service access denied'], 403);
             }
