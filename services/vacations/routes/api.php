@@ -9,8 +9,10 @@ use App\Http\Controllers\WorkspaceController;
 use App\Http\Controllers\ClientServiceCalendarController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\VacationsPermissionsController;
+use App\Http\Controllers\VacationsAccessController;
 
 Route::get('/health', [SystemController::class, 'health']);
+Route::get('/permissions/me', [VacationsAccessController::class, 'me']);
 Route::get('/permissions', [VacationsPermissionsController::class, 'index']);
 Route::put('/permissions', [VacationsPermissionsController::class, 'update']);
 Route::delete('/permissions', [VacationsPermissionsController::class, 'remove']);
