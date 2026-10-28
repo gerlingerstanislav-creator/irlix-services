@@ -86,6 +86,10 @@ def _authorize(repo, principal, object_id, permission):
 def _name(value):
     if not isinstance(value, str):
         raise HTTPException(422, "Недопустимое название")
+    # Reject control characters in the *original* input. Stripping first
+    # would silently accept a trailing newline and bypass name validation.
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise HTTPException(422, "Недопустимое название")
     v = value.strip()
     if not v or v in {".", ".."} or len(v.encode("utf-8")) > 160 or any(
         ord(c) < 32 or c in "/\\\x7f" for c in v
