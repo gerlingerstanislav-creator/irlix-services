@@ -44,6 +44,16 @@ test('Shared IRLIX chrome and clean /storage/ SSO are used everywhere', () => {
   assert.ok(!compose.includes('STORAGE_PUBLIC_ORIGIN: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}:8110'));
 });
 
+test('Storage release waits for both new container origins before cleanup', () => {
+  const cleanup = text('../../../scripts/storage/retire-filestash.sh');
+  assert.ok(cleanup.includes('while [ "$attempt" -le 30 ]'));
+  assert.ok(cleanup.includes('curl -fsS --connect-timeout 2 --max-time 4 http://127.0.0.1:8115/'));
+  assert.ok(cleanup.includes('http://127.0.0.1:8114/health'));
+  assert.ok(cleanup.includes('storage_ready=true'));
+  assert.ok(cleanup.includes('if [ "$storage_ready" != true ]; then'));
+  assert.ok(cleanup.indexOf('Storage Drive and API readiness confirmed.') < cleanup.indexOf('docker ps -aq'));
+});
+
 test('Storage remains admin-only, with backend gate and never exposes credentials', () => {
   assert.match(api, /async def guard\(request: Request\):/);
   assert.match(api, /_storage_pilot_access/);
