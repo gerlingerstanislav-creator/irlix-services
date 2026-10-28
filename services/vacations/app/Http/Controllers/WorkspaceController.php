@@ -28,7 +28,14 @@ final class WorkspaceController extends Controller
         return $this->handle($request, function (array $employee, array $access) use ($request) {
             $directory = [];
             $departments = [];
-            if ($this->authorization->isElevated($access)) {
+            $localGrants = $request->attributes->get('vacations_local_permissions');
+            $canReadDirectory = $this->authorization->isElevated($access)
+                && (!is_array($localGrants)
+                    || (($localGrants['vacations.department.view']['allowed'] ?? false)
+                        && ($localGrants['vacations.department.view']['scope'] ?? 'none') === 'all')
+                    || (($localGrants['vacations.manage.view']['allowed'] ?? false)
+                        && ($localGrants['vacations.manage.view']['scope'] ?? 'none') === 'all'));
+            if ($canReadDirectory) {
                 $payload = $this->employees->vacationsDirectory($request);
                 $directory = array_values($payload['employees'] ?? []);
                 $departments = array_values($payload['departments'] ?? []);
@@ -223,7 +230,12 @@ final class WorkspaceController extends Controller
             $directory = [];
             $visibleEmployeeIds = [$actorId];
 
-            if ($this->authorization->isElevated($access)) {
+            $localGrants = $request->attributes->get('vacations_local_permissions');
+            $canReadGlobalHistory = $this->authorization->isElevated($access)
+                && (!is_array($localGrants)
+                    || (($localGrants['vacations.history.view']['allowed'] ?? false)
+                        && ($localGrants['vacations.history.view']['scope'] ?? 'none') === 'all'));
+            if ($canReadGlobalHistory) {
                 $payload = $this->employees->vacationsDirectory($request);
                 $directory = array_values($payload['employees'] ?? []);
                 $visibleEmployeeIds = array_values(array_unique(array_merge([$actorId], array_map(fn ($row) => (int) $row['id'], $directory))));
