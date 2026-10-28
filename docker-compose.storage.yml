@@ -41,7 +41,7 @@ services:
       STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-irlix-storage-pilot}
       STORAGE_S3_ENDPOINT: http://storage-s3:8333
       STORAGE_EMPLOYEES_GATE: http://employees:8000/_storage_pilot_access
-      STORAGE_PUBLIC_ORIGIN: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}:8110
+      STORAGE_PUBLIC_ORIGIN: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}
     ports:
       - "127.0.0.1:8114:8000"
     mem_limit: 256m
