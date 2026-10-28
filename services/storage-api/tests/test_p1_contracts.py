@@ -42,6 +42,15 @@ class P1Contracts(unittest.TestCase):
         finally:
             app.dependency_overrides.clear()
 
+    def test_search_rejects_single_character_before_object_lookup(self):
+        app.dependency_overrides[v1_guard] = lambda: None
+        try:
+            with TestClient(app) as client:
+                self.assertEqual(client.get("/v1/search?q=x").status_code, 422)
+                self.assertEqual(client.get("/v1/search?q=report").status_code, 503)
+        finally:
+            app.dependency_overrides.clear()
+
     def test_illegal_name_rejected(self):
         for name in ("", ".", "..", "../test", "bad\\name", "x\n"):
             with self.assertRaises(Exception):
