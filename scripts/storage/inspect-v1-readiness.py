@@ -70,6 +70,26 @@ def main():
         except (ValueError, TypeError, AttributeError):
             results[service] = {"probe": "invalid_response"}
 
+    # The original pilot may still sit on the VM root filesystem. Report
+    # capacity and isolation without publishing the private host path.
+    disk = {"separate_filesystem": False, "free_gib": None, "status": "unknown"}
+    env_file = ROOT / ".env"
+    if env_file.is_file():
+        try:
+            rows = (line.split("=", 1) for line in env_file.read_text().splitlines()
+                    if line.startswith("STORAGE_S3_DATA_DIR="))
+            data_path = next((v.strip().strip('"').strip("'") for key, v in rows
+                              if key == "STORAGE_S3_DATA_DIR"), "")
+            if data_path and os.path.isdir(data_path):
+                stat = os.statvfs(data_path)
+                disk = {
+                    "separate_filesystem": os.stat(data_path).st_dev != os.stat("/").st_dev,
+                    "free_gib": (stat.f_bavail * stat.f_frsize) // (1024 ** 3),
+                    "status": "measured",
+                }
+        except (OSError, ValueError):
+            disk["status"] = "unavailable"
+    results["disk"] = disk
     print("[storage-v1-readiness] " + json.dumps(results, sort_keys=True), flush=True)
     if results.get("api", {}).get("schema") != "ready":
         print("[storage-v1-readiness] V1 metadata unavailable or unverified; "
