@@ -197,11 +197,6 @@ final class WorkspaceController extends Controller
             if (is_array($localGrants)) {
                 $scope = (string) ($localGrants['vacations.manage.view']['scope'] ?? 'none');
                 $actorIdForScope = (int) $employee['id'];
-                if ($historical && $scope !== 'all') {
-                    // A current department cannot be assumed to match
-                    // membership during a historical employment segment.
-                    throw new DomainException('Исторический реестр доступен только с общим разрешением');
-                }
                 if ($scope === 'own') {
                     $employeeIds = in_array($actorIdForScope, $employeeIds, true)
                         ? [$actorIdForScope] : [];
@@ -240,14 +235,6 @@ final class WorkspaceController extends Controller
                 }
             }
             $items = $this->reads->registry($employeeIds, $filters);
-            if (is_array($localGrants)
-                && ($localGrants['vacations.manage.view']['scope'] ?? 'none') === 'team') {
-                // No dated department proof yet: the current manager tree
-                // cannot authorize an absence that predates today's assignment.
-                $today = now()->toDateString();
-                $items = array_values(array_filter($items, static fn (array $absence): bool =>
-                    substr((string) ($absence['starts_on'] ?? ''), 0, 10) >= $today));
-            }
             if ($historical) {
                 $items = array_values(array_filter($items, static function (array $absence) use ($byId): bool {
                     $segments = $byId[(int) $absence['employee_id']]['employment_segments'] ?? [];
