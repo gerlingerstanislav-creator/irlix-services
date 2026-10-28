@@ -16,7 +16,7 @@ const loading = ref(true);
 const access = ref(null);
 const error = ref('');
 const items = [
-  { id: 'files', label: 'Мои файлы', icon: 'document', href: '/storage/' },
+  { id: 'files', label: 'Мои файлы', icon: 'file-text', href: '/storage/' },
   { id: 'available', label: 'Доступные мне', icon: 'users', href: '/storage/available' },
 ];
 const route = useRoute();
