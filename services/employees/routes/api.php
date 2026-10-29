@@ -3,6 +3,7 @@
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\EmployeeReadController;
+use App\Http\Controllers\EmployeeTransferController;
 use App\Http\Controllers\EmployeesSystemController;
 use Illuminate\Support\Facades\Route;
 
@@ -23,6 +24,8 @@ Route::patch('/employees/{employee}', [EmployeeController::class, 'update']);
 Route::post('/employees/{employee}/dismiss', [EmployeeController::class, 'dismiss']);
 Route::post('/employees/{employee}/rehire', [EmployeeController::class, 'rehire']);
 Route::post('/employees/{employee}/change-cooperation', [EmployeeController::class, 'changeCooperation']);
+Route::post('/employees/{employee}/transfer', [EmployeeTransferController::class, 'transfer']);
+Route::put('/employees/{employee}/assignment-history/{assignment}', [EmployeeTransferController::class, 'updateHistory']);
 Route::post('/employees/{employee}/salary-history', [EmployeeController::class, 'addSalary']);
 Route::delete('/employees/{employee}/salary-history/{salary}', [EmployeeController::class, 'deleteSalary']);
 
