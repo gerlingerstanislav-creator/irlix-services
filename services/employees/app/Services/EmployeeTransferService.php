@@ -41,13 +41,15 @@ final class EmployeeTransferService
         ): void {
             $previous = CarbonImmutable::parse($data['effective_from'])->subDay()->toDateString();
             $assignment->update(['effective_to' => $previous]);
-            EmploymentAssignmentHistory::query()->create([
+            $newAssignment = EmploymentAssignmentHistory::query()->create([
                 'employee_id' => $employee->id,
                 'department_id' => $data['department_id'],
                 'position' => $position?->name,
                 'effective_from' => $data['effective_from'],
                 'effective_to' => null,
             ]);
+            // Legacy name-only trigger can resolve a same-name position from a wrong direction.
+            $newAssignment->update(['position_id' => $position?->id]);
             Employee::query()->whereKey($employee->id)->update([
                 'department_id' => $data['department_id'],
                 'position_id' => $position?->id,

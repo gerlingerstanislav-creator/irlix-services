@@ -83,3 +83,8 @@
 .employee-action-modal__body .irlix-field { margin:0; }
 .employee-action-modal__body textarea { width:100%; resize:vertical; min-height:72px; border:1px solid var(--irlix-color-border); border-radius:var(--irlix-control-radius); padding:8px 10px; font:inherit; color:var(--irlix-color-text); background:var(--irlix-color-surface); }
 .employee-action-modal__body textarea:focus { outline:none; border-color:var(--irlix-color-primary); box-shadow:0 0 0 2px color-mix(in srgb, var(--irlix-color-shadow-base) 10%, transparent); }
+
+.employee-card-drawer .irlix-data-table .employee-history-actions { width:48px; min-width:48px; text-align:right; white-space:nowrap; }
+.employee-action-modal__body > .ui-checkbox { justify-self:start; }
+.employee-action-modal__body .employee-modal-hint { margin:0; color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); line-height:1.45; }
+.employee-action-modal__body .employee-form-error { margin:0; }

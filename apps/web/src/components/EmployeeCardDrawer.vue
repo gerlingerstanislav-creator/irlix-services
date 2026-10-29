@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { UiActionMenu, UiBadge, UiButton, UiSearchSelect } from '@irlix/ui';
-import { positionsForDepartment, shortEmployeeName } from '../staffTree';
+import { UiActionMenu, UiBadge, UiButton, UiCheckbox, UiSearchSelect } from '@irlix/ui';
+import { departmentOptions, positionsForDepartment, shortEmployeeName } from '../staffTree';
 import { employeeManagementActions } from '../employeeManagementActions';
 
 const props = defineProps({
@@ -18,6 +18,10 @@ const deleting = ref(false); const resendingOnboarding = ref(false); const onboa
 const drawerWidth = ref(690);
 const salaryForm = ref({ effective_from: '', gross_salary: '', bonus: '', comment: '', position_id: '' });
 const transferForm = ref({ department_id: '', effective_from: '', position_id: '', change_salary: false, gross_salary: '' });
+const assignmentForm = ref({ department_id: '', position_id: '', effective_from: '', effective_to: '' });
+const editingAssignmentId = ref(null);
+const editingAssignmentIsOpen = ref(false);
+const savingAssignment = ref(false);
 const dismissForm = ref({ date: '' });
 const rehireForm = ref({ started_at: '', cooperation_type: 'Штат', department_id: '', position_id: '' });
 const cooperationForm = ref({ effective_from: '', cooperation_type: 'Штат' });
@@ -25,6 +29,22 @@ const employee = computed(() => detail.value?.employee ?? null);
 const availablePositions = computed(() => positionsForDepartment(props.positions, employee.value?.department_id));
 const salaryPositionOptions = computed(() => availablePositions.value.map((position) => ({ value: String(position.id), label: position.name })));
 const transferPositions = computed(() => positionsForDepartment(props.positions, transferForm.value.department_id));
+const transferDepartmentOptions = computed(() => departmentOptions(props.departments)
+  .filter((item) => String(item.value) !== String(employee.value?.department_id)));
+const transferPositionOptions = computed(() => transferPositions.value.map((item) => ({
+  value: String(item.id), label: item.name,
+})));
+const historyDepartmentOptions = computed(() => departmentOptions(props.departments));
+const historyPositionOptions = computed(() => props.positions
+  .filter((item) => String(item.direction_id) === String(assignmentForm.value.department_id)
+    && (!item.closed_at || String(item.id) === String(assignmentForm.value.position_id)))
+  .map((item) => ({ value: String(item.id), label: item.name })));
+const changeAssignmentDepartment = (value) => {
+  if (String(value) !== String(assignmentForm.value.department_id)) {
+    assignmentForm.value.department_id = value;
+    assignmentForm.value.position_id = '';
+  }
+};
 watch(() => transferForm.value.department_id, () => { transferForm.value.position_id = ''; });
 const rehirePositions = computed(() => positionsForDepartment(props.positions, rehireForm.value.department_id));
 watch(() => rehireForm.value.department_id, () => { rehireForm.value.position_id = ''; });
@@ -40,6 +60,7 @@ const hireForm = ref({ started_at: new Date().toLocaleDateString('en-CA'), gross
 const hiring = ref(false);
 const canManageSalary = computed(() => Boolean(props.access.permissions?.['employees.salary.manage']));
 const canTransfer = computed(() => Boolean(props.access.permissions?.['employees.transfer']));
+const isPlatformAdmin = computed(() => (props.access.roles || []).includes('platform-admin'));
 const managementActions = computed(() => employeeManagementActions(employee.value, props.access.permissions, { deleting: deleting.value, resendingOnboarding: resendingOnboarding.value }));
 
 const fields = computed(() => [
@@ -117,7 +138,38 @@ const openActionModal = (mode) => {
   }
   actionModal.value = mode;
 };
-const closeActionModal = () => { actionModal.value = null; };
+const closeActionModal = () => { actionModal.value = null; editingAssignmentId.value = null; error.value = ''; };
+const editAssignment = (assignment) => {
+  if (!isPlatformAdmin.value) return;
+  error.value = '';
+  editingAssignmentId.value = Number(assignment.id);
+  editingAssignmentIsOpen.value = !assignment.effective_to;
+  assignmentForm.value = {
+    department_id: assignment.department_id == null ? '' : String(assignment.department_id),
+    position_id: assignment.position_id == null ? '' : String(assignment.position_id),
+    effective_from: assignment.effective_from || '',
+    effective_to: assignment.effective_to || '',
+  };
+  actionModal.value = 'edit-assignment';
+};
+const saveAssignment = async () => {
+  if (!isPlatformAdmin.value || savingAssignment.value) return;
+  savingAssignment.value = true; error.value = '';
+  try {
+    if (!assignmentForm.value.department_id) throw new Error('Выберите направление.');
+    await request(`/api/employees/employees/${props.employeeId}/assignment-history/${editingAssignmentId.value}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        department_id: Number(assignmentForm.value.department_id),
+        position_id: assignmentForm.value.position_id ? Number(assignmentForm.value.position_id) : null,
+        effective_from: assignmentForm.value.effective_from,
+        effective_to: editingAssignmentIsOpen.value ? null : (assignmentForm.value.effective_to || null),
+      }),
+    });
+    closeActionModal(); await load(); emit('updated');
+  } catch (e) { error.value = e.message; }
+  finally { savingAssignment.value = false; }
+};
 const selectManagementAction = (id) => {
   if (id === 'hire' || id === 'rehire') {
     activeTab.value = 'info';
@@ -153,7 +205,9 @@ const runLifecycle = async (mode) => {
   } catch (e) { error.value = e.message; }
 };
 const transferEmployee = async () => {
+  error.value = '';
   try {
+    if (!transferForm.value.department_id) throw new Error('Выберите новое направление.');
     const payload = {
       department_id: Number(transferForm.value.department_id),
       effective_from: transferForm.value.effective_from,
@@ -264,7 +318,7 @@ onBeforeUnmount(stopResize);
       <section v-else-if="activeTab==='employment'" class="employee-card-content employee-history-content">
         <div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>Тип ТУ</th><th>Начало</th><th>Окончание</th></tr></thead><tbody><tr v-for="p in periods" :key="p.id"><td><UiBadge tone="info">{{p.cooperation_type}}</UiBadge></td><td>{{date(p.started_at)}}</td><td>{{date(p.ended_at)}}</td></tr></tbody></table></div>
         <h3 class="history-title">История статусов</h3><div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>Статус</th><th>С</th><th>По</th></tr></thead><tbody><tr v-for="s in statuses" :key="s.id"><td>{{s.status}}</td><td>{{date(s.effective_from)}}</td><td>{{date(s.effective_to)}}</td></tr></tbody></table></div>
-        <h3 class="history-title">Переводы</h3><div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>Подразделение</th><th>Должность</th><th>С</th><th>По</th></tr></thead><tbody><tr v-for="a in assignments" :key="a.id"><td>{{a.department_name||'—'}}</td><td>{{a.position||'—'}}</td><td>{{date(a.effective_from)}}</td><td>{{date(a.effective_to)}}</td></tr></tbody></table></div>
+        <h3 class="history-title">Переводы</h3><div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>Подразделение</th><th>Должность</th><th>С</th><th>По</th><th v-if="isPlatformAdmin" class="employee-history-actions"></th></tr></thead><tbody><tr v-for="a in assignments" :key="a.id"><td>{{a.department_name||'—'}}</td><td>{{a.position||'—'}}</td><td>{{date(a.effective_from)}}</td><td>{{date(a.effective_to)}}</td><td v-if="isPlatformAdmin" class="employee-history-actions"><UiButton compact variant="secondary" :aria-label="`Редактировать перевод от ${date(a.effective_from)}`" @click="editAssignment(a)">✎</UiButton></td></tr></tbody></table></div>
       </section>
 
       <section v-else-if="canReadSalary" class="employee-card-content">
@@ -298,15 +352,31 @@ onBeforeUnmount(stopResize);
         <header><h2>Кадровый перевод</h2><button type="button" class="employee-close" @click="closeActionModal">×</button></header>
         <div class="employee-action-modal__body">
           <label class="irlix-field"><span>Дата перевода</span><input v-model="transferForm.effective_from" type="date" :max="new Date().toLocaleDateString('en-CA')" required /></label>
-          <label class="irlix-field"><span>Новое направление</span><select v-model="transferForm.department_id" required><option value="">Выберите направление</option><option v-for="d in departments.filter(d => String(d.id) !== String(employee.department_id))" :key="d.id" :value="String(d.id)">{{ d.name }}</option></select></label>
-          <label class="irlix-field"><span>Должность в новом направлении</span><select v-model="transferForm.position_id"><option value="">Без должности</option><option v-for="position in transferPositions" :key="position.id" :value="String(position.id)">{{ position.name }}</option></select></label>
-          <label class="irlix-field"><span><input v-model="transferForm.change_salary" type="checkbox" /> Сразу изменить оклад</span></label>
+          <div class="irlix-field"><span>Новое направление</span><UiSearchSelect v-model="transferForm.department_id" :options="transferDepartmentOptions" placeholder="Выберите направление" search-placeholder="Поиск направления" :clearable="false" :teleport="true" /></div>
+          <div class="irlix-field"><span>Должность в новом направлении</span><UiSearchSelect v-model="transferForm.position_id" :options="transferPositionOptions" placeholder="Без должности" search-placeholder="Поиск должности" :disabled="!transferForm.department_id" :teleport="true" /></div>
+          <UiCheckbox v-model="transferForm.change_salary">Сразу изменить оклад</UiCheckbox>
           <label v-if="transferForm.change_salary" class="irlix-field"><span>Новый оклад gross, ₽</span><input v-model="transferForm.gross_salary" type="number" min="0" step="0.01" required /></label>
-          <p>Изменение оклада при кадровом переводе вступит в силу с даты перевода без дополнительного согласования.</p>
+          <p v-if="transferForm.change_salary" class="employee-modal-hint">Изменение оклада вступит в силу с даты перевода без дополнительного согласования.</p>
+          <p v-if="error" class="employee-form-error" role="alert">{{error}}</p>
         </div>
         <footer><UiButton type="button" variant="secondary" @click="closeActionModal">Отмена</UiButton><UiButton type="submit">Перевести</UiButton></footer>
       </form>
     </div>
+    <div v-if="isPlatformAdmin && actionModal === 'edit-assignment'" class="employee-modal-backdrop employee-action-modal-backdrop" @click.self="closeActionModal">
+      <form class="employee-modal employee-action-modal" @submit.prevent="saveAssignment">
+        <header><h2>Редактирование перевода</h2><button type="button" class="employee-close" @click="closeActionModal">×</button></header>
+        <div class="employee-action-modal__body">
+          <label class="irlix-field"><span>Дата начала</span><input v-model="assignmentForm.effective_from" type="date" required /></label>
+          <label class="irlix-field"><span>Дата окончания</span><input v-model="assignmentForm.effective_to" type="date" :disabled="editingAssignmentIsOpen" :required="!editingAssignmentIsOpen" /></label>
+          <div class="irlix-field"><span>Направление</span><UiSearchSelect :model-value="assignmentForm.department_id" @update:model-value="changeAssignmentDepartment" :options="historyDepartmentOptions" placeholder="Выберите направление" search-placeholder="Поиск направления" :clearable="false" :teleport="true" /></div>
+          <div class="irlix-field"><span>Должность</span><UiSearchSelect v-model="assignmentForm.position_id" :options="historyPositionOptions" placeholder="Без должности" search-placeholder="Поиск должности" :disabled="!assignmentForm.department_id" :teleport="true" /></div>
+          <p class="employee-modal-hint">История сохраняется. Смежные непрерывные периоды корректируются автоматически. Для переводов со сменой оклада дата редактируется отдельно от зарплатной истории.</p>
+          <p v-if="error" class="employee-form-error" role="alert">{{error}}</p>
+        </div>
+        <footer><UiButton type="button" variant="secondary" @click="closeActionModal">Отмена</UiButton><UiButton type="submit" :disabled="savingAssignment || !assignmentForm.department_id">{{savingAssignment ? 'Сохранение…' : 'Сохранить'}}</UiButton></footer>
+      </form>
+    </div>
+
     <div v-if="canManageSalary && actionModal === 'salary'" class="employee-modal-backdrop employee-action-modal-backdrop" @click.self="closeActionModal">
       <form class="employee-modal employee-action-modal" @submit.prevent="addSalary">
         <header><h2>Пересмотр зарплаты</h2><button type="button" class="employee-close" @click="closeActionModal">×</button></header>
