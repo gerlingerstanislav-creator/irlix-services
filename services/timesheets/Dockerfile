@@ -10,7 +10,7 @@ COPY bin /app/bin
 COPY tests /app/tests
 RUN apk add --no-cache sqlite-dev && docker-php-ext-install -j"$(nproc)" pdo_sqlite
 RUN php /app/tests/architecture_smoke.php && php /app/tests/runtime_contract_smoke.php && php /app/tests/project_conversion_smoke.php && php /app/tests/employee_purge_smoke.php
-RUN php /app/tests/local_role_authorization.php
+RUN php /app/tests/local_role_authorization.php && php /app/tests/legacy_clients_import_runtime.php
 RUN find /app/app /app/routes /app/bootstrap /app/database/migrations /app/bin -name '*.php' -print0 | xargs -0 -n1 php -l
 
 FROM php:8.4-cli-alpine
