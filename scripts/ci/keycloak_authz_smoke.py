@@ -145,6 +145,7 @@ PERSONAS = {
     "system-admin": {"system-admin", "service:equipment", "employee-id:42"},
     "platform-admin": {"platform-admin", "service:system", "service:migration", "employee-id:42"},
     "platform-tester": {"platform-tester", "service:vacations", "employee-id:42"},
+    "timesheets-employee": {"employee-id:42", "org:irlix", "service:timesheets"},
     "no-service-access": {"employee-id:42"},
 }
 all_persona_roles = set().union(*PERSONAS.values())
@@ -178,6 +179,30 @@ def check_clients_jwt(token, expected):
         "irlix-auth-ci-clients", "php", "/app/tests/keycloak_real_jwt_smoke.php",
     ], env=env, check=True, timeout=90)
 
+
+def check_timesheets_jwt(token):
+    # Actual signature and realm claims, synthetic business data in isolated
+    # Timesheets PHP test. No production identity or policy data is accessed.
+    _, keys, _ = request(REALM + "/protocol/openid-connect/certs")
+    env = os.environ.copy()
+    env["IRLIX_CI_BEARER"] = token
+    env["IRLIX_CI_JWKS_BASE64"] = base64.b64encode(
+        json.dumps(keys).encode("utf-8")).decode("ascii")
+    subprocess.run([
+        "docker", "run", "--rm", "--network", "host",
+        "--env", "APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "--env", "APP_ENV=testing",
+        "--env", "IRLIX_AUTHZ_JWT_ENABLED=true",
+        "--env", "IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED=true",
+        "--env", "KEYCLOAK_URL=http://127.0.0.1:18885/keycloak/auth",
+        "--env", "KEYCLOAK_ISSUER=http://127.0.0.1:18885/keycloak/auth/realms/irlix",
+        "--env", "KEYCLOAK_REALM=irlix",
+        "--env", "KEYCLOAK_CLIENT_ID=irlix-authz-ci",
+        "--env", "IRLIX_CI_BEARER", "--env", "IRLIX_CI_JWKS_BASE64",
+        "irlix-auth-ci-timesheets", "php",
+        "/app/tests/keycloak_local_v2_smoke.php",
+    ], env=env, check=True, timeout=90)
+
 current = set(token_roles()) & set(representations)
 for persona, wanted in PERSONAS.items():
     revoke = current - wanted
@@ -206,6 +231,8 @@ for persona, wanted in PERSONAS.items():
                 "B" if signature.startswith("A") else "A"
             ) + signature[1:]
             check_clients_jwt(tampered, 401)
+    if persona == "timesheets-employee" and os.environ.get("RUN_TIMESHEETS_JWT_SUITES") == "true":
+        check_timesheets_jwt(mint_token())
     current = wanted
 
 # A dismissed person must not be able to acquire a new access token.
