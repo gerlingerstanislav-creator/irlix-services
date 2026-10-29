@@ -643,7 +643,7 @@ onMounted(() => refresh());
         </div>
         <div class="storage-preview-content">
           <img v-if="previewUrl && previewMime === 'image'" :src="previewUrl" :alt="previewItem.name" />
-          <iframe v-else-if="previewUrl && previewMime === 'pdf'" :src="previewUrl" :title="previewItem.name" sandbox="" />
+          <iframe v-else-if="previewUrl && previewMime === 'pdf'" :src="previewUrl" :title="previewItem.name" />
           <video v-else-if="previewUrl && previewMime === 'video'" :src="previewUrl" controls preload="metadata" class="storage-v1-video"></video>
           <pre v-else-if="previewMime === 'text'">{{ previewText }}</pre>
           <div v-else class="storage-preview-fallback">
