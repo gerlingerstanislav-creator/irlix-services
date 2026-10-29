@@ -12,18 +12,6 @@ class ClientContourPermissionsController extends Controller
     public function me(Request $request, ClientContourAccess $resolver)
     {
         $access = $request->attributes->get('client_contour_access') ?? $resolver->resolve($request);
-        if ($request->attributes->get('clients_timesheets_only') === true) {
-            $permissions = array_filter((array) ($access['permissions'] ?? []),
-                static fn($name) => str_starts_with((string) $name, 'timesheets.'),
-                ARRAY_FILTER_USE_KEY);
-            return response()->json(['data'=>[
-                'permissions'=>$permissions,
-                // Signed Timesheets consumer independently verifies Employees
-                // service entry and can only preserve historical OWN access.
-                'legacy_timesheets_implicit_mine_view' =>
-                    ($access['legacy_timesheets_implicit_mine_view'] ?? false) === true,
-            ]]);
-        }
         return response()->json(['data'=>$access]);
     }
 
