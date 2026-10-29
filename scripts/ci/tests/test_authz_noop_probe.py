@@ -19,8 +19,8 @@ class ProductionAuthzNoopProbeTests(unittest.TestCase):
         self.assertIn("needs.deploy.result == 'skipped'", section)
         self.assertIn("[authz-probe]", section)
         self.assertIn("< scripts/authz/inspect_runtime.py", section)
-        self.assertIn('python3 - "$@"', section)
-        self.assertIn('sudo -n python3 - "$@"', section)
+        self.assertIn('then python3 -;', section)
+        self.assertIn('sudo -n python3 -;', section)
         self.assertNotIn("docker compose up", section)
         self.assertNotIn("artisan migrate", section)
         self.assertNotIn("IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED=true", section)
@@ -28,6 +28,14 @@ class ProductionAuthzNoopProbeTests(unittest.TestCase):
         # Auth-only probe may execute even when release deploy was intentionally
         # skipped; the normal deployment remains gated independently.
         self.assertIn("needs.deploy.result == 'skipped'", text)
+
+    def test_exact_service_plan_compose_overlays_are_used(self):
+        content = (ROOT / "scripts/authz/inspect_runtime.py").read_text()
+        self.assertIn("def default_production_compose()", content)
+        self.assertIn('"compose-args", "--env-file", ".env"', content)
+        self.assertIn("shlex.split(info.stdout.strip())", content)
+        self.assertIn("if not compose:", content)
+        self.assertIn("raise SystemExit(2)", content)
 
     def test_runtime_probe_remains_aggregation_only(self):
         script = (ROOT / "scripts/authz/inspect_runtime.py").read_text()
