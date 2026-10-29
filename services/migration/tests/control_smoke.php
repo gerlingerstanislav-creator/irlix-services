@@ -174,13 +174,26 @@ try {
     @unlink($maintenancePath); config(['migration.restore_status_path'=>'/ops/restore-status.json']);
     // Catalog fixture includes a new empty table and inaccessible table outside required_tables.
     $reader = new class {
+        public array $statisticsQueries = [];
         public function assertSafe(): void {}
-        public function select($sql,$bindings=[]): array {
+        public function select($sql,$bindings=[],$trackReadCount=true): array {
             \App\Migration\Core\LegacyReader::assertReadQuery($sql);
             if (str_contains($sql,'FROM pg_enum')) return [(object)['enumlabel'=>'unexpected'],(object)['enumlabel'=>'unused']];
+            if (str_contains($sql,'AS filled_')) {
+                $this->statisticsQueries[] = $sql;
+                $empty = str_contains($sql,'new_empty');
+                $values = [];
+                preg_match_all('/AS filled_(\\d+)/', $sql, $found);
+                foreach ($found[1] as $idx) {
+                    $values['filled_'.$idx] = $empty ? 0 : 2;
+                    $values['null_'.$idx] = $empty ? 0 : 1;
+                }
+                return [(object) $values];
+            }
             if (str_contains($sql,'FROM pg_class')) return [
                 (object)['schema_name'=>'public','table_name'=>'new_empty','column_name'=>'new_field','data_type'=>'text','type_kind'=>'b','readable'=>true],
                 (object)['schema_name'=>'public','table_name'=>'new_states','column_name'=>'status','data_type'=>'status_enum','type_kind'=>'e','type_id'=>9001,'readable'=>true],
+                (object)['schema_name'=>'public','table_name'=>'new_states','column_name'=>'details','data_type'=>'text','type_kind'=>'b','type_id'=>9002,'readable'=>true],
                 (object)['schema_name'=>'public','table_name'=>'private_table','column_name'=>'unknown','data_type'=>'text','type_kind'=>'b','readable'=>false],
             ];
             return [(object)['value'=>null,'count'=>1],(object)['value'=>'unexpected','count'=>2]];
@@ -197,6 +210,8 @@ try {
     ensureControl($inventory['tables'][1]['columns'][0]['values'][0]['value']===null && $inventory['tables'][1]['columns'][0]['values_complete'],'All status values include NULL with counts');
     ensureControl($inventory['tables'][1]['columns'][0]['filled']===2 && $inventory['tables'][0]['total']===0,'Filled counts and empty tables retained');
     ensureControl(count($inventory['tables'][1]['columns'][0]['declared_values'])===2 && $inventory['tables'][1]['columns'][0]['declared_values_complete'],'Declared unused enum values are inventoried');
+    ensureControl(count($reader->statisticsQueries)===2,'Two columns in new_states use one bounded statistics query');
+    ensureControl($inventory['tables'][1]['columns'][1]['filled']===2,'Second column in a batched statistics query is retained');
     ensureControl($inventory['tables'][2]['unavailable_reason']!==null,'Unreadable table has explicit reason');
     ensureControl($inventory['tables'][0]['expectation']['status']==='undocumented','Empty table with unmapped fields remains undocumented instead of inferred excluded');
     $expectedIntent = \App\Migration\Core\FieldMappingRegistry::tableExpectation('clients','public','clients',[
