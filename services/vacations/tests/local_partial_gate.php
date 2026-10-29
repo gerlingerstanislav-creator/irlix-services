@@ -52,6 +52,7 @@ putenv('IRLIX_AUTHZ_JWT_ENABLED=true');
 
 $profileId = 17;
 $live = ['employee_id'=>17,
+    'services'=>['vacations'=>true],
     'roles'=>['platform-admin'],
     'role_claims'=>['org:irlix','special:platform-admin'],
 ];
