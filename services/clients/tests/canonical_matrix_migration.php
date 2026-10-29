@@ -42,6 +42,8 @@ $put('org:backend','timesheets.mine.view',true,'own');
 $put('platform-admin','clients.manage',true,'all');
 $put('platform-tester','clients.view',false,'none');
 $put('special:system-admin','clients.view',false,'none',true);
+$put('head:client-service','attempts.view',false,'none');
+$put('head:client-service','clients.view',false,'none',true);
 $migration = require __DIR__.'/../database/migrations/2026_10_29_000002_remove_legacy_client_matrix_roles.php';
 $migration->up();
 $rows=DB::table('client_contour_permissions')->get();
@@ -59,6 +61,9 @@ $check(DB::table('client_contour_permissions')->where('role','head:account-manag
 $check(DB::table('client_contour_permissions')->where('role','head:client-service')
     ->where('permission','attempts.view')->value('scope')==='all',
     'Client Service head did not aggregate Sales capability');
+$check((bool) DB::table('client_contour_permissions')->where('role','head:client-service')
+    ->where('permission','clients.view')->value('denied') === true,
+    'Client Service head aggregation overwrote an explicit V2 deny');
 $check(!DB::table('client_contour_permissions')->where('role','department-manager')->exists(),
     'Legacy manager rows remain');
 $service=app(ClientContourPermissionService::class);
