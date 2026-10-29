@@ -37,7 +37,13 @@ final class ServiceEntitlement
                 if (!$liveAdmission->successful() || !is_array($liveAdmission->json('data'))) {
                     return response()->json(['message'=>'Clients admission unavailable'],503);
                 }
-                if ($liveAdmission->json('data.services.clients') !== true) {
+                $timesheetsOnly = $request->is('api/permissions/me')
+                    && $liveAdmission->json('data.services.timesheets') === true
+                    && $liveAdmission->json('data.services.clients') !== true;
+                if ($timesheetsOnly) {
+                    $request->attributes->set('clients_timesheets_only', true);
+                }
+                if ($liveAdmission->json('data.services.clients') !== true && !$timesheetsOnly) {
                     return response()->json(['message'=>'Clients admission denied'],403);
                 }
                 try {
