@@ -88,4 +88,17 @@ $check(!$restricted['timesheets.management.manage']['allowed'],
     'Manual legacy deny on management was bypassed');
 $check(!$restricted['timesheets.analytics.view']['allowed'],
     'Missing legacy analytics permission was implicitly granted');
+$legacyPartner = Authz::restrictToLegacy([
+    'timesheets.partner-hours.view'=>['allowed'=>true,'scope'=>'all'],
+    'timesheets.partner-hours.manage'=>['allowed'=>true,'scope'=>'all'],
+    'timesheets.partner-hours.approve'=>['allowed'=>true,'scope'=>'all'],
+], [
+    'timesheets.management.view'=>['allowed'=>true,'scope'=>'own'],
+    'timesheets.management.manage'=>['allowed'=>false,'scope'=>'none'],
+]);
+$check($legacyPartner['timesheets.partner-hours.view']['scope']==='own',
+    'Partner-hours view scope expanded beyond old Clients permission');
+$check(!$legacyPartner['timesheets.partner-hours.manage']['allowed']
+    && !$legacyPartner['timesheets.partner-hours.approve']['allowed'],
+    'Partner-hours final approval bypassed old management denial');
 echo "Timesheets V2 local authorization: PASS\n";
