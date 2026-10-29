@@ -92,7 +92,8 @@ final class ServiceEntitlement
                         return response()->json(['message'=>'Legacy Timesheets policy unavailable'],503);
                     }
                     $permissions = \App\Services\TimesheetsRoleAuthorization::restrictToLegacy(
-                        $permissions, (array) $legacyResponse->json('data.permissions')
+                        $permissions, (array) $legacyResponse->json('data.permissions'),
+                        $legacyResponse->json('data.legacy_timesheets_implicit_mine_view') === true
                     );
                 }
                 $admin = in_array('platform-admin', $roles, true)
