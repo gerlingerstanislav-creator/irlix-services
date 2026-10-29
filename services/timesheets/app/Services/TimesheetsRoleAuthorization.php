@@ -85,6 +85,33 @@ final class TimesheetsRoleAuthorization
         return $permissions;
     }
 
+    /**
+     * The old live Clients matrix still owns the authorization exceptions
+     * for Timesheets management, analytics and audit during the migration.
+     * A V2 role grant can only be equal to or narrower than its effective
+     * old permission/scope for this signed employee.
+     */
+    public static function restrictToLegacy(array $v2, array $legacy): array
+    {
+        $rank = ['none'=>0,'own'=>1,'team'=>2,'all'=>3];
+        foreach ([
+            'timesheets.management.view','timesheets.management.manage',
+            'timesheets.analytics.view','timesheets.audit.view',
+        ] as $permission) {
+            $new = (array) ($v2[$permission] ?? []);
+            $old = (array) ($legacy[$permission] ?? []);
+            $newScope = (string) ($new['scope'] ?? 'none');
+            $oldScope = (string) ($old['scope'] ?? 'none');
+            $newRank = $rank[$newScope] ?? 0;
+            $oldRank = $rank[$oldScope] ?? 0;
+            $allowed = ($new['allowed'] ?? false) === true
+                && ($old['allowed'] ?? false) === true && $newRank > 0 && $oldRank > 0;
+            $scope = $allowed ? ($newRank <= $oldRank ? $newScope : $oldScope) : 'none';
+            $v2[$permission] = ['allowed'=>$allowed,'scope'=>$scope];
+        }
+        return $v2;
+    }
+
     public function forVerifiedRoles(array $roles): array
     {
         $filtered = array_values(array_filter($roles, static fn ($role) =>
