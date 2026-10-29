@@ -26,6 +26,6 @@ try {
     ];
     $category = in_array($error->getMessage(), $categories, true)
         ? $error->getMessage() : 'Validation or runtime error';
-    fwrite(STDERR, "Clients V2 finalization rejected: {$category}; source policy preserved.\n");
+    fwrite(STDERR, "[clients-v2-finalize] {$category}\n");
     exit(1);
 }
