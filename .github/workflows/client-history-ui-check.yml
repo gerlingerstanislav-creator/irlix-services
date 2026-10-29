@@ -1,14 +1,37 @@
 name: Client summary and history validation
 on:
-  push:
-    branches: [feature/shared-client-summary-drawer-height]
   pull_request:
+    branches: [development]
     paths:
       - 'apps/clients/**'
       - 'packages/ui/**'
       - 'services/clients/**'
       - '.github/workflows/client-history-ui-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: client-history-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  scope:
+    name: Select affected Clients frontend builds
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      enabled: ${{ steps.select.outputs.enabled }}
+      php: ${{ steps.select.outputs.php }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: select
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: python3 scripts/ci/workflow_scope.py client-history-ui-check --base "$PR_BASE"
+
   contract:
     runs-on: ubuntu-latest
     steps:
@@ -17,17 +40,19 @@ jobs:
         with: { node-version: '22' }
       - run: node --test packages/ui/tests/clientHistoryContract.test.mjs
   build:
+    needs: scope
+    if: ${{ needs.scope.outputs.enabled == 'true' }}
     runs-on: ubuntu-latest
     strategy:
-      matrix:
-        app: [clients, design-system]
+      matrix: ${{ fromJSON(needs.scope.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
       - name: Install
         working-directory: apps/${{ matrix.app }}
-        run: npm install --no-audit --no-fund
+        run: |
+          if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
       - name: Build
         working-directory: apps/${{ matrix.app }}
         run: npm run build
@@ -36,6 +61,8 @@ jobs:
         working-directory: apps/clients
         run: npm test
   php-lint:
+    needs: scope
+    if: ${{ needs.scope.outputs.php == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
