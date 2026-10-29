@@ -363,3 +363,23 @@ body:has(.storage-v1-share) > .ui-search-select__menu--teleported .ui-search-sel
 body:has(.storage-v1-share) > .ui-search-select__menu--teleported .ui-search-select__marker{
   flex-basis:16px;width:16px;height:16px;border-width:1.5px;
 }
+
+
+.storage-v1 .storage-recipient-chips{
+  display:flex;align-items:center;flex-wrap:wrap;gap:5px;
+  max-height:94px;overflow:auto;padding:2px 0;
+}
+.storage-v1 .storage-recipient-chip{
+  display:inline-flex;align-items:center;gap:7px;
+  max-width:100%;border:1px solid var(--irlix-color-border);
+  border-radius:7px;padding:4px 7px;
+  background:var(--irlix-color-surface-muted);
+  color:var(--irlix-color-text);font-size:11px;line-height:1.25;
+}
+.storage-v1 .storage-recipient-chip span:first-child{
+  display:block;max-width:240px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;
+}
+.storage-v1 .storage-recipient-chip span:last-child{font-size:14px;color:var(--irlix-color-text-muted)}
+.storage-v1 .storage-recipient-chip:hover{border-color:var(--irlix-color-primary)}
+.storage-v1 .storage-recipient-chip:focus-visible{outline:2px solid var(--irlix-color-primary)}
