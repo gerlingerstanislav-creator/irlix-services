@@ -2,10 +2,14 @@
 
 ## Optimized pull-request checks and build scope
 
-For a PR into `development`, `.github/workflows/ci.yml` compares its checkout with
-`github.event.pull_request.base.sha` (`--base`), not the last successful
-`development` push. This prevents unrelated changes accumulated on the integration
-branch from selecting extra Docker images. Pushes to `development` retain the
+For a PR into `development`, `.github/workflows/ci.yml` and the
+specialized scope selector compare the **actual tested PR merge commit** against
+its first parent (`HEAD^1`). The event's `pull_request.base.sha` may be stale
+after concurrent development updates: using it previously selected an unrelated
+new Storage image in CI. Non-merge PR checkouts fail closed. This prevents
+unrelated changes accumulated on the integration branch from selecting extra
+Docker images. QA/browser/PHP lint use the same first-parent baseline.
+Pushes to `development` retain the
 previous-successful-CI baseline so cancelled/failed builds are not silently missed;
 `main` retains the last actually deployed ancestor as the release baseline.
 
