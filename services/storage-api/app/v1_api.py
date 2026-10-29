@@ -408,6 +408,41 @@ def preview_safe(request: Request, object_id: UUID):
     })
 
 
+
+@router.get("/thumbnail/{object_id}")
+def thumbnail_safe(request: Request, object_id: UUID):
+    """Private, ACL-checked 320x240 tile image, never the original file bytes.
+
+    Reuse preview_safe so the thumbnail gets exactly the same per-object READ,
+    active-file, S3 namespace, size, signature and audit checks. No persistent
+    copy is written; every request must be authorized even after ACL changes.
+    """
+    preview = preview_safe(request, object_id)
+    if preview.media_type not in {"image/png", "image/jpeg", "image/gif", "image/webp"}:
+        raise HTTPException(415, "Миниатюры доступны только для изображений")
+    try:
+        with Image.open(BytesIO(preview.body)) as original:
+            if original.width * original.height > 12_000_000:
+                raise HTTPException(413, "Изображение слишком большое для миниатюры")
+            original.seek(0)  # Animated GIF/WebP: show first frame only.
+            picture = ImageOps.exif_transpose(original)
+            picture.thumbnail((320, 240), Image.Resampling.LANCZOS)
+            # JPEG cannot store alpha. Composite transparent PNGs on white.
+            rgba = picture.convert("RGBA")
+            rgb = Image.new("RGB", rgba.size, (255, 255, 255))
+            rgb.paste(rgba, mask=rgba.getchannel("A"))
+            output = BytesIO()
+            rgb.save(output, format="JPEG", quality=78, optimize=True)
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        raise HTTPException(415, "Не удалось создать миниатюру")
+    return Response(output.getvalue(), media_type="image/jpeg", headers={
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": "inline",
+        "Content-Security-Policy": "sandbox; default-src 'none'; base-uri 'none'",
+    })
+
+
 @router.get("/files/{object_id}")
 def download(request: Request, object_id: UUID):
     actor = _identity(request)
