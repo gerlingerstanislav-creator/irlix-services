@@ -97,13 +97,12 @@ class KeycloakBearer
                 } catch (\Throwable) {
                     return response()->json(['message' => 'Finance local authorization unavailable'], 503);
                 }
-                // Preserve the EXISTING Employees service gate and every
-                // administrator-defined finance denial while importing its
-                // grants into the new service-local V2 matrix. A signed
-                // organizational label may never widen legacy privileges.
-                $permissions = \App\Services\FinanceRoleAuthorization::intersectLegacy(
-                    $permissions, (array) $currentResponse->json('data')
-                );
+                // Employees verifies CURRENT identity and service entry, not
+                // Finance business permissions. All role-level explicit old
+                // denials are transferred once into this service's own matrix.
+                if ($currentResponse->json('data.services.finance') !== true) {
+                    return response()->json(['message' => 'Finance service admission denied'], 403);
+                }
                 if (!($permissions['finance.view'] ?? false)) {
                     return response()->json(['message' => 'Finance access is not granted'], 403);
                 }
