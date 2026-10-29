@@ -42,6 +42,9 @@ const recipientNames = computed(() => new Map(directoryOptions.value
   .map(option => [Number(option.value), option.label])));
 const recipientName = id => recipientNames.value.get(Number(id)) || 'Сотрудник #' + id;
 const grantLabel = role => role === 'editor' ? 'Редактирование и загрузка' : 'Просмотр и скачивание';
+function removeRecipient(id) {
+  shareRecipients.value = shareRecipients.value.filter(selectedId => Number(selectedId) !== Number(id));
+}
 function syncShareBadge(item) {
   const count = grants.value.length;
   entries.value = entries.value.map(entry => entry.id === item.id ? { ...entry, shared_count: count } : entry);
@@ -783,7 +786,15 @@ onMounted(() => refresh());
             <UiSearchSelect v-model="shareRecipients" :options="directoryOptions"
               placeholder="Выберите сотрудников" aria-label="Получатели доступа"
               :multiple="true" :disabled="busy || shareLoading" :teleport="true" />
-            <small class="storage-share-hint">Можно выбрать несколько сотрудников. Всем будет назначено указанное ниже право.</small>
+            <div v-if="shareRecipients.length" class="storage-recipient-chips" aria-label="Выбранные сотрудники">
+              <button v-for="employeeId in shareRecipients" :key="employeeId" type="button"
+                :disabled="busy" class="storage-recipient-chip"
+                :aria-label="'Убрать из выбора: ' + recipientName(employeeId)"
+                @click.stop="removeRecipient(employeeId)">
+                <span>{{ recipientName(employeeId) }}</span><span aria-hidden="true">×</span>
+              </button>
+            </div>
+            <small class="storage-share-hint">Можно выбрать нескольких сотрудников. Всем будет назначено указанное ниже право.</small>
           </label>
           <label>Уровень доступа
             <select v-model="shareRole" :disabled="busy || shareLoading">
