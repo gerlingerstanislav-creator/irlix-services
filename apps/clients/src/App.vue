@@ -638,7 +638,7 @@ onBeforeUnmount(() => clearTimeout(filterDebounce));
       </template>
     <main class="content" :class="{'content--clients':view==='clients','content--cashflow':view==='cashflow','content--roster':view==='specialists'}">
       <div v-if="error" class="error-banner">{{error}}<button @click="load">Повторить</button></div>
-      <UiLoader v-if="loading" overlay label="Загрузка клиентского сервиса" />
+      <UiLoader v-if="loading && startupPhase==='ready'" overlay label="Загрузка клиентского сервиса" />
       <UiLoader v-if="startupPhase==='loading'" page label="Проверяем доступ к клиентскому сервису" />
       <UiErrorState v-else-if="startupPhase==='error'" :status="503" description="Не удалось завершить загрузку прав доступа." retryable @retry="load" />
       <UiErrorState v-else-if="!titles[view]" :status="404" back-href="/clients/clients/" back-label="К клиентам" />
