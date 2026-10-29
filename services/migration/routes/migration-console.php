@@ -61,9 +61,10 @@ foreach (['start', 'restore', 'snapshot'] as $action) {
         if ($action === 'start') {
             if ($request->input('confirm') !== true) return response()->json(['message' => 'Подтвердите реальный перенос.'], 422);
             foreach ($scope === 'all' ? array_keys(config('migration.modules', [])) : [$scope] as $service) {
-                $profile = $profiles->publicProfile($service);
-                if (! $profile || ! $profile['verified_at'] || ($profile['credential_status'] ?? '') !== 'ready') {
-                    return response()->json(['message' => $service.': сохраните и проверьте read-only подключение.'], 409);
+                // Recheck stale DB-verification evidence using the live read-only guard.
+                // No data migration is queued unless the safety check succeeds.
+                if (($problem = $profiles->ensureReadyForStart($service)) !== null) {
+                    return response()->json(['message' => $service.': '.$problem], 409);
                 }
             }
         }
