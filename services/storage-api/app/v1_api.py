@@ -74,21 +74,26 @@ def _decorate_entries(conn, entries: list[dict]) -> list[dict]:
         rows = conn.execute(
             "SELECT o.id, o.updated_at, "
             "(SELECT fv.size_bytes FROM storage.file_versions fv "
-            "WHERE fv.object_id=o.id ORDER BY fv.created_at DESC LIMIT 1) "
+            "WHERE fv.object_id=o.id ORDER BY fv.created_at DESC LIMIT 1), "
+            "(SELECT count(*) FROM storage.grants g "
+            "WHERE g.object_id=o.id AND g.revoked_at IS NULL) "
             "FROM storage.objects o WHERE o.id IN (" + marks + ")", ids
         ).fetchall()
     else:
         rows = conn.execute(
             "SELECT o.id::text, o.updated_at, "
             "(SELECT fv.size_bytes FROM storage.file_versions fv "
-            "WHERE fv.object_id=o.id ORDER BY fv.created_at DESC LIMIT 1) "
+            "WHERE fv.object_id=o.id ORDER BY fv.created_at DESC LIMIT 1), "
+            "(SELECT count(*) FROM storage.grants g "
+            "WHERE g.object_id=o.id AND g.revoked_at IS NULL) "
             "FROM storage.objects o WHERE o.id = ANY(%s::uuid[])",
             (ids,),
         ).fetchall()
     by_id = {oid: {"modified": updated.isoformat() if updated else None,
-                   "size": size} for oid, updated, size in rows}
+                   "size": size, "shared_count": int(shared_count)}
+             for oid, updated, size, shared_count in rows}
     for item in entries:
-        item.update(by_id.get(item["id"], {"modified": None, "size": None}))
+        item.update(by_id.get(item["id"], {"modified": None, "size": None, "shared_count": 0}))
     return entries
 
 
