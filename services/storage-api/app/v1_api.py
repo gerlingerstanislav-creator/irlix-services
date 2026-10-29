@@ -596,17 +596,6 @@ def purge_file(request: Request, object_id: UUID, data: PurgeInput):
         raise HTTPException(503, "Полное удаление пока не включено: требуется подтверждение восстановления")
     oid = _normalize_id(object_id)
     client = _s3()
-    try:
-        # The S3 bucket may not keep hidden physical versions. If versioning is
-        # active or the provider cannot report it, do NOT claim total deletion.
-        versioning = client.get_bucket_versioning(Bucket=_bucket())
-    except (ClientError, BotoCoreError, AttributeError):
-        raise HTTPException(503, "Не удалось проверить настройки версий S3")
-    if versioning.get("Status") in {"Enabled", "Suspended"}:
-        raise HTTPException(409, "Полное удаление при включённом версионировании S3 недоступно")
-    if versioning.get("Status") not in (None, ""):
-        raise HTTPException(503, "Неизвестные настройки версий S3")
-
     with metadata_connection() as conn:
         repo = _repo(conn, request)
         repo.lock()
@@ -617,15 +606,24 @@ def purge_file(request: Request, object_id: UUID, data: PurgeInput):
             raise HTTPException(403, "Полное удаление доступно только владельцу")
         if item[1] != "file" or item[6] != "trashed":
             raise HTTPException(409, "Удалять навсегда можно только файлы из корзины")
-        if data.confirm_name != item[4]:
-            raise HTTPException(422, "Название файла не совпадает")
-        if not item[5] or not item[5].startswith(S3_ROOT):
-            raise HTTPException(409, "Недопустимое пространство хранения")
         row = conn.execute(
             "SELECT state FROM storage.purge_requests WHERE object_id=%s", (oid,)
         ).fetchone()
         if row and row[0] == "completed":
             return {"purged": True, "id": oid}
+        if data.confirm_name != item[4]:
+            raise HTTPException(422, "Название файла не совпадает")
+        if not item[5] or not item[5].startswith(S3_ROOT):
+            raise HTTPException(409, "Недопустимое пространство хранения")
+        try:
+            # Never leave hidden physical S3 bucket-native versions behind.
+            versioning = client.get_bucket_versioning(Bucket=_bucket())
+        except (ClientError, BotoCoreError, AttributeError):
+            raise HTTPException(503, "Не удалось проверить настройки версий S3")
+        if versioning.get("Status") in {"Enabled", "Suspended"}:
+            raise HTTPException(409, "Полное удаление при включённом версионировании S3 недоступно")
+        if versioning.get("Status") not in (None, ""):
+            raise HTTPException(503, "Неизвестные настройки версий S3")
         if not row:
             conn.execute(
                 "INSERT INTO storage.purge_requests "
@@ -913,7 +911,9 @@ def storage_statistics(request: Request, employee_id: int | None = None):
             "SELECT COUNT(*) FILTER (WHERE kind='file'), "
             "COUNT(*) FILTER (WHERE kind='folder'), "
             "COUNT(*) FILTER (WHERE state='trashed') "
-            "FROM storage.objects WHERE owner_employee_id=%s", (owner,)
+            "FROM storage.objects o WHERE owner_employee_id=%s "
+            "AND NOT EXISTS (SELECT 1 FROM storage.purge_requests pr "
+            "WHERE pr.object_id=o.id AND pr.state='completed')", (owner,)
         ).fetchone()
     raw = os.environ.get("STORAGE_V1_QUOTA_BYTES", "0")
     try:
