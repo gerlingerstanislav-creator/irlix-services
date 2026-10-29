@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\StorageV1DirectoryService;
+use App\Support\SpecialRoles;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -14,7 +15,11 @@ final class StorageV1DirectoryController extends Controller
     private function allowed(Request $request): bool
     {
         $access = (array) $request->attributes->get('employees_access', []);
-        return $this->directory->actorActive((int) ($access['employee_id'] ?? 0))
+        $roles = (array) ($access['roles'] ?? []);
+        $admitted = in_array(SpecialRoles::PlatformAdmin, $roles, true)
+            || (in_array(SpecialRoles::TopManagement, $roles, true)
+                && getenv('STORAGE_V1_ACCESS_ENABLED') === '1');
+        return $admitted && $this->directory->actorActive((int) ($access['employee_id'] ?? 0))
             && ($access['services']['storage'] ?? false) === true;
     }
 
