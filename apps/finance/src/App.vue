@@ -21,6 +21,8 @@ const route = useRoute();
 const router = useRouter();
 const section = computed(() => route.meta.section || 'not-found');
 const busy = ref(false), error = ref(''), notice = ref('');
+// A pending or failed authorization lookup must never be presented as a 403.
+const accessPhase = ref('loading');
 // A later month refresh invalidates all earlier in-flight report responses.
 let loadSequence = 0;
 const month = ref(new Date().toISOString().slice(0,7));
@@ -149,7 +151,7 @@ const totalCashBalance = computed(() => {
 const call=async(path, init={})=>{
   const r=await auth.fetch('/api/finance/'+path,{...init,headers:{'Content-Type':'application/json',...(init.headers||{})}});
   const j=await r.json().catch(()=>({message:'Не удалось прочитать ответ'}));
-  if(!r.ok)throw new Error(j.message||'Ошибка сервера');
+  if(!r.ok){const failure=new Error(j.message||'Ошибка сервера');failure.status=r.status;throw failure;}
   return j.data;
 };
 async function load(){
@@ -169,6 +171,7 @@ async function load(){
     // Standard accountants receive 403; this does not affect their registers.
     canManageFinanceRoles.value = !!(await call('permissions').catch(() => null))?.can_manage;
     if(requestId!==loadSequence)return;
+    accessPhase.value=can('finance.view')?'allowed':'forbidden';
     if(!can('finance.view')){
       error.value='У вас нет доступа к финансовому сервису.';
       return;
@@ -236,7 +239,10 @@ async function load(){
       }
     });
     if(failures.length)error.value='Некоторые источники не обновились: '+failures.join(', ')+'. Недоступные регистры очищены; остальные продолжают работать.';
-  }catch(ex){if(requestId===loadSequence)error.value=ex.message}
+  }catch(ex){if(requestId===loadSequence){
+    error.value=ex.message;
+    if(accessPhase.value==='loading')accessPhase.value=ex.status===403?'forbidden':'error';
+  }}
   finally{if(requestId===loadSequence)busy.value=false}
 }
 async function loadMoreInvoices(){
@@ -435,8 +441,10 @@ onBeforeUnmount(()=>{loadSequence++;});
       <UiLoader v-if="busy" overlay label="Загрузка финансовых данных" />
       <div v-if="error" class="finance-error" role="alert">{{error}}</div>
       <div v-if="notice" class="finance-success" role="status">{{notice}}</div>
-      <UiErrorState v-if="section==='not-found'" :status="404" back-href="/finance/overview/" back-label="К обзору" />
-      <UiErrorState v-else-if="!busy && !sectionAllowed(section)" :status="403" />
+      <UiLoader v-if="accessPhase==='loading'" page label="Проверяем права доступа к финансам" />
+      <UiErrorState v-else-if="accessPhase==='error'" :status="503" description="Не удалось проверить права доступа." retryable @retry="load" />
+      <UiErrorState v-else-if="section==='not-found'" :status="404" back-href="/finance/overview/" back-label="К обзору" />
+      <UiErrorState v-else-if="accessPhase==='forbidden' || (accessPhase==='allowed' && !busy && !sectionAllowed(section))" :status="403" />
       <template v-else-if="section==='permissions'">
         <FinancePermissionsView />
       </template>
