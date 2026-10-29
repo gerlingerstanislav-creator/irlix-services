@@ -379,7 +379,7 @@ test('Storage V1 employee selector supports compact multi-select and explicit ch
   assert.ok(screen.includes('v-for="employeeId in shareRecipients"'));
   assert.ok(screen.includes('removeRecipient(employeeId)'));
   assert.ok(screen.includes(':disabled="busy || shareLoading || !shareRecipients.length"'));
-  assert.ok(ui.includes("props.multiple ? (Array.isArray(props.modelValue)"));
+  assert.ok(ui.includes("const selectedValues = computed(() => props.multiple"));
   assert.ok(ui.includes("role=\"listbox\" :aria-multiselectable=\"multiple || undefined\""));
   assert.ok(css.includes('body:has(.storage-v1-share) > .ui-search-select__menu--teleported'));
   assert.ok(css.includes('.ui-search-select__option{'));
