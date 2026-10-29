@@ -12,7 +12,7 @@ return new class extends Migration {
     public function up(): void
     {
         DB::transaction(static function (): void {
-            foreach (['timesheets.mine.view','timesheets.mine.manage'] as $permission) {
+            foreach (['timesheets.mine.manage'] as $permission) {
                 DB::table('timesheets_role_permissions')->insertOrIgnore([
                     'role'=>'org:irlix','permission'=>$permission,
                     'allowed'=>true,'scope'=>'own',
