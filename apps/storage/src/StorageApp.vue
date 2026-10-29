@@ -18,14 +18,14 @@ const loading = ref(true);
 const access = ref(null);
 const isAdmin = computed(() => isPlatformAdministratorAccess(access.value));
 const error = ref('');
+// Admin-only fallback preserves old files until V1 metadata and recovery are ready.
+const legacyFallback = ref(false);
 const allItems = [
   { id: 'files', label: 'Мои файлы', icon: 'file-text', href: '/storage/' },
   { id: 'available', label: 'Доступные мне', icon: 'users', href: '/storage/available' },
   { id: 'trash', label: 'Корзина', icon: 'reset', href: '/storage/trash' },
-  { id: 'v1', label: 'Новый диск (пилот)', icon: 'file-clock', href: '/storage/v1' },
 ];
-const items = computed(() => isAdmin.value
-  ? allItems : allItems.filter(item => item.id === 'v1'));
+const items = allItems;
 const route = useRoute();
 const router = useRouter();
 const folderLabels = ref({});
@@ -34,10 +34,15 @@ function onBreadcrumbs(crumbs) {
 }
 const activeSection = computed(() => route.meta.section || 'not-found');
 const breadcrumbs = computed(() => {
-  if (activeSection.value === 'v1') return [{ label: 'Новый диск (пилот)' }];
   if (activeSection.value === 'trash') return [{ label: 'Корзина' }];
   if (activeSection.value === 'available') return [{ label: 'Доступные мне' }];
   if (activeSection.value !== 'files') return [{ label: 'Страница не найдена' }];
+  if (!legacyFallback.value && typeof route.query.folder_id === 'string') return [
+    { label: activeSection.value === 'available' ? 'Доступные мне' : 'Мои файлы',
+      href: activeSection.value === 'available' ? '/storage/available' : '/storage/' },
+    { label: folderLabels.value[route.query.folder_id] || 'Папка' },
+  ];
+  if (!legacyFallback.value) return [{ label: 'Мои файлы' }];
   const path = typeof route.query.folder === 'string' ? route.query.folder : '';
   const segments = path.split('/').filter(Boolean);
   return [
@@ -50,6 +55,9 @@ const breadcrumbs = computed(() => {
     })),
   ];
 });
+function onV1Folder(item) {
+  folderLabels.value = { ...folderLabels.value, [item.id]: item.name };
+}
 function navigateSection(id) {
   if (items.value.some(item => item.id === id)) router.push({ name: id });
 }
@@ -76,14 +84,21 @@ onMounted(async () => {
       error.value = 'Не удалось открыть сессию корпоративного диска.';
       return;
     }
-    if (isPlatformAdministratorAccess(result)) {
-      // Bootstrap the separately gated legacy admin pilot without widening it.
-      await auth.fetch('/api/employees/storage-pilot/session', {
+    // Read-only V1 gate probe. Fallback is *only* for a platform administrator;
+    // other employees must never see the old pilot's objects.
+    const probe = await fetch('/api/storage/v1/items?scope=mine', {
+      credentials: 'same-origin', cache: 'no-store',
+    });
+    if (probe.status === 503 && isPlatformAdministratorAccess(result)) {
+      legacyFallback.value = true;
+      const oldSession = await auth.fetch('/api/employees/storage-pilot/session', {
         method: 'POST', cache: 'no-store',
       });
-    } else if (activeSection.value === 'files' && !route.query.folder) {
-      // Known root entry point; an explicit forbidden legacy deep link gets 403.
-      await router.replace({ name: 'v1' });
+      if (!oldSession.ok) throw new Error('Old Storage session unavailable');
+    } else if (probe.status === 503) {
+      error.value = 'Корпоративный диск ещё не подключён к базе метаданных.';
+    } else if (!probe.ok) {
+      error.value = 'Не удалось проверить доступ к корпоративному диску.';
     }
   } catch (_) {
     error.value = 'Не удалось проверить права доступа. Откройте хранилище через дашборд.';
@@ -112,14 +127,14 @@ onMounted(async () => {
     @update:section="navigateSection"
     @logout="auth.logout()"
   >
-    <UiErrorState v-if="!isAdmin && activeSection !== 'v1'" :status="403" back-href="/storage/v1" back-label="Мой диск" />
-    <StorageDrive v-else-if="activeSection === 'files'" @breadcrumbs="onBreadcrumbs" />
-    <StorageTrash v-else-if="activeSection === 'trash'" />
-    <StorageV1 v-else-if="activeSection === 'v1'" :access="access" :directory-fetch="(url, options) => auth.fetch(url, options || {cache: 'no-store'})" />
-    <section v-else-if="activeSection === 'available'" class="storage-placeholder">
-      <h2>Доступные мне</h2>
-      <p>Раздел для файлов, к которым предоставлен доступ другими сотрудниками. Пока общий доступ не подключён — чужие файлы не отображаются.</p>
+    <StorageDrive v-if="legacyFallback && activeSection === 'files'" @breadcrumbs="onBreadcrumbs" />
+    <StorageTrash v-else-if="legacyFallback && activeSection === 'trash'" />
+    <section v-else-if="legacyFallback && activeSection === 'available'" class="storage-placeholder">
+      <h2>Доступные мне</h2><p>Общий доступ появится после подключения базы метаданных Storage V1.</p>
     </section>
+    <StorageV1 v-else-if="['files', 'available', 'trash'].includes(activeSection)"
+      :section="activeSection" :access="access" @folder-open="onV1Folder"
+      :directory-fetch="(url, options) => auth.fetch(url, options || {cache: 'no-store'})" />
     <UiErrorState v-else :status="404" back-href="/storage/" back-label="Мои файлы" />
   </UiAppShell>
 </template>
