@@ -41,6 +41,11 @@ def run():
         "/app/bin/export-clients-production-head-aliases.php",
     ], cwd=ROOT, capture_output=True, timeout=40, check=False)
     if metadata.returncode != 0:
+        detail = metadata.stderr.decode("utf-8", errors="replace")
+        if "[clients-head-export] missing-managed-alias\n" in detail:
+            raise RuntimeError("Production department with an assigned manager needs a canonical alias")
+        if "[clients-head-export] duplicate-managed-alias\n" in detail:
+            raise RuntimeError("Two managed production departments share a canonical alias")
         raise RuntimeError("Employees production department aliases unavailable or invalid")
 
     result = subprocess.run([
@@ -59,6 +64,8 @@ if __name__ == "__main__":
         category = str(error) if str(error) in (
             *SAFE_REASONS,
             "Employees production department aliases unavailable or invalid",
+            "Production department with an assigned manager needs a canonical alias",
+            "Two managed production departments share a canonical alias",
             "Unclassified Clients finalization error",
         ) else "Unclassified finalization transport or runtime error"
         print(f"Clients V2 finalization STOPPED ({category}); source policy preserved.",
