@@ -7,7 +7,7 @@ cd /opt/irlix-services
 umask 077
 
 case "${1:-}" in
-    finance|equipment) schema="$1" ;;
+    finance|equipment|timesheets|vacations|recruitment) schema="$1" ;;
     *) echo "Unsupported local AuthZ backup service" >&2; exit 2 ;;
 esac
 COMPOSE="$(python3 scripts/ci/service_plan.py compose-args --env-file .env)"
