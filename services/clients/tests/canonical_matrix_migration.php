@@ -33,6 +33,16 @@ $check=static function(bool $value,string $message):void {
 };
 $put('account-manager','clients.view',true,'own');
 $put('org:account-management','clients.view',false,'none',true);
+DB::table('client_contour_permission_audit')->insert([
+    'role'=>'org:account-management','permission'=>'clients.view',
+    'actor_employee_id'=>42,'before'=>'{}','after'=>'{}','created_at'=>now(),
+]);
+$put('sales-manager','clients.manage',true,'own');
+$put('org:sales','clients.manage',false,'none');
+DB::table('client_contour_permission_audit')->insert([
+    'role'=>'sales-manager','permission'=>'clients.manage',
+    'actor_employee_id'=>42,'before'=>'{}','after'=>'{}','created_at'=>now(),
+]);
 $put('sales-manager','attempts.view',true,'own');
 $put('org:sales','attempts.view',true,'own');
 $put('client-service','contacts.view',true,'own');
@@ -63,6 +73,9 @@ foreach($rows as $row){
 $check((bool)DB::table('client_contour_permissions')->where('role','org:account-management')
     ->where('permission','clients.view')->value('denied')===true,
     'Manually configured canonical V2 explicit deny was overwritten');
+$check(DB::table('client_contour_permissions')->where('role','org:sales')
+    ->where('permission','clients.manage')->value('scope')==='own',
+    'Newer audited legacy admin edit was lost instead of copied to V2');
 $check(DB::table('client_contour_permissions')->where('role','head:account-management')
     ->where('permission','members.view')->value('scope')==='team',
     'Old head grant was not transferred to canonical V2');
