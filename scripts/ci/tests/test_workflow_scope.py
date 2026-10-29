@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 MODULE = Path(__file__).resolve().parents[1] / "workflow_scope.py"
 spec = importlib.util.spec_from_file_location("workflow_scope", MODULE)
@@ -58,6 +59,28 @@ class SpecializedWorkflowSelectionTests(unittest.TestCase):
         self.assertFalse(result["clients_frontend"])
         self.assertFalse(result["backend"])
         self.assertFalse(result["finance_container"])
+
+    @patch.object(scope.subprocess, "check_output", return_value="merge-sha exact-base-sha pr-sha\\n")
+    def test_pr_merge_base_uses_first_parent_of_actual_checkout(self, command):
+        self.assertEqual(scope.pr_merge_base(), "exact-base-sha")
+        command.assert_called_once()
+
+    @patch.object(scope.subprocess, "check_output", return_value="single-parent-sha ancestor-sha\\n")
+    def test_pr_merge_base_rejects_non_merge_checkout(self, command):
+        with self.assertRaisesRegex(RuntimeError, "two-parent"):
+            scope.pr_merge_base()
+
+    def test_workflows_request_checked_merge_base_not_stale_event(self):
+        workflows = [".github/workflows/" + x + ".yml" for x in
+                     ("ui-appearance-check", "keycloak-authz",
+                      "client-history-ui-check", "finance-validation")]
+        for name in workflows:
+            yaml = (scope.ROOT / name).read_text()
+            self.assertIn("--pr", yaml, name)
+            self.assertNotIn('PR_BASE: ${{ github.event.pull_request.base.sha }}', yaml, name)
+        ci = (scope.ROOT / ".github/workflows/ci.yml").read_text()
+        self.assertGreaterEqual(ci.count('git rev-list --parents -n 1 HEAD'), 3)
+        self.assertNotIn('PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}', ci)
 
     def test_manual_runs_are_exhaustive(self):
         for mode in ("ui-appearance-check", "keycloak-authz",
