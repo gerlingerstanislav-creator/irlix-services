@@ -88,7 +88,9 @@ class KeycloakBearer
                 // grants/denies during the legacy-to-V2 transfer. In
                 // particular, org:accounting ancestry must not bypass an
                 // existing Employees denial or widen the old audience.
-                if ($current->json('data.services.equipment') !== true) {
+                if (!\App\Services\EquipmentRoleAuthorization::legacyAdmission(
+                    (array) $current->json('data')
+                )) {
                     return response()->json(['message'=>'Equipment service admission denied'],403);
                 }
                 try {
