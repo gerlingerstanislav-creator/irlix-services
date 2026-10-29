@@ -9,6 +9,7 @@ export const sections = Object.freeze([
   {id:'graphics',label:'Графический стиль',icon:'palette',subtitle:'Фотографии, иконки и иллюстрации'},
   {id:'voice',label:'Коммуникации',icon:'contact',subtitle:'Тон общения и вербальная идентичность'},
   {id:'applications',label:'Применение',icon:'document',subtitle:'Презентации, документы, digital'},
+  {id:'website',label:'Концепция сайта',icon:'briefcase',subtitle:'Интерактивный адаптивный прототип корпоративного сайта IRLIX'},
   {id:'assets',label:'Библиотека',icon:'list',subtitle:'Утверждённые ресурсы для скачивания'},
   {id:'changelog',label:'Версии',icon:'audit',subtitle:'История утверждений и изменений'},
 ]);
