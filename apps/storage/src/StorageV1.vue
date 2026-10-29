@@ -1,16 +1,20 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { UiButton, UiActionMenu, UiSearchSelect, UiCheckbox } from '@irlix/ui';
+import { UiButton, UiActionMenu, UiSearchSelect, UiCheckbox, UiIcon } from '@irlix/ui';
 
 const props = defineProps({
   access: { type: Object, default: null },
+  section: { type: String, default: 'files' },
   directoryFetch: { type: Function, required: true },
 });
+const emit = defineEmits(['folder-open']);
 const route = useRoute();
 const router = useRouter();
 const parentId = computed(() => typeof route.query.folder_id === 'string' ? route.query.folder_id : '');
-const mode = ref('mine');
+const mode = computed(() => props.section === 'trash' ? 'trash' : (props.section === 'available' ? 'shared' : 'mine'));
+const layout = ref('list');
+const sortBy = ref('name');
 const entries = ref([]);
 const searchQuery = ref('');
 const searchActive = ref(false);
@@ -49,6 +53,17 @@ const isAdmin = computed(() => Array.isArray(props.access?.roles) && props.acces
 const canManage = item => isAdmin.value || item.owner_employee_id === currentEmployeeId.value;
 const canEdit = item => canManage(item) || item.can_edit === true;
 const selectedItems = computed(() => entries.value.filter(item => selected.value.has(item.id)));
+const visibleEntries = computed(() => [...entries.value].sort((a, b) => {
+  if (a.kind !== b.kind) return a.kind === 'folder' ? -1 : 1;
+  if (sortBy.value === 'size') return Number(b.size || 0) - Number(a.size || 0);
+  if (sortBy.value === 'date') return String(b.modified || '').localeCompare(String(a.modified || ''));
+  return a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' });
+}));
+const dateText = value => value ? new Date(value).toLocaleDateString('ru-RU') : '—';
+const iconOf = item => item.kind === 'folder' ? '📁' : '📄';
+const isImage = item => item.kind === 'file' && /\.(png|jpe?g|gif|webp)$/i.test(item.name);
+const thumbnailUrl = item => '/api/storage/v1/preview/' + encodeURIComponent(item.id);
+const displayedSize = item => item.kind === 'folder' ? 'Папка' : (item.size == null ? '—' : readableSize(item.size));
 function toggleSelected(item, checked) {
   const next = new Set(selected.value);
   if (checked) next.add(item.id);
@@ -180,11 +195,10 @@ async function submitBulkMove() {
   if (failed.length) error.value = failed.slice(0, 5).join('; ');
   await refresh();
 }
-function setMode(value) {
-  searchActive.value = false; searchQuery.value = '';
-  mode.value = value;
-  if (parentId.value) router.push({ name: 'v1', query: {} });
-  else refresh();
+let searchTimer = null;
+function queueSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(applySearch, 300);
 }
 function applySearch() {
   if (searchQuery.value.trim().length < 2) {
@@ -192,12 +206,13 @@ function applySearch() {
   } else {
     searchActive.value = true;
   }
-  if (parentId.value) router.push({ name: 'v1' });
+  if (parentId.value) router.push({ name: route.name });
   else refresh();
 }
 function open(item) {
   if (item.kind === 'folder' && mode.value !== 'trash') {
-    router.push({ name: 'v1', query: { folder_id: item.id } });
+    emit('folder-open', item);
+    router.push({ name: route.name, query: { folder_id: item.id } });
   } else if (item.kind === 'file' && mode.value !== 'trash') {
     openPreview(item);
   }
@@ -233,7 +248,7 @@ async function openPreview(item) {
     }
   } catch (err) { error.value = err.message; previewMime.value = 'unsupported'; }
 }
-onBeforeUnmount(closePreview);
+onBeforeUnmount(() => { clearTimeout(searchTimer); closePreview(); });
 async function download(item) {
   error.value = '';
   try {
@@ -447,7 +462,12 @@ async function revoke(employeeId) {
   } catch (err) { error.value = err.message; }
   finally { busy.value = false; }
 }
-watch(parentId, () => refresh());
+watch([parentId, mode], () => {
+  searchActive.value = false;
+  searchQuery.value = '';
+  clearSelection();
+  refresh();
+});
 onMounted(() => refresh());
 </script>
 
