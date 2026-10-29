@@ -2,6 +2,7 @@
 namespace App\Services;
 
 use App\Models\ClientContourPermission;
+use App\Models\ClientContourPermissionAudit;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -42,7 +43,7 @@ final class FinalizeLegacyClientPermissions
                     // New administrator-edited V2 policy always wins. A
                     // seeded unassigned row is not an intentional deny.
                     if ($dest) {
-                        $hasAudit = DB::table('client_contour_permission_audit')
+                        $hasAudit = ClientContourPermissionAudit::query()
                             ->where('role', $role)->where('permission', $legacy->permission)
                             ->exists();
                         if ($hasAudit || (bool) $dest->allowed || (bool) ($dest->denied ?? false)) continue;
