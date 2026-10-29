@@ -12,6 +12,13 @@ $source = json_decode((string) stream_get_contents(STDIN), true, 512, JSON_THROW
 if (($source['version'] ?? null) !== 1 || !is_array($source['rows'] ?? null)) {
     throw new RuntimeException('Invalid Clients policy input');
 }
+// After Clients switches permanently to its own V2 matrix, the legacy
+// policy export is empty. Do NOT synthesize an implicit default on later
+// releases: the Timesheets V2 matrix is now the owner of its own grants.
+if ($source['rows'] === []) {
+    fwrite(STDERR, "No Clients historical Timesheets roles remain to import.\n");
+    exit(0);
+}
 
 $roleMap = [
     'employee'=>'org:irlix',
