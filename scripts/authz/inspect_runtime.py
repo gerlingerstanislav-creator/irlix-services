@@ -63,16 +63,16 @@ CRITICAL_PERMISSIONS = {
 CRITICAL_COVERAGE_PHP = r"""
 require "/app/vendor/autoload.php";
 $app = require "/app/bootstrap/app.php";
-$app->make(\\Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap();
+$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 try {
-    $class="App\\\\Models\\\\".$argv[1];
+    $class="App\\Models\\".$argv[1];
     $answer=[];
     foreach (explode(",", $argv[2]) as $permission) {
         $answer[$permission]=$class::query()
             ->where("permission", $permission)->where("allowed", true)->count();
     }
     echo json_encode(["status"=>"ok","counts"=>$answer], JSON_THROW_ON_ERROR);
-} catch (\\Throwable $e) {
+} catch (\Throwable $e) {
     echo '{"status":"unavailable"}';
 }
 """
