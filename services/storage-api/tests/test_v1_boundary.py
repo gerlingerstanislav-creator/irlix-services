@@ -53,7 +53,7 @@ class V1BoundaryTests(unittest.TestCase):
         class Cursor:
             def fetchall(self):
                 return [("00000000-0000-4000-8000-000000000001",
-                         datetime(2026, 10, 29, tzinfo=timezone.utc), 24)]
+                         datetime(2026, 10, 29, tzinfo=timezone.utc), 24, 2)]
 
         class Connection:
             def execute(self, query, params):
@@ -66,9 +66,11 @@ class V1BoundaryTests(unittest.TestCase):
         result = _decorate_entries(conn, authorized)
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["size"], 24)
+        self.assertEqual(result[0]["shared_count"], 2)
         self.assertEqual(result[0]["modified"], "2026-10-29T00:00:00+00:00")
         self.assertEqual(conn.assert_called[1], ([authorized[0]["id"]],))
         self.assertIn("storage.file_versions", conn.assert_called[0])
+        self.assertIn("g.revoked_at IS NULL", conn.assert_called[0])
         self.assertEqual(_decorate_entries(conn, []), [])
 
     def test_recipient_lookup_fails_closed_without_signed_cookie(self):
