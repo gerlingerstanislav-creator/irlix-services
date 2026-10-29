@@ -59,6 +59,24 @@ const previewItem = ref(null);
 const previewUrl = ref('');
 const previewMime = ref('');
 const previewText = ref('');
+const previewLoading = ref(false);
+const previewError = ref('');
+const previewZoom = ref(1);
+let previewSerial = 0;
+const previewImages = computed(() => visibleEntries.value.filter(isImage));
+const previewIndex = computed(() => previewImages.value.findIndex(item => item.id === previewItem.value?.id));
+function navigatePreview(direction) {
+  if (!isImage(previewItem.value || {})) return;
+  const images = previewImages.value;
+  if (images.length < 2 || previewIndex.value < 0) return;
+  void openPreview(images[(previewIndex.value + direction + images.length) % images.length]);
+}
+function onPreviewKeydown(event) {
+  if (!previewItem.value || event.altKey || event.ctrlKey || event.metaKey) return;
+  if (event.key === 'Escape') { event.preventDefault(); closePreview(); }
+  if (event.key === 'ArrowLeft' && isImage(previewItem.value)) { event.preventDefault(); navigatePreview(-1); }
+  if (event.key === 'ArrowRight' && isImage(previewItem.value)) { event.preventDefault(); navigatePreview(1); }
+}
 const fileVersions = ref([]);
 const newVersionInput = ref(null);
 const operationItem = ref(null);
@@ -123,7 +141,8 @@ const targets = computed(() => [
 ]);
 const actionsFor = item => [
   ...(item.kind === 'file' && mode.value !== 'trash'
-    ? [{ id: 'download', label: 'Скачать' }, { id: 'copy', label: 'Создать копию' }] : []),
+    ? [...(isImage(item) ? [{ id: 'preview', label: 'Просмотреть' }] : []),
+       { id: 'download', label: 'Скачать' }, { id: 'copy', label: 'Создать копию' }] : []),
   ...(canEdit(item) && mode.value !== 'trash'
     ? [{ id: 'rename', label: 'Переименовать' },
        ...(item.kind === 'file' ? [{ id: 'versions', label: 'Версии файла' }] : []) ] : []),
@@ -347,16 +366,21 @@ function open(item) {
   }
 }
 function closePreview() {
+  // Invalidate any in-flight preview, including a slow request returning after close.
+  previewSerial++;
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
   previewUrl.value = '';
   previewItem.value = null;
   previewText.value = '';
   previewMime.value = '';
+  previewError.value = '';
+  previewLoading.value = false;
+  previewZoom.value = 1;
 }
 async function openPreview(item) {
   closePreview();
   previewItem.value = item;
-  error.value = '';
+  const serial = previewSerial;
   const extension = String(item.name).split('.').pop().toLowerCase();
   const kinds = {
     pdf: 'pdf', png: 'image', jpg: 'image', jpeg: 'image',
@@ -364,20 +388,41 @@ async function openPreview(item) {
     log: 'text', mp4: 'video', webm: 'video',
   };
   if (!kinds[extension]) { previewMime.value = 'unsupported'; return; }
+  previewLoading.value = true;
   try {
+    // A short-lived Employees session is renewed by authenticatedFetch; never
+    // expose S3 URLs or use a permanent public link for private previews.
     const response = await authenticatedFetch('/preview/' + encodeURIComponent(item.id));
-    if (!response.ok) throw new Error('Безопасный предпросмотр не доступен');
+    if (serial !== previewSerial) return;
+    if (!response.ok) throw new Error(response.status === 403
+      ? 'Нет доступа к просмотру этого файла.'
+      : 'Не удалось открыть файл (HTTP ' + response.status + ').');
+    const contentType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (kinds[extension] === 'image' && !['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(contentType)) {
+      throw new Error('Сервер вернул неподдерживаемый формат изображения.');
+    }
     const bytes = await response.blob();
-    if (previewItem.value?.id !== item.id) return;
+    if (serial !== previewSerial) return;
     previewMime.value = kinds[extension];
     if (kinds[extension] === 'text') {
-      previewText.value = await bytes.text();
+      const value = await bytes.text();
+      if (serial === previewSerial) previewText.value = value;
     } else {
       previewUrl.value = URL.createObjectURL(bytes);
     }
-  } catch (err) { error.value = err.message; previewMime.value = 'unsupported'; }
+  } catch (err) {
+    if (serial !== previewSerial) return;
+    previewError.value = err.message || 'Не удалось открыть предпросмотр.';
+  } finally {
+    if (serial === previewSerial) previewLoading.value = false;
+  }
 }
-onBeforeUnmount(() => { clearTimeout(searchTimer); closePreview(); });
+onMounted(() => document.addEventListener('keydown', onPreviewKeydown));
+onBeforeUnmount(() => {
+  clearTimeout(searchTimer);
+  document.removeEventListener('keydown', onPreviewKeydown);
+  closePreview();
+});
 async function download(item) {
   error.value = '';
   try {
@@ -433,6 +478,7 @@ async function uploadFiles(chosen, destinationId = parentId.value) {
 }
 async function mutate(item, action) {
   if (busy.value) return;
+  if (action === 'preview') return openPreview(item);
   if (action === 'download') return download(item);
   if (action === 'share') return openSharing(item);
   if (action === 'history') return openHistory(item);
@@ -850,8 +896,24 @@ onMounted(() => refresh());
             </button>
             <button type="button" aria-label="Закрыть" @click="closePreview">×</button></div>
         </div>
-        <div class="storage-preview-content">
-          <img v-if="previewUrl && previewMime === 'image'" :src="previewUrl" :alt="previewItem.name" />
+        <div v-if="isImage(previewItem)" class="storage-image-controls" aria-label="Управление просмотром изображений">
+          <div class="storage-image-controls-group">
+            <button type="button" :disabled="previewImages.length < 2" aria-label="Предыдущее изображение" @click="navigatePreview(-1)">‹</button>
+            <span>{{ previewIndex >= 0 ? previewIndex + 1 : '—' }} из {{ previewImages.length }}</span>
+            <button type="button" :disabled="previewImages.length < 2" aria-label="Следующее изображение" @click="navigatePreview(1)">›</button>
+          </div>
+          <div class="storage-image-controls-group">
+            <button type="button" :disabled="previewZoom <= 1" aria-label="Уменьшить изображение" @click="previewZoom = Math.max(1, previewZoom - 0.5)">−</button>
+            <button type="button" aria-label="Сбросить масштаб" @click="previewZoom = 1">{{ Math.round(previewZoom * 100) }}%</button>
+            <button type="button" :disabled="previewZoom >= 3" aria-label="Увеличить изображение" @click="previewZoom = Math.min(3, previewZoom + 0.5)">+</button>
+          </div>
+        </div>
+        <div class="storage-preview-content" :class="{ 'storage-image-preview-content': isImage(previewItem) }">
+          <div v-if="previewLoading" class="storage-preview-state" role="status">Загружаем файл…</div>
+          <div v-else-if="previewError" class="storage-preview-state" role="alert">{{ previewError }}</div>
+          <img v-else-if="previewUrl && previewMime === 'image'" :src="previewUrl" :alt="previewItem.name"
+            :style="previewZoom > 1 ? { width: (previewZoom * 100) + '%', maxWidth: 'none', maxHeight: 'none' } : {}"
+            @error="previewError = 'Не удалось отобразить изображение.'" />
           <iframe v-else-if="previewUrl && previewMime === 'pdf'" :src="previewUrl" :title="previewItem.name" />
           <video v-else-if="previewUrl && previewMime === 'video'" :src="previewUrl" controls preload="metadata" class="storage-v1-video"></video>
           <pre v-else-if="previewMime === 'text'">{{ previewText }}</pre>
