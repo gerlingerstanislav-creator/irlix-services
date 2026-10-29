@@ -34,6 +34,19 @@ const shareItem = ref(null);
 const shareRecipient = ref('');
 const shareRole = ref('reader');
 const grants = ref([]);
+const shareLoading = ref(false);
+const shareError = ref('');
+const shareFeedback = ref('');
+const recipientNames = computed(() => new Map(directoryOptions.value
+  .filter(option => option.kind !== 'group')
+  .map(option => [Number(option.value), option.label])));
+const recipientName = id => recipientNames.value.get(Number(id)) || 'Сотрудник #' + id;
+const grantLabel = role => role === 'editor' ? 'Редактирование и загрузка' : 'Просмотр и скачивание';
+function syncShareBadge(item) {
+  const count = grants.value.length;
+  entries.value = entries.value.map(entry => entry.id === item.id ? { ...entry, shared_count: count } : entry);
+  if (shareItem.value?.id === item.id) shareItem.value = { ...shareItem.value, shared_count: count };
+}
 const historyItem = ref(null);
 const historyEvents = ref([]);
 const versionsItem = ref(null);
@@ -61,7 +74,24 @@ const visibleEntries = computed(() => [...entries.value].sort((a, b) => {
   return a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' });
 }));
 const dateText = value => value ? new Date(value).toLocaleDateString('ru-RU') : '—';
-const iconOf = item => item.kind === 'folder' ? '📁' : '📄';
+const typeOf = item => {
+  if (item.kind === 'folder') return 'folder';
+  const ext = String(item.name).split('.').pop().toLowerCase();
+  if (ext === 'pdf') return 'pdf';
+  if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'bmp'].includes(ext)) return 'image';
+  if (['xls', 'xlsx', 'csv', 'ods'].includes(ext)) return 'sheet';
+  if (['doc', 'docx', 'odt', 'rtf'].includes(ext)) return 'document';
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'archive';
+  if (['mp4', 'webm', 'avi', 'mov'].includes(ext)) return 'video';
+  if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return 'audio';
+  if (['js', 'ts', 'jsx', 'tsx', 'json', 'xml', 'py', 'html', 'css'].includes(ext)) return 'code';
+  return 'file';
+};
+const typeLabel = item => ({
+  pdf: 'PDF', image: 'IMG', sheet: 'XLS', document: 'DOC', archive: 'ZIP',
+  video: 'VID', audio: 'MP3', code: 'CODE', file: 'FILE',
+})[typeOf(item)] || '';
+const typeIcon = item => item.kind === 'folder' ? 'folder' : 'file-text';
 const isImage = item => item.kind === 'file' && /\.(png|jpe?g|gif|webp)$/i.test(item.name);
 const thumbnailUrl = item => '/api/storage/v1/preview/' + encodeURIComponent(item.id);
 const displayedSize = item => item.kind === 'folder' ? 'Папка' : (item.size == null ? '—' : readableSize(item.size));
@@ -352,11 +382,19 @@ async function loadDirectory() {
     const noDepartment = byDepartment.get(0) || [];
     if (noDepartment.length) options.push({ kind: 'group', value: 'group-none', label: 'Без подразделения', depth: 0 }, ...noDepartment);
     directoryOptions.value = options;
-  } catch (err) { error.value = err.message; }
+  } catch (err) { throw err; }
 }
 async function openSharing(item) {
   shareItem.value = item; grants.value = []; shareRecipient.value = '';
-  await Promise.all([loadDirectory(), loadGrants(item)]);
+  shareRole.value = 'reader'; shareError.value = ''; shareFeedback.value = '';
+  shareLoading.value = true;
+  try {
+    await Promise.all([loadDirectory(), loadGrants(item)]);
+  } catch (err) {
+    shareError.value = err.message;
+  } finally {
+    shareLoading.value = false;
+  }
 }
 async function openOperation(item, kind) {
   operationItem.value = item;
@@ -436,33 +474,36 @@ async function openHistory(item) {
   } catch (err) { error.value = err.message; }
 }
 async function loadGrants(item) {
-  try {
-    const result = await request('/objects/' + encodeURIComponent(item.id) + '/grants');
-    grants.value = result.entries || [];
-  } catch (err) { error.value = err.message; }
+  const result = await request('/objects/' + encodeURIComponent(item.id) + '/grants');
+  if (shareItem.value?.id !== item.id) return;
+  grants.value = Array.isArray(result.entries) ? result.entries : [];
+  syncShareBadge(item);
 }
 async function grant() {
   if (!shareItem.value || !shareRecipient.value || busy.value) return;
-  busy.value = true; error.value = '';
+  busy.value = true; shareError.value = ''; shareFeedback.value = '';
   try {
     await request('/objects/' + encodeURIComponent(shareItem.value.id) + '/grants', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ employee_id: Number(shareRecipient.value), role: shareRole.value }),
     });
-    notice.value = 'Доступ предоставлен';
     await loadGrants(shareItem.value);
-  } catch (err) { error.value = err.message; }
+    shareRecipient.value = '';
+    shareFeedback.value = 'Доступ предоставлен. Получатель отображается в списке ниже.';
+    notice.value = 'Доступ предоставлен';
+  } catch (err) { shareError.value = err.message; }
   finally { busy.value = false; }
 }
 async function revoke(employeeId) {
   if (!shareItem.value || busy.value) return;
-  busy.value = true; error.value = '';
+  busy.value = true; shareError.value = ''; shareFeedback.value = '';
   try {
     await request('/objects/' + encodeURIComponent(shareItem.value.id) + '/grants/' + employeeId,
       { method: 'DELETE' });
-    notice.value = 'Доступ отозван';
     await loadGrants(shareItem.value);
-  } catch (err) { error.value = err.message; }
+    shareFeedback.value = 'Доступ отозван';
+    notice.value = 'Доступ отозван';
+  } catch (err) { shareError.value = err.message; }
   finally { busy.value = false; }
 }
 watch(mode, () => {
