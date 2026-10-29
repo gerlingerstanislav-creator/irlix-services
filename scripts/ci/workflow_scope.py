@@ -57,9 +57,10 @@ def select(mode, paths=None):
         ]
         return {"matrix": {"include": [{"app": app} for app in apps]}, "enabled": bool(apps)}
     if mode == "keycloak-authz":
+        # The JWT smoke driver runs in its own job. Editing it must not fan
+        # out four unrelated platform/Finance backend image builds.
         common = (full or workflow in changed
-                  or any(p.startswith("infra/keycloak/") or p == "scripts/ci/keycloak_authz_smoke.py"
-                         for p in changed))
+                  or any(p.startswith("infra/keycloak/") for p in changed))
         backends = list(KEYCLOAK_BACKENDS) if common else [
             service for service in KEYCLOAK_BACKENDS
             if any(p.startswith(f"services/{service}/") for p in changed)
