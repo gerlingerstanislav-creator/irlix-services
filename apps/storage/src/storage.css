@@ -132,3 +132,150 @@
   .storage-v1 .storage-search{flex:1;max-width:none}
   .storage-v1 .storage-actions{width:100%;flex-wrap:wrap}
 }
+
+
+/* Storage V1: use the same full-width controls and compact typography as @irlix/ui.
+   Scope every override to V1 so the legacy admin fallback keeps its layout. */
+.storage-main:has(> .storage-v1){padding-top:0}
+.storage-v1{padding-top:0}
+.storage-v1 .storage-v1-toolbar{
+  margin:0;padding:12px 20px;min-height:68px;
+  gap:12px;background:var(--irlix-color-surface);
+  border-bottom:1px solid var(--irlix-color-border);
+}
+.storage-v1 .storage-toolbar-tools{flex:1 1 380px;gap:10px}
+.storage-v1 .storage-search{width:260px;max-width:260px;min-width:160px;height:36px;padding:0 12px}
+.storage-v1 .storage-search input{font-size:13px}
+.storage-v1 .storage-sort select{
+  appearance:auto;min-width:152px;height:36px;
+  padding:0 28px 0 12px;font-size:12px;line-height:1.2;
+  border:1px solid var(--irlix-color-border);
+  border-radius:var(--irlix-control-radius,9px);
+  color:var(--irlix-color-text);background:var(--irlix-color-surface);
+}
+.storage-v1 .storage-switch{height:36px;padding:3px 5px;gap:4px;border-radius:9px}
+.storage-v1 .storage-switch button{height:28px;min-width:30px;padding:5px}
+.storage-v1 .storage-switch svg{height:17px;width:17px}
+.storage-v1 .storage-switch button.active{background:var(--irlix-color-surface-muted)}
+.storage-v1 .storage-actions{gap:8px}
+.storage-v1 .storage-content{border-top:0}
+.storage-v1 .storage-file-icon{width:36px;height:36px;border-radius:8px;flex:none}
+.storage-v1 .storage-file-icon svg{
+  width:19px;height:19px;stroke:currentColor;stroke-width:1.7;fill:none
+}
+.storage-v1 .storage-file-icon:has(svg){position:relative;flex-direction:column;gap:0;padding:3px}
+.storage-v1 .storage-file-icon small{font-size:8px;font-weight:750;line-height:1;letter-spacing:.02em}
+.storage-v1 .storage-file-name{font-size:12px;font-weight:550;max-width:min(36vw,560px)}
+.storage-v1 .storage-shared-badge{
+  display:inline-flex;align-items:center;gap:5px;
+  color:var(--irlix-color-primary-text);background:var(--irlix-color-surface-muted);
+  border:0;border-radius:5px;padding:4px 6px;font-size:10px;white-space:nowrap;
+}
+.storage-v1 .storage-shared-badge svg,.storage-v1 .storage-shared-indicator svg{
+  height:13px;width:13px;stroke:currentColor;stroke-width:1.8;fill:none;
+}
+.storage-v1 .storage-shared-badge:focus-visible{
+  outline:2px solid var(--irlix-color-primary);outline-offset:2px;
+}
+.storage-v1 .storage-shared-indicator{
+  display:inline-flex;align-items:center;gap:5px;
+  color:var(--irlix-color-primary-text);font-size:10px;
+}
+.storage-v1 .storage-type-large{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.storage-v1 .storage-type-large svg{width:47px;height:47px;stroke:currentColor;fill:none;stroke-width:1.5}
+.storage-v1 .storage-type-large small{font-size:10px;font-weight:750}
+.storage-v1 .storage-type--pdf{color:#b63d42;background:#fdf1f2}
+.storage-v1 .storage-type--image{color:#3979ae;background:#eaf5ff}
+.storage-v1 .storage-type--sheet{color:#147652;background:#eaf8f1}
+.storage-v1 .storage-type--document{color:#385fa6;background:#eff4ff}
+.storage-v1 .storage-type--archive{color:#966127;background:#fff5e8}
+.storage-v1 .storage-type--video{color:#8050aa;background:#f5effc}
+.storage-v1 .storage-type--audio{color:#a45689;background:#fbeffa}
+.storage-v1 .storage-type--code{color:#526c82;background:#eef3f8}
+.storage-v1 .storage-type--file{color:#708391;background:#f1f4f6}
+.storage-v1 .storage-type--folder{background:transparent}
+.storage-v1 .storage-type-large[class*="storage-type--"]{background:transparent}
+
+/* Modal defaults: 12px body, 14px heading, predictable form spacing. */
+.storage-v1 .storage-modal{font-family:inherit;font-size:12px;line-height:1.5;color:var(--irlix-color-text)}
+.storage-v1 .storage-small-modal{padding:18px 20px}
+.storage-v1 .storage-modal-head{margin-bottom:14px;padding-bottom:10px;gap:12px}
+.storage-v1 .storage-modal-head h2{
+  min-width:0;margin:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;font-size:14px;line-height:1.4;font-weight:650;
+}
+.storage-v1 .storage-modal-head button:not(.storage-button){
+  flex:none;padding:2px 6px;font-size:21px;line-height:1.1;
+}
+.storage-v1 .storage-modal label{font-size:12px;line-height:1.35}
+.storage-v1 .storage-small-modal input{padding:8px 10px;font-size:12px}
+.storage-v1 .storage-modal-actions{margin-top:16px;gap:8px}
+.storage-v1 .storage-modal p,.storage-v1 .storage-modal select,
+.storage-v1 .storage-modal input{font-size:12px}
+.storage-v1 .storage-preview-modal{
+  width:min(1120px,96vw);height:min(820px,92vh);padding:10px;
+}
+.storage-v1 .storage-preview-modal .storage-modal-head{
+  margin:0 0 8px;padding:3px 5px 9px;
+}
+.storage-v1 .storage-preview-modal .storage-modal-head h2{
+  font-size:14px;max-width:min(72%,820px);
+}
+.storage-v1 .storage-preview-modal .storage-preview-content{
+  border-radius:6px;overflow:hidden;
+}
+.storage-v1 .storage-preview-download{
+  display:inline-flex;align-items:center;gap:6px;padding:5px 9px;
+  background:transparent;border:0;border-radius:6px;
+  color:var(--irlix-color-primary-text);font-size:12px;font-weight:600;
+}
+.storage-v1 .storage-preview-download:hover{background:var(--irlix-color-surface-muted)}
+.storage-v1 .storage-preview-download:focus-visible{outline:2px solid var(--irlix-color-primary)}
+
+/* Sharing: separate entry form and a refreshable, name-resolved grant list. */
+.storage-v1 .storage-v1-share{
+  width:min(560px,95vw);max-height:min(650px,90vh);
+  display:flex;flex-direction:column;overflow:hidden;padding:18px 20px;
+}
+.storage-v1 .storage-v1-share .storage-modal-head{margin-bottom:8px}
+.storage-v1 .storage-share-filename{
+  margin:0 0 14px;font-size:12px;line-height:1.5;
+  color:var(--irlix-color-text-muted);overflow-wrap:anywhere;
+}
+.storage-v1 .storage-share-form{display:grid;gap:12px}
+.storage-v1 .storage-v1-share label{margin:0;gap:6px;font-size:12px}
+.storage-v1 .storage-v1-share select{
+  width:100%;height:34px;padding:0 10px;border-radius:8px;font-size:12px;
+}
+.storage-v1 .storage-v1-share .ui-search-select{width:100%}
+.storage-v1 .storage-share-submit{display:flex;justify-content:flex-end;margin:2px 0 0}
+.storage-v1 .storage-share-list{
+  min-height:65px;max-height:260px;overflow:auto;
+  margin-top:16px;padding-top:12px;border-top:1px solid var(--irlix-color-border);
+}
+.storage-v1 .storage-share-list h3{margin:0 0 8px;font-size:12px;font-weight:700}
+.storage-v1 .storage-share-empty{margin:8px 0;color:var(--irlix-color-text-muted)}
+.storage-v1 .storage-v1-grant{gap:14px;padding:10px 0;font-size:12px}
+.storage-v1 .storage-grant-person{display:flex;min-width:0;flex-direction:column;gap:2px}
+.storage-v1 .storage-grant-person strong{
+  font-size:12px;line-height:1.4;font-weight:650;overflow-wrap:anywhere;
+}
+.storage-v1 .storage-grant-person small{font-size:11px;color:var(--irlix-color-text-muted)}
+.storage-v1 .storage-share-error,.storage-v1 .storage-share-feedback{
+  padding:8px 10px;margin:0 0 12px;border-radius:6px;font-size:12px;line-height:1.45;
+}
+.storage-v1 .storage-share-error{color:var(--irlix-color-danger);background:var(--irlix-color-surface-muted)}
+.storage-v1 .storage-share-feedback{color:var(--irlix-color-primary-text);background:var(--irlix-color-surface-muted)}
+@media(max-width:850px){
+  .storage-v1 .storage-v1-toolbar{padding:10px 12px}
+  .storage-v1 .storage-toolbar-tools{width:100%;flex-wrap:wrap;gap:8px}
+  .storage-v1 .storage-search{flex:1;max-width:none}
+  .storage-v1 .storage-actions{width:100%;justify-content:flex-end}
+}
+@media(max-width:600px){
+  .storage-v1 .storage-v1-share{padding:14px}
+  .storage-v1 .storage-preview-modal{width:100%;height:95vh;padding:7px}
+  .storage-v1 .storage-preview-modal .storage-modal-head h2{max-width:65%}
+  .storage-v1 .storage-shared-badge span{display:none}
+  .storage-v1 .storage-sort select{min-width:125px}
+}
