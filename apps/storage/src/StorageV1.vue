@@ -154,12 +154,23 @@ function onAreaDragOver(event) {
     clearDropState();
   }
 }
+function dragLeftElement(event) {
+  if (event.relatedTarget && event.currentTarget.contains(event.relatedTarget)) return false;
+  const box = event.currentTarget.getBoundingClientRect();
+  // Chromium may report relatedTarget=null while traversing child elements.
+  return event.clientX <= box.left || event.clientX >= box.right
+    || event.clientY <= box.top || event.clientY >= box.bottom;
+}
 function onAreaDragLeave(event) {
-  if (!event.currentTarget.contains(event.relatedTarget)) clearDropState();
+  if (dragLeftElement(event)) clearDropState();
 }
 function onFolderDragOver(event, item) {
   if (!isFileDrag(event)) return;
   event.stopPropagation();
+  if (item.kind !== 'folder') {
+    onAreaDragOver(event); // Dropping over an existing file uploads beside it.
+    return;
+  }
   event.preventDefault();
   if (!canDropIntoFolder(item)) {
     event.dataTransfer.dropEffect = 'none';
@@ -171,8 +182,7 @@ function onFolderDragOver(event, item) {
   dropTargetId.value = item.id;
 }
 function onFolderDragLeave(event, item) {
-  if (dropTargetId.value === item.id
-      && !event.currentTarget.contains(event.relatedTarget)) clearDropState();
+  if (dropTargetId.value === item.id && dragLeftElement(event)) clearDropState();
 }
 function droppedFiles(event) {
   const items = Array.from(event.dataTransfer?.items || []);
@@ -198,6 +208,10 @@ function onAreaDrop(event) {
 }
 function onFolderDrop(event, item) {
   if (!isFileDrag(event)) return;
+  if (item.kind !== 'folder') {
+    onAreaDrop(event);
+    return;
+  }
   event.preventDefault();
   event.stopPropagation();
   const allowed = canDropIntoFolder(item);
