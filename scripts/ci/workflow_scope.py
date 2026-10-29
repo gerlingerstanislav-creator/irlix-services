@@ -57,15 +57,30 @@ def select(mode, paths=None):
         ]
         return {"matrix": {"include": [{"app": app} for app in apps]}, "enabled": bool(apps)}
     if mode == "keycloak-authz":
+        # The JWT smoke driver runs in its own job. Editing it must not fan
+        # out four unrelated platform/Finance backend image builds.
         common = (full or workflow in changed
-                  or any(p.startswith("infra/keycloak/") or p == "scripts/ci/keycloak_authz_smoke.py"
-                         for p in changed))
+                  or any(p.startswith("infra/keycloak/") for p in changed))
         backends = list(KEYCLOAK_BACKENDS) if common else [
             service for service in KEYCLOAK_BACKENDS
             if any(p.startswith(f"services/{service}/") for p in changed)
         ]
+        # Timesheets signed-JWT V2 suite has its own image. Do not build it
+        # for unrelated Employees/Finance changes or blanket backend checks.
+        timesheets_auth = (
+            full or workflow in changed
+            or any(p.startswith("infra/keycloak/") for p in changed)
+            or "scripts/ci/keycloak_authz_smoke.py" in changed
+            or any(p.startswith("services/timesheets/app/Http/Middleware/")
+                   or p in (
+                       "services/timesheets/app/Services/TimesheetsRoleAuthorization.php",
+                       "services/timesheets/tests/keycloak_local_v2_smoke.php",
+                       "services/timesheets/tests/local_role_authorization.php",
+                       "services/timesheets/Dockerfile",
+                   ) for p in changed)
+        )
         return {"matrix": {"include": [{"service": service} for service in backends]},
-                "enabled": bool(backends)}
+                "enabled": bool(backends), "timesheets": timesheets_auth}
     if mode == "client-history-ui-check":
         common = full or workflow in changed or any(map(shared_ui_source, changed))
         apps = ["clients", "design-system"] if common else (

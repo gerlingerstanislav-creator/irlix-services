@@ -9,6 +9,12 @@ on:
       - 'services/employees/**'
       - 'services/finance/**'
       - 'services/clients/**'
+      - 'services/timesheets/app/Http/Middleware/**'
+      - 'services/timesheets/app/Services/TimesheetsRoleAuthorization.php'
+      - 'services/timesheets/tests/keycloak_local_v2_smoke.php'
+      - 'services/timesheets/tests/local_role_authorization.php'
+      - 'services/timesheets/Dockerfile'
+      - 'scripts/ci/workflow_scope.py'
       - 'scripts/ci/keycloak_authz_smoke.py'
       - '.github/workflows/keycloak-authz.yml'
   workflow_dispatch:
@@ -27,6 +33,7 @@ jobs:
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
       enabled: ${{ steps.select.outputs.enabled }}
+      timesheets: ${{ steps.select.outputs.timesheets }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,6 +63,7 @@ jobs:
           context: services/${{ matrix.service }}
           tag: irlix-auth-ci-${{ matrix.service }}
   keycloak-real-jwt:
+    needs: scope
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -75,10 +83,19 @@ jobs:
           service: clients
           context: services/clients
           tag: irlix-auth-ci-clients
+      - name: Build Timesheets only when its V2 authorization changed
+        if: ${{ needs.scope.outputs.timesheets == 'true' }}
+        uses: ./.github/actions/build-test-image
+        with:
+          service: timesheets
+          context: services/timesheets
+          tag: irlix-auth-ci-timesheets
+          target: app
       - name: Check actual Keycloak roles in newly issued JWT
         env:
           KEYCLOAK_ADMIN_USERNAME: ci-admin
           KEYCLOAK_ADMIN_PASSWORD: ci-ephemeral-admin
+          RUN_TIMESHEETS_JWT_SUITES: ${{ needs.scope.outputs.timesheets }}
         run: python3 scripts/ci/keycloak_authz_smoke.py
       - name: Show Keycloak diagnostics if failed
         if: failure()

@@ -502,6 +502,30 @@ class ClientContourAccess
 
         $clientsServiceBlocked = false;
 
+        // Only /permissions/me is consumed by Timesheets for legacy
+        // upper-bound checks. Keep the distinction between an ABSENT old
+        // employee row and an explicit/unassigned or denied old row; the
+        // effective permission projection by itself loses that distinction.
+        $implicitPersonalTimesheetsView = false;
+        if ($request->is('api/permissions/me') && !in_array('platform-admin', $roles, true)) {
+            $employeeViewRowExists = ClientContourPermission::query()
+                ->where('role', 'employee')->where('permission', 'timesheets.mine.view')
+                ->exists();
+            // Check the historical explicit veto using trusted Employees-derived
+            // functional roles, not V2 matrix roles. During Clients V2 mode
+            // the latter are namespaced and would silently miss old vetoes.
+            $legacyMatrixRoles = in_array('manager', $specialRoles, true)
+                ? [...$roles, 'department-manager'] : $roles;
+            $legacyExplicitDeny = ClientContourPermission::query()
+                ->where('permission', 'timesheets.mine.view')
+                ->where('denied', true)
+                ->whereIn('role', $legacyMatrixRoles)
+                ->exists();
+            $implicitPersonalTimesheetsView = self::historicalPersonalTimesheetsViewWasImplicit(
+                $employeeViewRowExists, $legacyExplicitDeny
+            );
+        }
+
         return [
             'employee' => $employee,
             'roles' => $roles,
@@ -520,9 +544,22 @@ class ClientContourAccess
             'production_directions' => $productionDirections,
             'legacy_direction_ids' => $legacyDirectionIds,
             'client_service_permissions' => $clientServicePermissions ?? $permissions,
+            'legacy_timesheets_implicit_mine_view' => $implicitPersonalTimesheetsView,
             'platform_admin' => in_array('platform-admin', $roles, true),
             'clients_service_blocked' => $clientsServiceBlocked,
         ];
+    }
+
+    /**
+     * The historical Timesheets personal workspace was admitted by Employees
+     * service entry, even when Clients had no employee/mine.view matrix row.
+     * This is only evidence for the Timesheets consumer to preserve OWN scope:
+     * it is never a Clients grant and cannot override an explicit legacy veto.
+     */
+    public static function historicalPersonalTimesheetsViewWasImplicit(
+        bool $employeeRuleExists, bool $explicitDeny
+    ): bool {
+        return !$employeeRuleExists && !$explicitDeny;
     }
 
     public function allows(array $access, string $permission): bool
