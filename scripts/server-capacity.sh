@@ -47,3 +47,38 @@ if command -v docker >/dev/null 2>&1; then
 else
   echo 'docker: not installed'
 fi
+
+# Explicit opt-in production diagnostic. Never print raw request logs, names,
+# IPs, cookies, S3 keys, traceback messages or uploaded file content.
+if [ "${STORAGE_UPLOAD_DIAGNOSTICS:-0}" = "1" ] && command -v docker >/dev/null 2>&1; then
+  section "Storage V1 HTTP 500 diagnostic (sanitized)"
+  storage_container=irlix-services_storage-api_1
+  $SUDO docker logs --since 8h --tail 4000 "$storage_container" 2>/dev/null | awk '
+    /POST \/v1\/files/ && / 500([[:space:]]|$)/ { http500++ }
+    /Exception in ASGI application/ { asgi++ }
+    /File "\/app\/app\// && /, line [0-9]+, in / {
+      frame=$0
+      sub(/^.*File "\/app\/app\//, "", frame)
+      sub(/", line /, ":", frame)
+      sub(/, in .*/, "", frame)
+      if (frame ~ /^[A-Za-z0-9_./:-]+$/) frames[frame]++
+    }
+    /^[A-Za-z_][A-Za-z0-9_.]*(Error|Exception):/ {
+      error_type=$1
+      sub(/:.*/, "", error_type)
+      if (error_type ~ /^[A-Za-z_][A-Za-z0-9_.]*$/) errors[error_type]++
+    }
+    END {
+      printf "v1_upload_http500=%d asgi_exceptions=%d\n", http500, asgi
+      for (f in frames) printf "application_frame=%s count=%d\n", f, frames[f]
+      for (e in errors) printf "exception_class=%s count=%d\n", e, errors[e]
+    }
+  ' || true
+  # A real >1 MiB multipart request is spooled to /tmp by Starlette. This
+  # self-contained probe checks that path without touching any user files.
+  if $SUDO docker exec "$storage_container" python -c 'import tempfile; f=tempfile.SpooledTemporaryFile(max_size=1048576); f.write(b"x" * 3145728); f.seek(0); assert len(f.read()) == 3145728; f.close()' >/dev/null 2>&1; then
+    echo "multipart_spool_3mib=PASS"
+  else
+    echo "multipart_spool_3mib=FAIL"
+  fi
+fi
