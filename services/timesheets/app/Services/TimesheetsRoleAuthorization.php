@@ -91,7 +91,9 @@ final class TimesheetsRoleAuthorization
      * A V2 role grant can only be equal to or narrower than its effective
      * old permission/scope for this signed employee.
      */
-    public static function restrictToLegacy(array $v2, array $legacy): array
+    public static function restrictToLegacy(
+        array $v2, array $legacy, bool $implicitPersonalWorkspace = false
+    ): array
     {
         $rank = ['none'=>0,'own'=>1,'team'=>2,'all'=>3];
         $sources = [
@@ -107,6 +109,16 @@ final class TimesheetsRoleAuthorization
         foreach ($sources as $permission => $legacyPermission) {
             $new = (array) ($v2[$permission] ?? []);
             $old = (array) ($legacy[$legacyPermission] ?? []);
+            // The old GET /workspace route checked Employees service entry,
+            // not a Clients employee/mine.view cell. Preserve its proven OWN
+            // scope only when the Clients owner explicitly attests that the
+            // historical employee cell was ABSENT and no effective deny exists.
+            // The caller also verifies current Employees admission. Never
+            // infer this from an empty permission projection alone.
+            if ($permission === 'timesheets.mine.view' && !$old
+                && $implicitPersonalWorkspace) {
+                $old = ['allowed'=>true, 'scope'=>'own'];
+            }
             $newScope = (string) ($new['scope'] ?? 'none');
             $oldScope = (string) ($old['scope'] ?? 'none');
             $newRank = $rank[$newScope] ?? 0;
