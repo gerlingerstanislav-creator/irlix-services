@@ -75,9 +75,21 @@ return new class extends Migration {
             foreach ($grants as $source) {
                 $permission = (string) $source->permission;
                 if (!isset($clientPermissions[$permission])) continue;
-                if (DB::table('client_contour_permissions')
+                $head = DB::table('client_contour_permissions')
                     ->where('role', 'head:client-service')->where('permission', $permission)
-                    ->exists()) continue;
+                    ->first();
+                if ($head) {
+                    if ((bool) $head->allowed || (bool) ($head->denied ?? false)) continue;
+                    // Never override a formerly edited head policy. Seeded
+                    // default "none" is not the same as an explicit decision.
+                    $edited = DB::table('client_contour_permission_audit')
+                        ->whereIn('role', ['head:client-service','client-service-head'])
+                        ->where('permission', $permission)->exists();
+                    if ($edited) continue;
+                    DB::table('client_contour_permissions')->where('id', $head->id)
+                        ->update(['allowed'=>true,'scope'=>'all','denied'=>false,'updated_at'=>now()]);
+                    continue;
+                }
                 DB::table('client_contour_permissions')->insert([
                     'role'=>'head:client-service', 'permission'=>$permission,
                     'allowed'=>true, 'scope'=>'all', 'denied'=>false,
