@@ -38,6 +38,9 @@ $put('org:sales','attempts.view',true,'own');
 $put('client-service','contacts.view',true,'own');
 $put('accounting-head','members.view',true,'team');
 $put('department-manager','timesheets.management.view',true,'team');
+$put('department-manager','positions.view',true,'team');
+$put('department-manager','attempts.manage',true,'team');
+$put('head:backend','attempts.manage',false,'none',true);
 $put('org:backend','timesheets.mine.view',true,'own');
 $put('platform-admin','clients.manage',true,'all');
 $put('platform-tester','clients.view',false,'none');
@@ -46,6 +49,11 @@ $put('head:client-service','attempts.view',false,'none');
 $put('head:client-service','clients.view',false,'none',true);
 $migration = require __DIR__.'/../database/migrations/2026_10_29_000002_remove_legacy_client_matrix_roles.php';
 $migration->up();
+// Timesheets transfer must read original Clients rows before any cleanup.
+$check(DB::table('client_contour_permissions')->where('role','department-manager')
+    ->where('permission','timesheets.management.view')->exists(),
+    'Timesheets source row removed before transfer');
+app(\App\Services\FinalizeLegacyClientPermissions::class)->run(['backend','qa']);
 $rows=DB::table('client_contour_permissions')->get();
 foreach($rows as $row){
     $check(preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D',(string)$row->role)===1,
@@ -64,6 +72,15 @@ $check(DB::table('client_contour_permissions')->where('role','head:client-servic
 $check((bool) DB::table('client_contour_permissions')->where('role','head:client-service')
     ->where('permission','clients.view')->value('denied') === true,
     'Client Service head aggregation overwrote an explicit V2 deny');
+$check(DB::table('client_contour_permissions')->where('role','head:qa')
+    ->where('permission','positions.view')->value('scope')==='team',
+    'Production manager permissions not transferred to current production heads');
+$check(DB::table('client_contour_permissions')->where('role','head:backend')
+    ->where('permission','positions.view')->value('scope')==='team',
+    'Production manager grant missing for additional head');
+$check((bool)DB::table('client_contour_permissions')->where('role','head:backend')
+    ->where('permission','attempts.manage')->value('denied')===true,
+    'Existing canonical head deny was overwritten by generic manager grant');
 $check(!DB::table('client_contour_permissions')->where('role','department-manager')->exists(),
     'Legacy manager rows remain');
 $service=app(ClientContourPermissionService::class);
