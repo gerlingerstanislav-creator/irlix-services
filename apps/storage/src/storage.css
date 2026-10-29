@@ -106,3 +106,29 @@
 .storage-v1-history{max-height:85vh;overflow:auto;width:min(760px,94vw)}
 @media(max-width:700px){.storage-v1-search{width:100%}.storage-v1-search input{min-width:130px}}
 .storage-v1-video{max-width:100%;max-height:100%;display:block;background:#111;border-radius:var(--irlix-control-radius)}
+
+
+/* The V1 explorer reuses the compact pilot layout, not an inner tab bar. */
+.storage-v1 .storage-v1-toolbar{padding:0;margin:0 24px 12px}
+.storage-v1 .storage-toolbar-tools{flex:1;min-width:0}
+.storage-v1 .storage-actions{justify-content:flex-end}
+.storage-v1 .storage-search{max-width:280px;min-width:190px}
+.storage-v1 .storage-search input{width:100%}
+.storage-v1 .storage-v1-table td:first-child{min-width:240px;display:flex;align-items:center;gap:10px}
+.storage-v1 .storage-v1-table td:first-child .storage-file-name{min-width:0}
+.storage-v1 .storage-v1-table th:last-child{width:64px}
+.storage-v1 .storage-v1-table .storage-download-cell{width:62px}
+.storage-v1 .storage-v1-count{font-size:12px;color:var(--irlix-color-text-muted)}
+.storage-v1 .storage-v1-tile-select{position:absolute;left:10px;top:10px;z-index:2}
+.storage-v1 .storage-tile-open{padding-top:32px}
+.storage-v1 .storage-file-icon{flex:none}
+@media(max-width:1050px){
+  .storage-v1 .storage-v1-toolbar{margin-inline:16px}
+  .storage-v1 .storage-toolbar-tools{flex-wrap:wrap}
+}
+@media(max-width:700px){
+  .storage-v1 .storage-v1-toolbar{margin-inline:12px}
+  .storage-v1 .storage-toolbar-tools{width:100%}
+  .storage-v1 .storage-search{flex:1;max-width:none}
+  .storage-v1 .storage-actions{width:100%;flex-wrap:wrap}
+}

@@ -1,16 +1,20 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { UiButton, UiActionMenu, UiSearchSelect, UiCheckbox } from '@irlix/ui';
+import { UiButton, UiActionMenu, UiSearchSelect, UiCheckbox, UiIcon } from '@irlix/ui';
 
 const props = defineProps({
   access: { type: Object, default: null },
+  section: { type: String, default: 'files' },
   directoryFetch: { type: Function, required: true },
 });
+const emit = defineEmits(['folder-open']);
 const route = useRoute();
 const router = useRouter();
 const parentId = computed(() => typeof route.query.folder_id === 'string' ? route.query.folder_id : '');
-const mode = ref('mine');
+const mode = computed(() => props.section === 'trash' ? 'trash' : (props.section === 'available' ? 'shared' : 'mine'));
+const layout = ref('list');
+const sortBy = ref('name');
 const entries = ref([]);
 const searchQuery = ref('');
 const searchActive = ref(false);
@@ -19,6 +23,7 @@ const selected = ref(new Set());
 const bulkMoving = ref(false);
 const bulkTarget = ref('');
 const loading = ref(false);
+let refreshSerial = 0;
 const busy = ref(false);
 const error = ref('');
 const notice = ref('');
@@ -49,6 +54,17 @@ const isAdmin = computed(() => Array.isArray(props.access?.roles) && props.acces
 const canManage = item => isAdmin.value || item.owner_employee_id === currentEmployeeId.value;
 const canEdit = item => canManage(item) || item.can_edit === true;
 const selectedItems = computed(() => entries.value.filter(item => selected.value.has(item.id)));
+const visibleEntries = computed(() => [...entries.value].sort((a, b) => {
+  if (a.kind !== b.kind) return a.kind === 'folder' ? -1 : 1;
+  if (sortBy.value === 'size') return Number(b.size || 0) - Number(a.size || 0);
+  if (sortBy.value === 'date') return String(b.modified || '').localeCompare(String(a.modified || ''));
+  return a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' });
+}));
+const dateText = value => value ? new Date(value).toLocaleDateString('ru-RU') : '—';
+const iconOf = item => item.kind === 'folder' ? '📁' : '📄';
+const isImage = item => item.kind === 'file' && /\.(png|jpe?g|gif|webp)$/i.test(item.name);
+const thumbnailUrl = item => '/api/storage/v1/preview/' + encodeURIComponent(item.id);
+const displayedSize = item => item.kind === 'folder' ? 'Папка' : (item.size == null ? '—' : readableSize(item.size));
 function toggleSelected(item, checked) {
   const next = new Set(selected.value);
   if (checked) next.add(item.id);
@@ -113,7 +129,7 @@ async function request(path, options = {}) {
   return response.json();
 }
 async function refresh() {
-  if (loading.value) return;
+  const serial = ++refreshSerial;
   loading.value = true; error.value = '';
   try {
     const url = searchActive.value ? '/search?q=' + encodeURIComponent(searchQuery.value.trim())
@@ -122,11 +138,13 @@ async function refresh() {
       : '/items' + (parentId.value ? '?parent_id=' + encodeURIComponent(parentId.value)
                                      : '?scope=mine');
     const result = await request(url);
+    if (serial !== refreshSerial) return;
     entries.value = Array.isArray(result.entries) ? result.entries : [];
     clearSelection();
-    try { stats.value = await request('/stats'); } catch { stats.value = null; }
-  } catch (err) { entries.value = []; error.value = err.message; }
-  finally { loading.value = false; }
+    try { const data = await request('/stats'); if (serial === refreshSerial) stats.value = data; }
+    catch { if (serial === refreshSerial) stats.value = null; }
+  } catch (err) { if (serial === refreshSerial) { entries.value = []; error.value = err.message; } }
+  finally { if (serial === refreshSerial) loading.value = false; }
 }
 async function bulkAction(action) {
   const chosen = selectedItems.value.filter(item => action === 'restore' || canManage(item));
@@ -180,11 +198,10 @@ async function submitBulkMove() {
   if (failed.length) error.value = failed.slice(0, 5).join('; ');
   await refresh();
 }
-function setMode(value) {
-  searchActive.value = false; searchQuery.value = '';
-  mode.value = value;
-  if (parentId.value) router.push({ name: 'v1', query: {} });
-  else refresh();
+let searchTimer = null;
+function queueSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(applySearch, 300);
 }
 function applySearch() {
   if (searchQuery.value.trim().length < 2) {
@@ -192,12 +209,13 @@ function applySearch() {
   } else {
     searchActive.value = true;
   }
-  if (parentId.value) router.push({ name: 'v1' });
+  if (parentId.value) router.push({ name: route.name });
   else refresh();
 }
 function open(item) {
   if (item.kind === 'folder' && mode.value !== 'trash') {
-    router.push({ name: 'v1', query: { folder_id: item.id } });
+    emit('folder-open', item);
+    router.push({ name: route.name, query: { folder_id: item.id } });
   } else if (item.kind === 'file' && mode.value !== 'trash') {
     openPreview(item);
   }
@@ -233,7 +251,7 @@ async function openPreview(item) {
     }
   } catch (err) { error.value = err.message; previewMime.value = 'unsupported'; }
 }
-onBeforeUnmount(closePreview);
+onBeforeUnmount(() => { clearTimeout(searchTimer); closePreview(); });
 async function download(item) {
   error.value = '';
   try {
@@ -447,62 +465,134 @@ async function revoke(employeeId) {
   } catch (err) { error.value = err.message; }
   finally { busy.value = false; }
 }
-watch(parentId, () => refresh());
+watch(mode, () => {
+  searchActive.value = false;
+  searchQuery.value = '';
+  clearTimeout(searchTimer);
+  clearSelection();
+  refresh();
+});
+watch(parentId, () => {
+  clearSelection();
+  refresh();
+});
 onMounted(() => refresh());
 </script>
 
 <template>
   <section class="storage-v1">
-    <div class="storage-v1-toolbar">
-      <form class="storage-v1-search" role="search" @submit.prevent="applySearch">
-        <input v-model="searchQuery" type="search" placeholder="Поиск по доступным файлам" aria-label="Поиск по диску" />
-        <UiButton>Найти</UiButton>
-        <UiButton v-if="searchActive" type="button" variant="secondary" @click="searchQuery='';applySearch()">Сбросить</UiButton>
-      </form>
-      <div class="storage-v1-sections" role="group" aria-label="Раздел">
-        <UiButton v-for="part in [{id:'mine',label:'Мои файлы'},{id:'shared',label:'Доступные мне'},{id:'trash',label:'Корзина'}]"
-          :key="part.id" type="button" :variant="mode === part.id ? 'primary' : 'secondary'" @click="setMode(part.id)">{{ part.label }}</UiButton>
-        <UiButton v-if="parentId" type="button" variant="secondary" @click="router.push({ name: 'v1' })">← К корню</UiButton>
+
+    <div class="storage-toolbar storage-v1-toolbar">
+      <div class="storage-toolbar-tools">
+        <form class="storage-search" role="search" @submit.prevent="applySearch">
+          <UiIcon name="search" />
+          <input v-model="searchQuery" type="search" placeholder="Поиск по файлам"
+            aria-label="Поиск по диску" @input="queueSearch" />
+        </form>
+        <select v-model="sortBy" aria-label="Сортировка">
+          <option value="name">По названию</option>
+          <option value="date">По дате</option>
+          <option value="size">По размеру</option>
+        </select>
+        <div class="storage-switch" role="group" aria-label="Вид файлов">
+          <button type="button" :class="{ active: layout === 'list' }"
+            :aria-pressed="layout === 'list'" aria-label="Список" title="Список"
+            @click="layout = 'list'"><UiIcon name="list" /></button>
+          <button type="button" :class="{ active: layout === 'grid' }"
+            :aria-pressed="layout === 'grid'" aria-label="Плитки" title="Плитки"
+            @click="layout = 'grid'">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/>
+              <rect x="13.5" y="3.5" width="7" height="7" rx="1"/>
+              <rect x="3.5" y="13.5" width="7" height="7" rx="1"/>
+              <rect x="13.5" y="13.5" width="7" height="7" rx="1"/></svg>
+          </button>
+        </div>
+        <UiButton v-if="parentId" type="button" variant="secondary"
+          @click="router.push({ name: route.name })">← К корню</UiButton>
       </div>
-      <div v-if="selectedItems.length" class="storage-v1-actions">
-        <span>{{ selectedItems.length }} выбрано</span>
-        <UiButton v-if="mode === 'trash'" type="button" variant="secondary" :disabled="busy" @click="bulkAction('restore')">Восстановить</UiButton>
-        <template v-else>
-          <UiButton type="button" variant="secondary" :disabled="busy" @click="bulkAction('trash')">В корзину</UiButton>
-          <UiButton type="button" variant="secondary" :disabled="busy" @click="beginBulkMove">Переместить</UiButton>
+      <div class="storage-actions">
+        <template v-if="selectedItems.length">
+          <span class="storage-v1-count">{{ selectedItems.length }} выбрано</span>
+          <UiButton v-if="mode === 'trash'" type="button" variant="secondary"
+            :disabled="busy" @click="bulkAction('restore')">Восстановить</UiButton>
+          <template v-else>
+            <UiButton type="button" variant="secondary" :disabled="busy"
+              @click="bulkAction('trash')">В корзину</UiButton>
+            <UiButton type="button" variant="secondary" :disabled="busy"
+              @click="beginBulkMove">Переместить</UiButton>
+          </template>
+          <UiButton type="button" variant="secondary" @click="clearSelection">Снять выделение</UiButton>
         </template>
-        <UiButton type="button" variant="secondary" @click="clearSelection">Снять выделение</UiButton>
-      </div>
-      <div class="storage-v1-actions" v-if="canCreate">
-        <UiButton type="button" variant="secondary" :disabled="busy" @click="createFolderOpen = true">+ Папка</UiButton>
-        <UiButton type="button" :disabled="busy" @click="uploadInput?.click()">↑ Загрузить</UiButton>
+        <template v-if="canCreate">
+          <UiButton type="button" variant="secondary" :disabled="busy"
+            @click="createFolderOpen = true">＋ Папка</UiButton>
+          <UiButton type="button" :disabled="busy"
+            @click="uploadInput?.click()">↑ Загрузить файлы</UiButton>
+        </template>
         <input ref="uploadInput" type="file" hidden multiple @change="uploadFiles($event.target.files)" />
       </div>
     </div>
-    <p v-if="stats" class="storage-v1-notice" role="status">
-      Использовано с учётом версий: {{ readableSize(stats.bytes_with_versions) }}
-      <template v-if="stats.quota_bytes"> из {{ readableSize(stats.quota_bytes) }}</template>
-      · Файлов: {{ stats.files }} · Папок: {{ stats.folders }} · В корзине: {{ stats.trashed }}
-    </p>
-    <p class="storage-v1-notice">Отдельное файловое пространство V1. Ранее загруженные пилотные документы сюда не переносились и не открываются другим сотрудникам автоматически.</p>
     <p v-if="error" class="storage-v1-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="storage-v1-notice" role="status">{{ notice }}</p>
     <div class="storage-content">
       <div v-if="loading" class="storage-empty" role="status">Загружаем файлы…</div>
-      <div v-else-if="!entries.length" class="storage-empty">Здесь пока нет файлов</div>
-      <table v-else class="storage-table">
-        <thead><tr><th aria-label="Выбор файлов"></th><th>Название</th><th>Тип</th><th>Владелец</th><th>Действия</th></tr></thead>
-        <tbody>
-          <tr v-for="item in entries" :key="item.id">
-            <td><UiCheckbox :model-value="selected.has(item.id)" :disabled="busy"
-              :aria-label="'Выбрать: ' + item.name" @update:model-value="toggleSelected(item, $event)" /></td>
-            <td><button type="button" class="storage-v1-item" @click="open(item)">{{ item.kind === 'folder' ? '📁' : '📄' }} {{ item.name }}</button></td>
-            <td>{{ item.kind === 'folder' ? 'Папка' : 'Файл' }}</td>
-            <td>{{ item.owner_employee_id || '—' }}</td>
-            <td><UiActionMenu :items="actionsFor(item)" :aria-label="'Действия: ' + item.name" @select="mutate(item, $event)" /></td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-else-if="!visibleEntries.length" class="storage-empty">
+        <div class="storage-empty-icon">▤</div>
+        <h2>{{ searchActive ? 'Ничего не найдено' : mode === 'trash' ? 'Корзина пуста' : 'Папка пока пуста' }}</h2>
+        <p>{{ searchActive ? 'Попробуйте изменить запрос' : 'Здесь пока нет файлов или папок' }}</p>
+      </div>
+      <div v-else-if="layout === 'list'" class="storage-table-wrap">
+        <table class="storage-table storage-v1-table">
+          <thead><tr><th>Название</th><th>Размер</th><th>Изменён</th><th class="storage-download-cell"></th></tr></thead>
+          <tbody>
+            <tr v-for="item in visibleEntries" :key="item.id" tabindex="0"
+              @dblclick="open(item)" @keydown.enter="open(item)">
+              <td>
+                <UiCheckbox :model-value="selected.has(item.id)" :disabled="busy"
+                  :aria-label="'Выбрать: ' + item.name"
+                  @update:model-value="toggleSelected(item, $event)" />
+                <span class="storage-file-icon">{{ iconOf(item) }}</span>
+                <button type="button" class="storage-file-name" @click.stop="open(item)">{{ item.name }}</button>
+              </td>
+              <td>{{ displayedSize(item) }}</td>
+              <td>{{ dateText(item.modified || item.deleted_at) }}</td>
+              <td class="storage-download-cell" @click.stop @dblclick.stop>
+                <UiActionMenu :items="actionsFor(item)"
+                  :aria-label="'Действия: ' + item.name" @select="mutate(item, $event)" />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-else class="storage-grid">
+        <div v-for="item in visibleEntries" :key="item.id" class="storage-tile">
+          <div class="storage-v1-tile-select">
+            <UiCheckbox :model-value="selected.has(item.id)" :disabled="busy"
+              :aria-label="'Выбрать: ' + item.name"
+              @update:model-value="toggleSelected(item, $event)" />
+          </div>
+          <div class="storage-tile-actions">
+            <UiActionMenu :items="actionsFor(item)"
+              :aria-label="'Действия: ' + item.name" @select="mutate(item, $event)" />
+          </div>
+          <button type="button" class="storage-tile-open" @click="open(item)">
+            <span class="storage-tile-icon">
+              <img v-if="isImage(item) && mode !== 'trash'" class="storage-thumbnail"
+                :src="thumbnailUrl(item)" alt="" loading="lazy" decoding="async" />
+              <span v-else>{{ iconOf(item) }}</span>
+            </span>
+            <strong :title="item.name">{{ item.name }}</strong>
+            <small>{{ displayedSize(item) }}</small>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="storage-footer">
+      <span>{{ visibleEntries.filter(item => item.kind === 'folder').length }} папок ·
+        {{ visibleEntries.filter(item => item.kind === 'file').length }} файлов</span>
+      <span v-if="stats">Использовано с учётом версий: {{ readableSize(stats.bytes_with_versions) }}
+        <template v-if="stats.quota_bytes"> из {{ readableSize(stats.quota_bytes) }}</template>
+      </span>
     </div>
 
     <div v-if="createFolderOpen" class="storage-overlay" @click.self="createFolderOpen=false">

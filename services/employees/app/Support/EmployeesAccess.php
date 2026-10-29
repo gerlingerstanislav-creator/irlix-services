@@ -269,6 +269,11 @@ class EmployeesAccess
         // other organizational label permits entering the Finance service.
         $access['services']['finance'] = $access['services']['finance']
             && (bool) ($access['permissions']['finance.view'] ?? false);
+        // Storage is a restricted role boundary, not a matrix-widenable grant.
+        // Top management can enter only after Storage V1 infrastructure is enabled.
+        $access['services']['storage'] = (bool) ($access['services']['storage'] ?? false)
+            && in_array(SpecialRoles::TopManagement, $roles, true)
+            && getenv('STORAGE_V1_ACCESS_ENABLED') === '1';
         // Brandbook is restricted to explicitly assigned top management (plus
         // platform-admin). Matrix overrides and organizational roles cannot widen it.
         $access['services']['brandbook'] = in_array(SpecialRoles::TopManagement, $roles, true);
@@ -348,7 +353,9 @@ class EmployeesAccess
             'finance' => $financeVisible,
             'recruitment' => $canRecruitment,
             'cv-converter' => $privileged,
-            'storage' => $privileged || (getenv('STORAGE_V1_ACCESS_ENABLED') === '1' && $employee !== null && BrandbookGate::active($employee)),
+            'storage' => $privileged || (getenv('STORAGE_V1_ACCESS_ENABLED') === '1'
+                && in_array(SpecialRoles::TopManagement, $normalizedRoles, true)
+                && $employee !== null && BrandbookGate::active($employee)),
             'design-system' => true,
             'brandbook' => $privileged || in_array(SpecialRoles::TopManagement, $normalizedRoles, true),
             'migration' => in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true),
