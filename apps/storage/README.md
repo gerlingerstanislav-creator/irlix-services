@@ -1,5 +1,32 @@
 # Storage Drive frontend
 
+## Canonical Storage V1 shell — staged replacement
+
+The user-facing Drive keeps the same shared `UiAppShell` and three sidebar
+sections as the original pilot: **Мои файлы**, **Доступные мне**, **Корзина**.
+Each route opens the V1 browser with the original compact search/sort/list/tile
+toolbar, file menus, selection and reversible trash. The old `/storage/v1`
+bookmark redirects to `/storage/`; it is not an extra user-facing section.
+V1 listing includes server-authorized size and modified date.
+
+**Access boundary:** Employees grants Storage entry exclusively to assigned
+`platform-admin` and `top-management` roles. Top management requires
+`STORAGE_V1_ACCESS_ENABLED=1`; ordinary employees and role-matrix grants
+cannot widen this eligibility. The V1 session, internal nginx gate and
+directory APIs independently recheck effective access. Individual file
+permissions still come exclusively from the Storage API (owner/grants).
+
+**Release gate:** The code/UI release does not authorize enabling the V1 API
+or deleting the legacy object namespace. If the server returns V1 HTTP 503,
+only an authenticated platform administrator sees the previously working
+pilot explorer as a temporary fallback. Top management cannot access
+those legacy objects. Pilot endpoints and bytes must be retired only **after**
+database provisioning, isolated capacity, verified backup and restore,
+real-user ACL negative tests, and explicit legacy-object reconciliation.
+No physical deletion or automatic purge is introduced. A successful
+anonymous smoke or static UI build is not V1 production acceptance.
+
+
 The independent Storage UI lives in `apps/storage` and uses `UiAppShell` from `@irlix/ui`. It remains an **administrator-only pilot**, independently gated by Employees access, the edge proxy and Storage API. UI navigation does not grant object permissions.
 
 ## Sections and navigation
