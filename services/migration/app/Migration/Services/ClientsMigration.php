@@ -417,22 +417,31 @@ class ClientsMigration extends SchemaMigration
             $existingId = $this->store->mapping('clients', 'rates', $id);
             if ($existingId !== null) {
                 $old = DB::connection('target_clients')->table('member_terms')->find((int)$existingId);
-                $changed = false;
+                $changedFields = [];
                 foreach ($termPayload as $field => $value) {
                     if ($old && ($value === null ? $old->$field !== null : (string)$old->$field !== (string)$value)) {
                         if ($old->$field !== null && is_numeric($old->$field) && is_numeric($value)
                             && abs((float)$old->$field - (float)$value) < 0.000001) continue;
-                        $changed = true; break;
+                        $changedFields[] = $field;
                     }
                 }
-                if ($changed) {
+                // Legacy Clients amounts were intentionally left NULL before its APP_KEY
+                // was recovered. Filling that one missing value is not a rewrite of
+                // previously agreed terms; dates, identity, hours and all other fields
+                // must still match exactly. Zero is a valid recovered amount.
+                $missingAmountOnly = $old !== null
+                    && $old->hourly_rate === null
+                    && $changedFields === ['hourly_rate']
+                    && isset($termPayload['hourly_rate']);
+                if ($changedFields && !$missingAmountOnly) {
                     $clientId = DB::connection('target_clients')->table('client_members')->where('id', $member)->value('client_id');
                     $locked = DB::connection('target_clients')->table('reporting_periods')
                         ->where('client_id', $clientId)->where('status', '<>', 'Новый')
                         ->whereDate('period_start', '<=', $to ?? '9999-12-31')
                         ->whereDate('period_end', '>=', $from)->exists();
                     if ($locked) throw new SourceRowConflict('PROTECTED_TERM_CHANGE',
-                        'Изменение уже перенесённого условия пересекает отправленный отчётный период. Требуется сверка снимка.');
+                        'Изменение уже перенесённого условия пересекает отправленный отчётный период. Требуется сверка снимка.',
+                        ['changed_fields' => $changedFields]);
                 }
             }
             $this->noOverlap('rates', $id, 'member_terms', ['client_member_id' => $member], 'valid_from', 'valid_to', $from, $to);
