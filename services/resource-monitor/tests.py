@@ -301,4 +301,50 @@ class MetricsTest(unittest.TestCase):
             self.assertEqual(result['host_inventory']['sections'][2]['bytes'],500)
             collector.disk_pool.shutdown()
 
+
+    def test_physical_disk_validator_rejects_forged_balance_and_classes(self):
+        from collector import PHYSICAL_DISK_IDS
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'host-disk.json'
+            sections = [{'id': key, 'bytes': 0} for key in sorted(PHYSICAL_DISK_IDS)]
+            sections[0]['bytes'] = 500
+            fs = {'total_bytes': 1000, 'used_bytes': 600, 'available_bytes': 300,
+                  'reserved_bytes': 100, 'classified_bytes': 500,
+                  'unclassified_bytes': 100, 'overlap_bytes': 0,
+                  'partial': False, 'scanned_entries': 15}
+            payload = {'collected_at': int(time.time()), 'disk_total': 1000,
+                       'partial': False, 'sections': [], 'physical_sections': sections,
+                       'filesystem': fs}
+            path.write_text(json.dumps(payload))
+            valid = read_host_disk_inventory(Path(directory), 1000)
+            self.assertFalse(valid['error'])
+            self.assertEqual(valid['filesystem']['used_bytes'], 600)
+            self.assertEqual(sum(row['bytes'] for row in valid['physical_sections']), 500)
+            fs['unclassified_bytes'] = 99
+            path.write_text(json.dumps(payload))
+            self.assertTrue(read_host_disk_inventory(Path(directory), 1000)['error'])
+            fs['unclassified_bytes'] = 100
+            sections[1]['id'] = sections[0]['id']
+            path.write_text(json.dumps(payload))
+            self.assertTrue(read_host_disk_inventory(Path(directory), 1000)['error'])
+
+    def test_physical_disk_validator_distinguishes_incomplete_scan_from_corruption(self):
+        from collector import PHYSICAL_DISK_IDS
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'host-disk.json'
+            sections = [{'id': key, 'bytes': 0} for key in sorted(PHYSICAL_DISK_IDS)]
+            fs = {'total_bytes': 1000, 'used_bytes': 600, 'available_bytes': 300,
+                  'reserved_bytes': 100, 'classified_bytes': 0,
+                  'unclassified_bytes': 600, 'overlap_bytes': 0,
+                  'partial': True, 'scanned_entries': 1}
+            payload = {'collected_at': int(time.time()), 'disk_total': 1000,
+                       'partial': False, 'sections': [], 'physical_sections': sections,
+                       'filesystem': fs}
+            path.write_text(json.dumps(payload))
+            result = read_host_disk_inventory(Path(directory), 1000)
+            self.assertFalse(result['error'])
+            self.assertTrue(result['filesystem']['partial'])
+            self.assertEqual(result['filesystem']['unclassified_bytes'], 600)
+
+
 if __name__ == '__main__': unittest.main()
