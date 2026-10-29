@@ -29,18 +29,6 @@ final class FinanceRoleAuthorization
         return true;
     }
 
-    public static function intersectLegacy(array $new, array $legacy): array
-    {
-        if (($legacy['services']['finance'] ?? false) !== true) {
-            return array_fill_keys(array_keys($new), false);
-        }
-        foreach ($new as $permission => $allowed) {
-            $new[$permission] = $allowed === true
-                && ($legacy['permissions'][$permission] ?? false) === true;
-        }
-        return $new;
-    }
-
     public const PERMISSIONS = [
         'finance.view',
         'finance.salary.view',
@@ -70,6 +58,10 @@ final class FinanceRoleAuthorization
 
         $names = array_fill_keys(array_filter($verifiedRoles, static fn ($role) =>
             is_string($role) && preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $role) === 1), true);
+        // Generic legacy manager denials are imported as head:* and apply
+        // only to independently verified current head assignments.
+        if (array_filter(array_keys($names), static fn ($name) =>
+            str_starts_with($name, 'head:'))) $names['head:*'] = true;
         $allowed = [];
         $denied = [];
         foreach ($policyRows as $row) {
@@ -96,6 +88,9 @@ final class FinanceRoleAuthorization
         }
         $roles = array_values(array_filter($verifiedRoles, static fn ($role) =>
             is_string($role) && preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $role) === 1));
+        if (array_filter($roles, static fn ($name) => str_starts_with($name, 'head:'))) {
+            $roles[] = 'head:*';
+        }
         $rows = FinanceRolePermission::query()->whereIn('role', $roles)->get()
             ->map(static fn ($row) => [
                 'role' => $row->role, 'permission' => $row->permission,
