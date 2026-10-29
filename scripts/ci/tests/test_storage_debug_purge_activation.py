@@ -40,7 +40,7 @@ class StorageDebugPurgeActivationTests(unittest.TestCase):
         self.assertIn("item.kind === 'file'", UI)
         self.assertIn("purgeConfirmName.value !== item.name", UI)
         self.assertIn('if (!item || busy.value || purgeConfirmName.value !== item.name) return;', UI)
-        self.assertIn('if (item[1] != "file" or item[6] != "trashed")', API.replace("if item[1] != \"file\" or item[6] != \"trashed\":", 'if (item[1] != "file" or item[6] != "trashed")'))
+        self.assertIn('if item[1] != "file" or item[6] != "trashed":', API)
 
 
 if __name__ == "__main__":
