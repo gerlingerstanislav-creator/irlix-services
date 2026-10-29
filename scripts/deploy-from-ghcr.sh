@@ -363,6 +363,19 @@ if [ "$timesheets_policy_import" = true ]; then
   $SUDO python3 scripts/authz/transfer_clients_timesheets.py
 fi
 
+# Only after Timesheets accepts its old grants, resolve the legacy
+# department-manager Clients rules to CURRENT production head:<alias> roles
+# and delete old Clients matrix rows. This cannot run inside a migration:
+# Employees owns the production directory and Timesheets owns its import.
+clients_v2_finalize=false
+for service in $MIGRATE_SERVICES; do
+  [ "$service" = clients ] && clients_v2_finalize=true
+done
+if [ "$clients_v2_finalize" = true ]; then
+  $SUDO python3 scripts/authz/transfer_production_heads_clients.py
+fi
+
+
 # Finance owns V2 business grants. Import legacy Employees finance DENIALS
 # once into Finance-owned persisted rows before any local V2 activation;
 # other Employees records and real financial data never cross service DBs.
