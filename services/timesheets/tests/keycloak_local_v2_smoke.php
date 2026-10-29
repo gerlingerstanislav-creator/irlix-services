@@ -45,8 +45,29 @@ DB::table('timesheets_role_permissions')->insert($grant);
 putenv('IRLIX_AUTHZ_JWT_ENABLED=true');
 putenv('IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED=true');
 
+// Mirror the actual isolated Keycloak persona's signed namespaced roles
+// into the synthetic current Employees source. The real middleware still
+// independently verifies the JWT signature before trusting any of them.
+$jwtSegments = explode('.', $token);
+$jwtPayload = count($jwtSegments) === 3
+    ? json_decode((string) base64_decode(strtr($jwtSegments[1], '-_', '+/'), true), true)
+    : null;
+$signedLabels = is_array($jwtPayload) && is_array($jwtPayload['realm_access']['roles'] ?? null)
+    ? $jwtPayload['realm_access']['roles'] : [];
+$signedIdentityIds = array_values(array_filter($signedLabels, static fn ($label) =>
+    is_string($label) && preg_match('/^employee-id:[1-9][0-9]*$/D', $label) === 1));
+$expectedId = 'employee-id:42';
+if ($signedIdentityIds !== [$expectedId]) {
+    throw new RuntimeException('Keycloak synthetic actor identity claim not unique and expected');
+}
+$signedNamespaced = array_values(array_filter($signedLabels, static fn ($label) =>
+    is_string($label)
+    && preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $label) === 1));
+if (!in_array('org:irlix', $signedNamespaced, true)) {
+    throw new RuntimeException('Keycloak synthetic actor lacks org:irlix');
+}
 $liveEmployeeId = 42;
-$liveRoles = ['org:irlix'];
+$liveRoles = $signedNamespaced;
 $employeesAllowed = true;
 $employeesStatus = 200;
 $legacyPermissions = [];
@@ -121,7 +142,7 @@ $liveEmployeeId = 42;
 $liveRoles = [];
 $test($execute($token, '/api/workspace')[0] === 403,
     'Revoked organizational membership retained workspace access');
-$liveRoles = ['org:irlix'];
+$liveRoles = $signedNamespaced;
 $employeesAllowed = false;
 $test($execute($token, '/api/workspace')[0] === 403,
     'Existing Employees service-entry deny was bypassed');
