@@ -50,14 +50,17 @@ try {
         'partner view permission was not imported from account-manager');
     $assert(($byKey['head:*|timesheets.partner-hours.approve']['scope'] ?? null)==='team',
         'partner final approval lost historic management scope');
-    $assert(($byKey['org:sales|timesheets.audit.view']['allowed'] ?? null)==='0',
+    $assert((int)($byKey['org:sales|timesheets.audit.view']['allowed'] ?? 1) === 0,
         'explicit legacy deny was not imported');
     $assert(!isset($byKey['org:irlix|timesheets.analytics.view']),
         'old unassigned false row incorrectly became an explicit denial');
     $changed = $rows;
     $changed[0]['scope'] = 'all';
     $assert($run($changed) !== 0, 'pre-existing incompatible V2 grant was ignored');
-    $assert($byKey['org:account-management|timesheets.management.view']['scope']==='own',
+    $scopeAfterFailure = $pdo->query("SELECT scope FROM timesheets_role_permissions
+        WHERE role='org:account-management' AND permission='timesheets.management.view'")
+        ->fetchColumn();
+    $assert($scopeAfterFailure === 'own',
         'failed import unexpectedly altered the original granted scope');
     echo "Private Clients Timesheets V2 import and conflict integration: PASS\n";
 } finally {
