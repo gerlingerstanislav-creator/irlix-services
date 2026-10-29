@@ -39,7 +39,11 @@ final class StorageV1GateController extends Controller
             $effectiveRequest = Request::create('/_storage_v1_access', 'GET');
             $effectiveRequest->attributes->set('identity', ['sub' => $session['subject']]);
             $access = $this->access->resolve($effectiveRequest);
-            if (($access['services']['storage'] ?? false) !== true
+            $roles = (array) ($access['roles'] ?? []);
+            $admitted = in_array(SpecialRoles::PlatformAdmin, $roles, true)
+                || (in_array(SpecialRoles::TopManagement, $roles, true)
+                    && getenv('STORAGE_V1_ACCESS_ENABLED') === '1');
+            if (!$admitted || ($access['services']['storage'] ?? false) !== true
                 || (int) ($access['employee_id'] ?? 0) !== (int) $employee->id) {
                 return ['status' => 403];
             }
@@ -71,7 +75,11 @@ final class StorageV1GateController extends Controller
         $context = Request::create('/_storage_v1_recipient', 'GET');
         $context->attributes->set('identity', ['sub' => (string) $target->keycloak_user_id]);
         $rights = $this->access->resolve($context);
-        return response('', ($rights['services']['storage'] ?? false) === true ? 204 : 404,
+        $roles = (array) ($rights['roles'] ?? []);
+        $eligible = in_array(SpecialRoles::PlatformAdmin, $roles, true)
+            || (in_array(SpecialRoles::TopManagement, $roles, true)
+                && getenv('STORAGE_V1_ACCESS_ENABLED') === '1');
+        return response('', $eligible && ($rights['services']['storage'] ?? false) === true ? 204 : 404,
                         ['Cache-Control' => 'private, no-store']);
     }
 }
