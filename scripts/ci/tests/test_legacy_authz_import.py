@@ -41,14 +41,17 @@ class LegacyAuthzImportTests(unittest.TestCase):
 
     def test_host_only_snapshot_before_migration(self):
         script = ROOT / "scripts/authz/backup-local-matrices.sh"
+        helper = (ROOT / "scripts/authz/backup_local_matrices.py").read_text()
         deploy = (ROOT / "scripts/deploy-from-ghcr.sh").read_text()
         self.assertEqual(subprocess.run(["sh", "-n", str(script)], check=False).returncode, 0)
+        self.assertIn("exec python3 scripts/authz/backup_local_matrices.py", script.read_text())
         for service in ("finance", "equipment", "timesheets", "vacations",
                         "recruitment", "clients", "specialists"):
-            self.assertIn(service + ") schema=", script.read_text())
-        self.assertIn('$schema.$matrix', script.read_text())
-        self.assertIn('$schema.$audit', script.read_text())
-        self.assertIn('chmod 600 "$destination/schema.dump"', script.read_text())
+            self.assertIn('"' + service + '": (', helper)
+        self.assertIn("pg_restore", helper)
+        self.assertIn("pg_dump", helper)
+        self.assertIn("get euid", helper.replace("geteuid", "get euid"))
+        self.assertIn("path.chmod(0o600)", helper)
         self.assertLess(deploy.index("scripts/authz/backup-local-matrices.sh"),
                         deploy.index("php artisan migrate --force"))
 
