@@ -43,6 +43,9 @@ final class ServiceEntitlement
                     $roles,(array)$live->json('data'))) {
                     return response()->json(['message'=>'Recruitment roles changed'],403);
                 }
+                if ($live->json('data.services.recruitment') !== true) {
+                    return response()->json(['message'=>'Existing Recruitment admission denied'],403);
+                }
                 try {
                     $permissions=app(\App\Services\RecruitmentRoleAuthorization::class)->forVerifiedRoles($roles);
                 } catch (\Throwable) {
