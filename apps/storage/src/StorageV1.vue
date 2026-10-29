@@ -30,6 +30,8 @@ const notice = ref('');
 const createName = ref('');
 const createFolderOpen = ref(false);
 const uploadInput = ref(null);
+const dropActive = ref(false);
+const dropTargetId = ref('');
 const shareItem = ref(null);
 const shareRecipients = ref([]);
 const shareRole = ref('reader');
@@ -133,6 +135,80 @@ const actionsFor = item => [
 ];
 const showingNormal = computed(() => mode.value !== 'trash');
 const canCreate = computed(() => mode.value === 'mine' || (mode.value === 'shared' && Boolean(parentId.value)));
+const canDropIntoCurrent = computed(() => canCreate.value && !searchActive.value && !busy.value && !loading.value);
+const isFileDrag = event => Array.from(event.dataTransfer?.types || []).includes('Files');
+const canDropIntoFolder = item => item.kind === 'folder' && mode.value !== 'trash'
+  && !busy.value && !loading.value && canEdit(item);
+function clearDropState() {
+  dropActive.value = false;
+  dropTargetId.value = '';
+}
+function onAreaDragOver(event) {
+  if (!isFileDrag(event)) return;
+  event.preventDefault(); // Avoid the browser opening the file in this tab.
+  event.dataTransfer.dropEffect = canDropIntoCurrent.value ? 'copy' : 'none';
+  if (canDropIntoCurrent.value) {
+    dropActive.value = true;
+    dropTargetId.value = parentId.value;
+  } else {
+    clearDropState();
+  }
+}
+function onAreaDragLeave(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) clearDropState();
+}
+function onFolderDragOver(event, item) {
+  if (!isFileDrag(event)) return;
+  event.stopPropagation();
+  event.preventDefault();
+  if (!canDropIntoFolder(item)) {
+    event.dataTransfer.dropEffect = 'none';
+    clearDropState();
+    return;
+  }
+  event.dataTransfer.dropEffect = 'copy';
+  dropActive.value = true;
+  dropTargetId.value = item.id;
+}
+function onFolderDragLeave(event, item) {
+  if (dropTargetId.value === item.id
+      && !event.currentTarget.contains(event.relatedTarget)) clearDropState();
+}
+function droppedFiles(event) {
+  const items = Array.from(event.dataTransfer?.items || []);
+  if (items.some(item => item.kind === 'file' && item.webkitGetAsEntry?.()?.isDirectory)) {
+    error.value = 'Папки перетаскиванием пока не поддерживаются. Выберите файлы внутри папки.';
+    return [];
+  }
+  return Array.from(event.dataTransfer?.files || []).filter(file => file instanceof File);
+}
+function onAreaDrop(event) {
+  if (!isFileDrag(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const allowed = canDropIntoCurrent.value;
+  const destination = parentId.value;
+  clearDropState();
+  if (!allowed) {
+    error.value = 'Загрузка здесь недоступна. Откройте папку с правом редактирования.';
+    return;
+  }
+  const files = droppedFiles(event);
+  if (files.length) void uploadFiles(files, destination);
+}
+function onFolderDrop(event, item) {
+  if (!isFileDrag(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const allowed = canDropIntoFolder(item);
+  clearDropState();
+  if (!allowed) {
+    error.value = 'Нет права загружать файлы в выбранную папку.';
+    return;
+  }
+  const files = droppedFiles(event);
+  if (files.length) void uploadFiles(files, item.id);
+}
 
 async function authenticatedFetch(path, options = {}) {
   const call = () => fetch('/api/storage/v1' + path, {
@@ -309,20 +385,34 @@ async function createFolder() {
   } catch (err) { error.value = err.message; }
   finally { busy.value = false; }
 }
-async function uploadFiles(chosen) {
+async function uploadFiles(chosen, destinationId = parentId.value) {
   const files = Array.from(chosen || []);
   if (!files.length || busy.value) return;
-  busy.value = true; error.value = '';
-  try {
-    for (const file of files) {
+  busy.value = true; error.value = ''; notice.value = '';
+  clearDropState();
+  const failed = [];
+  let uploaded = 0;
+  for (const file of files) {
+    try {
       const data = new FormData();
-      data.append('file', file); data.append('parent_id', parentId.value);
+      data.append('file', file);
+      data.append('parent_id', destinationId);
       await request('/files', { method: 'POST', body: data });
+      uploaded++;
+    } catch (err) {
+      failed.push(file.name + ': ' + err.message);
     }
-    notice.value = 'Файлы загружены: ' + files.length;
-    await refresh();
-  } catch (err) { error.value = err.message; }
-  finally { busy.value = false; if (uploadInput.value) uploadInput.value.value = ''; }
+  }
+  try {
+    if (uploaded) {
+      await refresh();
+      notice.value = 'Загружено файлов: ' + uploaded + ' из ' + files.length;
+    }
+    if (failed.length) error.value = 'Не удалось загрузить: ' + failed.join('; ');
+  } finally {
+    busy.value = false;
+    if (uploadInput.value) uploadInput.value.value = '';
+  }
 }
 async function mutate(item, action) {
   if (busy.value) return;
@@ -533,6 +623,7 @@ async function revoke(employeeId) {
   finally { busy.value = false; }
 }
 watch(mode, () => {
+  clearDropState();
   searchActive.value = false;
   searchQuery.value = '';
   clearTimeout(searchTimer);
@@ -540,6 +631,7 @@ watch(mode, () => {
   refresh();
 });
 watch(parentId, () => {
+  clearDropState();
   clearSelection();
   refresh();
 });
@@ -603,7 +695,12 @@ onMounted(() => refresh());
     </div>
     <p v-if="error" class="storage-v1-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="storage-v1-notice" role="status">{{ notice }}</p>
-    <div class="storage-content">
+    <div class="storage-content storage-v1-drop-area" :class="{ 'storage-drop-active': dropActive && dropTargetId === parentId }"
+      @dragover="onAreaDragOver" @dragleave="onAreaDragLeave" @drop="onAreaDrop">
+      <div v-if="dropActive && dropTargetId === parentId && canDropIntoCurrent"
+        class="storage-v1-drop-hint" role="status" aria-live="polite">
+        <UiIcon name="upload-cloud" /> Отпустите файлы, чтобы загрузить в текущую папку
+      </div>
       <div v-if="loading" class="storage-empty" role="status">Загружаем файлы…</div>
       <div v-else-if="!visibleEntries.length" class="storage-empty">
         <div class="storage-empty-icon">▤</div>
@@ -615,6 +712,9 @@ onMounted(() => refresh());
           <thead><tr><th>Название</th><th>Размер</th><th>Изменён</th><th class="storage-download-cell"></th></tr></thead>
           <tbody>
             <tr v-for="item in visibleEntries" :key="item.id" tabindex="0"
+              :class="{ 'storage-v1-folder-drop-target': dropActive && dropTargetId === item.id && item.kind === 'folder' }"
+              @dragover="onFolderDragOver($event, item)"
+              @dragleave="onFolderDragLeave($event, item)" @drop="onFolderDrop($event, item)"
               @dblclick="open(item)" @keydown.enter="open(item)">
               <td>
                 <UiCheckbox :model-value="selected.has(item.id)" :disabled="busy"
@@ -642,7 +742,10 @@ onMounted(() => refresh());
         </table>
       </div>
       <div v-else class="storage-grid">
-        <div v-for="item in visibleEntries" :key="item.id" class="storage-tile">
+        <div v-for="item in visibleEntries" :key="item.id" class="storage-tile"
+          :class="{ 'storage-v1-folder-drop-target': dropActive && dropTargetId === item.id && item.kind === 'folder' }"
+          @dragover="onFolderDragOver($event, item)"
+          @dragleave="onFolderDragLeave($event, item)" @drop="onFolderDrop($event, item)">
           <div class="storage-v1-tile-select">
             <UiCheckbox :model-value="selected.has(item.id)" :disabled="busy"
               :aria-label="'Выбрать: ' + item.name"
