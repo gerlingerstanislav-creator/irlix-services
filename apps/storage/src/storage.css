@@ -436,7 +436,7 @@ body:has(.storage-v1-share) > .ui-search-select__menu--teleported .ui-search-sel
   outline:2px solid var(--irlix-color-primary);outline-offset:2px;
 }
 .storage-v1 .storage-image-controls-group button:disabled{opacity:.45;cursor:not-allowed}
-.storage-v1 .storage-image-preview-content{overflow:auto;align-items:safe center;justify-content:safe center}
+.storage-v1 .storage-preview-modal .storage-image-preview-content{overflow:auto;align-items:safe center;justify-content:safe center}
 .storage-v1 .storage-image-preview-content img{display:block;margin:auto;flex:none;max-width:100%;max-height:100%;object-fit:contain}
 .storage-v1 .storage-preview-state{text-align:center;padding:24px;color:var(--irlix-color-text-muted);font-size:13px}
 .storage-v1 .storage-preview-state[role="alert"]{color:var(--irlix-color-danger,#b42318)}
