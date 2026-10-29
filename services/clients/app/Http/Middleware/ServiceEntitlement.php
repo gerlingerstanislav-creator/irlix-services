@@ -37,8 +37,9 @@ final class ServiceEntitlement
                 if (!$liveAdmission->successful() || !is_array($liveAdmission->json('data'))) {
                     return response()->json(['message'=>'Clients admission unavailable'],503);
                 }
-                $timesheetsOnly = $request->is('api/permissions/me')
-                    && $liveAdmission->json('data.services.timesheets') === true
+                $timesheetsPolicyConsumer = $request->is('api/permissions/me')
+                    && $liveAdmission->json('data.services.timesheets') === true;
+                $timesheetsOnly = $timesheetsPolicyConsumer
                     && $liveAdmission->json('data.services.clients') !== true;
                 if ($timesheetsOnly) {
                     $request->attributes->set('clients_timesheets_only', true);
@@ -63,10 +64,16 @@ final class ServiceEntitlement
                     if (str_starts_with((string) $permission, 'timesheets.')) continue;
                     if (($effect['allowed'] ?? false) === true) { $granted = true; break; }
                 }
-                // Do not leak a full Employees directory via /permissions/me
-                // to users with zero Clients permissions. Frontend handles 403.
+                // A Timesheets-authorized actor may have an Employees Clients
+                // service-entry flag but ZERO Clients business grants. The
+                // Timesheets legacy upper-bound check must still be readable,
+                // without exposing any Clients employee directory or capability.
+                // Other Clients routes remain denied for that actor.
                 if (!$granted) {
-                    return response()->json(['message' => 'Clients access denied by local policy'], 403);
+                    if (!$timesheetsPolicyConsumer) {
+                        return response()->json(['message' => 'Clients access denied by local policy'], 403);
+                    }
+                    $request->attributes->set('clients_timesheets_only', true);
                 }
                 $request->attributes->set('client_contour_access', $access);
                 $request->attributes->set('client_contour_verified_at_entitlement', true);
