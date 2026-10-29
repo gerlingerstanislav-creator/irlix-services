@@ -231,6 +231,12 @@ class ClientContourAccess
         $roles = array_values(array_unique(array_merge(
             ['employee'], self::importedMatrixLabels($specialRoles), $jwtFunctionalRoles
         )));
+        // New-only Keycloak tokens contain special:platform-admin rather than
+        // the retired unprefixed platform-admin role. Keep the internal
+        // superuser capability independent of any legacy realm role.
+        if ($localRoleMode && in_array('special:platform-admin', $jwtLabels, true)) {
+            $roles[] = 'platform-admin';
+        }
         $managedProductionRoots = $departments
             ->filter(fn ($department) => (bool) ($department['is_production'] ?? false)
                 && ($localRoleMode
