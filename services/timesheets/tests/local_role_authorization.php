@@ -63,4 +63,29 @@ $check(PartnerAuth::permissionFor('POST','api/partner-hours',true)===null,
     'A future/unknown partner endpoint must never inherit write permission');
 $check(PartnerAuth::permissionFor('GET','api/partner-hours',false)==='timesheets.management.view',
     'Legacy partner-hours compatibility unexpectedly changed');
+$managerRows = [
+    ['role'=>'head:*','permission'=>'timesheets.management.view','allowed'=>true,'scope'=>'team'],
+    ['role'=>'head:backend','permission'=>'timesheets.management.view','allowed'=>false,'scope'=>'none'],
+];
+$check(Authz::evaluate(['head:frontend'],$managerRows)['timesheets.management.view']['scope']==='team',
+    'Verified manager did not receive scoped legacy policy template');
+$check(!Authz::evaluate(['org:frontend'],$managerRows)['timesheets.management.view']['allowed'],
+    'Non-manager inherited manager rights');
+$check(!Authz::evaluate(['head:backend'],$managerRows)['timesheets.management.view']['allowed'],
+    'Direct manager deny did not override legacy template');
+$legacyCeiling = [
+    'timesheets.management.view'=>['allowed'=>true,'scope'=>'own'],
+    'timesheets.management.manage'=>['allowed'=>false,'scope'=>'none'],
+];
+$restricted = Authz::restrictToLegacy([
+    'timesheets.management.view'=>['allowed'=>true,'scope'=>'all'],
+    'timesheets.management.manage'=>['allowed'=>true,'scope'=>'team'],
+    'timesheets.analytics.view'=>['allowed'=>true,'scope'=>'all'],
+], $legacyCeiling);
+$check($restricted['timesheets.management.view']['scope']==='own',
+    'New policy expanded prior object scope');
+$check(!$restricted['timesheets.management.manage']['allowed'],
+    'Manual legacy deny on management was bypassed');
+$check(!$restricted['timesheets.analytics.view']['allowed'],
+    'Missing legacy analytics permission was implicitly granted');
 echo "Timesheets V2 local authorization: PASS\n";
