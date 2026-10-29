@@ -76,6 +76,8 @@ final class ServiceEntitlement
                 if (in_array($required, [
                     'timesheets.management.view','timesheets.management.manage',
                     'timesheets.analytics.view','timesheets.audit.view',
+                    'timesheets.partner-hours.view','timesheets.partner-hours.manage',
+                    'timesheets.partner-hours.approve',
                 ], true)) {
                     $clientsBase = rtrim((string) env('CLIENTS_URL', 'http://clients:8000/api'), '/');
                     try {
