@@ -13,6 +13,8 @@ return new class extends Migration {
             foreach ([
                 'vacations.mine.view','vacations.mine.manage',
                 'vacations.documents.view','vacations.documents.manage',
+                'vacations.history.view',
+                'vacations.approvals.view','vacations.approvals.manage',
             ] as $permission) {
                 DB::table('vacations_role_permissions')->insertOrIgnore([
                     'role'=>'org:irlix','permission'=>$permission,
