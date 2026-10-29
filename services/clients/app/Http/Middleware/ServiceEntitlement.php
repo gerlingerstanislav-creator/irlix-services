@@ -53,6 +53,11 @@ final class ServiceEntitlement
                 } catch (\Throwable) {
                     return response()->json(['message' => 'Clients authorization unavailable'], 503);
                 }
+                if ($timesheetsOnly) {
+                    $request->attributes->set('client_contour_access', $access);
+                    $request->attributes->set('client_contour_verified_at_entitlement', true);
+                    return $next($request);
+                }
                 $granted = (bool) ($access['platform_admin'] ?? false);
                 foreach ((array) ($access['permissions'] ?? []) as $permission => $effect) {
                     if (str_starts_with((string) $permission, 'timesheets.')) continue;
