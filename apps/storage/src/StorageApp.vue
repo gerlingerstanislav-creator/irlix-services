@@ -25,7 +25,7 @@ const allItems = [
   { id: 'available', label: 'Доступные мне', icon: 'users', href: '/storage/available' },
   { id: 'trash', label: 'Корзина', icon: 'reset', href: '/storage/trash' },
 ];
-const items = allItems;
+const items = computed(() => allItems);
 const route = useRoute();
 const router = useRouter();
 const folderLabels = ref({});

@@ -1,5 +1,31 @@
 # Storage Drive frontend
 
+## Restricted SQLite debugging on the current server
+
+For development and hands-on acceptance before full production launch, Storage
+V1 can use a **transactional SQLite file** on a persistent Docker named volume
+`storage_v1_metadata` under the current host filesystem. The SeaweedFS S3
+bucket already deployed continues to store file bytes. No PostgreSQL service,
+extra physical partition or new S3 instance is required for this stage.
+
+- `STORAGE_V1_METADATA_BACKEND=sqlite` selects SQLite; PostgreSQL remains an
+  alternative backend requiring separately provisioned Storage-owned schema.
+- `STORAGE_V1_ENABLED=1` and `STORAGE_V1_ACCESS_ENABLED=1` are enabled **once**
+  by the scoped debug release. An operator can subsequently set either to
+  `0`; later releases do not silently re-enable it.
+- Only Employees `platform-admin` and `top-management` roles can enter.
+  All object rights still require owner/ACL authorization on every API call.
+- The debug backend uses WAL/full fsync, foreign keys, single-writer
+  transactions, immutable audit and version triggers. It **does not** provide
+  high-availability or verified disaster recovery.
+- Each owner is limited to 512 MiB by default, and uploads/copies are denied
+  when fewer than 2 GiB would remain on the current host filesystem.
+- The old administrator pilot namespace and all its files remain in S3,
+  untouched. This is a **restricted debugging deployment**, not acceptance
+  of the final Storage launch or a permit for physical deletion.
+- Prior to wider launch decide capacity, separate volumes, PostgreSQL migration,
+  backup/restore, retention and security/ACL acceptance.
+
 ## Canonical Storage V1 shell — staged replacement
 
 The user-facing Drive keeps the same shared `UiAppShell` and three sidebar
