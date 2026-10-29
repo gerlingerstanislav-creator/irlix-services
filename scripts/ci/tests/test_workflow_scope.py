@@ -40,6 +40,12 @@ class SpecializedWorkflowSelectionTests(unittest.TestCase):
         self.assertFalse(result["enabled"])
         self.assertEqual(result["matrix"]["include"], [])
 
+    def test_keycloak_jwt_driver_change_skips_unrelated_admin_backend_builds(self):
+        result = scope.select("keycloak-authz", {"scripts/ci/keycloak_authz_smoke.py"})
+        self.assertEqual(result["matrix"]["include"], [])
+        self.assertFalse(result["enabled"])
+        self.assertTrue(result["timesheets"])
+
     def test_keycloak_unrelated_timesheets_work_skips_signed_jwt_image(self):
         result = scope.select("keycloak-authz", {
             "services/timesheets/app/Services/TimeEntriesService.php"
