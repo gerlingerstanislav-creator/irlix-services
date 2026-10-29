@@ -259,7 +259,7 @@ test('Storage V1 is the canonical three-section Drive, gated independently from 
   assert.ok(screen.includes('class="storage-switch"'));
   assert.ok(screen.includes("layout === 'list'"));
   assert.ok(screen.includes("layout === 'grid'"));
-  assert.ok(screen.includes('class="storage-v1-table"'));
+  assert.ok(screen.includes('class="storage-table storage-v1-table"'));
   assert.ok(screen.includes('class="storage-tile-open"'));
   assert.ok(screen.includes('refreshSerial'));
   assert.ok(!screen.includes('storage-v1-sections" role="group"'));
