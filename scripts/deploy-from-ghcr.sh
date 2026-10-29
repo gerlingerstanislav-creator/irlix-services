@@ -303,6 +303,9 @@ if [ "$events_running" != true ]; then
 fi
 
 for service in $MIGRATE_SERVICES; do
+  case "$service" in
+    finance|equipment) $SUDO sh scripts/authz/backup-local-matrices.sh "$service" ;;
+  esac
   $SUDO sh -c "$COMPOSE exec -T $service php artisan migrate --force < /dev/null"
 done
 
