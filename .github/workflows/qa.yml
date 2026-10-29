@@ -1,8 +1,9 @@
 name: QA
 
+# The primary CI already executes scoped QA and browser checks for every PR.
+# Keep this deeper QA workflow for explicit/manual diagnostics only, avoiding
+# a second System build and duplicate test suites on each PR.
 on:
-  pull_request:
-    branches: [development]
   workflow_dispatch:
     inputs:
       scope:
