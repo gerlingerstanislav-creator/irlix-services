@@ -90,6 +90,14 @@ class SQLiteDebugTests(unittest.TestCase):
         with metadata_connection() as conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM storage.objects").fetchone()[0], 1)
 
+    def test_production_metadata_probe_rolls_back_synthetic_row(self):
+        from app.sqlite_smoke import main as probe
+        with patch.dict(os.environ, {"STORAGE_V1_ENABLED": "1",
+                                     "STORAGE_V1_METADATA_BACKEND": "sqlite"}):
+            probe()
+        with metadata_connection() as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM storage.objects").fetchone()[0], 0)
+
     def test_http_file_roundtrip_owner_grant_revoke_trash_restore(self):
         fake = FakeS3()
         from app import v1_api
