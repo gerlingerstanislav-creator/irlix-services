@@ -514,10 +514,12 @@ class ClientContourAccess
             // Check the historical explicit veto using trusted Employees-derived
             // functional roles, not V2 matrix roles. During Clients V2 mode
             // the latter are namespaced and would silently miss old vetoes.
+            $legacyMatrixRoles = in_array('manager', $specialRoles, true)
+                ? [...$roles, 'department-manager'] : $roles;
             $legacyExplicitDeny = ClientContourPermission::query()
                 ->where('permission', 'timesheets.mine.view')
                 ->where('denied', true)
-                ->whereIn('role', $roles)
+                ->whereIn('role', $legacyMatrixRoles)
                 ->exists();
             $implicitPersonalTimesheetsView = self::historicalPersonalTimesheetsViewWasImplicit(
                 $employeeViewRowExists, $legacyExplicitDeny
