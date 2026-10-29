@@ -39,6 +39,7 @@ COPY bin/authz-status.php /app/bin/authz-status.php
 COPY bin/authz-preflight.php /app/bin/authz-preflight.php
 COPY bin/authz-export.php /app/bin/authz-export.php
 COPY bin/export-finance-v2-denials.php /app/bin/export-finance-v2-denials.php
+COPY bin/export-clients-production-head-aliases.php /app/bin/export-clients-production-head-aliases.php
 COPY bin/authz-requeue-transient.php /app/bin/authz-requeue-transient.php
 COPY database/migrations /app/database/migrations
 COPY tests/role_labels.php /app/tests/role_labels.php
@@ -84,6 +85,7 @@ RUN find /app/app/Models /app/app/Services /app/app/Http/Controllers -name '*.ph
     && php -l /app/bin/authz-preflight.php \
     && php -l /app/bin/authz-export.php \
     && php -l /app/bin/export-finance-v2-denials.php \
+    && php -l /app/bin/export-clients-production-head-aliases.php \
     && php -l /app/bin/authz-requeue-transient.php \
     && php -l /app/bootstrap/app.php
 RUN php artisan route:list --path=fot --json > /tmp/fot-routes.json \
