@@ -95,6 +95,7 @@ final class TimesheetsRoleAuthorization
     {
         $rank = ['none'=>0,'own'=>1,'team'=>2,'all'=>3];
         $sources = [
+            'timesheets.mine.view'=>'timesheets.mine.view',
             'timesheets.management.view'=>'timesheets.management.view',
             'timesheets.management.manage'=>'timesheets.management.manage',
             'timesheets.analytics.view'=>'timesheets.analytics.view',
