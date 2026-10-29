@@ -32,12 +32,23 @@ $request->attributes->set('client_contour_access', [
         'clients.view'=>['allowed'=>true,'scope'=>'all'],
     ],
     'employee'=>['id'=>112], 'roles'=>['account-manager'],
+    'legacy_timesheets_implicit_mine_view'=>true,
 ]);
 $response = (new $controller())->me($request, app(\App\Support\ClientContourAccess::class));
 $data = json_decode($response->getContent(), true);
 if (($data['data']['permissions']['timesheets.mine.view']['scope'] ?? null) !== 'own'
     || isset($data['data']['permissions']['clients.view'])
+    || ($data['data']['legacy_timesheets_implicit_mine_view'] ?? null) !== true
     || isset($data['data']['employee']) || isset($data['data']['roles'])) {
     throw new RuntimeException('Timesheets-only permission projection leaks Clients data');
+}
+// An empty legacy row and an explicitly unassigned/denied row are not
+// interchangeable. The source resolver must not create extra grants.
+$historical = \App\Support\ClientContourAccess::class;
+if (!$historical::historicalPersonalTimesheetsViewWasImplicit(false, false)
+    || $historical::historicalPersonalTimesheetsViewWasImplicit(true, false)
+    || $historical::historicalPersonalTimesheetsViewWasImplicit(false, true)
+    || $historical::historicalPersonalTimesheetsViewWasImplicit(true, true)) {
+    throw new RuntimeException('Implicit personal Timesheets baseline ignored legacy veto');
 }
 echo "Clients contour permissions routes: PASS\n";
