@@ -257,6 +257,16 @@ HOST_DISK_OWNERS = {
 }
 
 
+
+# Exclusive physical disk classes emitted by the host sampler (not Docker estimates).
+PHYSICAL_DISK_IDS = {
+    'docker-overlay', 'docker-volumes', 'docker-containers', 'docker-buildkit',
+    'docker-other', 'migration-snapshots', 'ci', 'deployment', 'system-logs',
+    'system-cache', 'system-temp', 'system-data', 'os-packages', 'os-config',
+    'user-files', 'other',
+}
+
+
 def read_host_disk_inventory(data, host_disk_total, now=None):
     """Validate the unprivileged collector's host sampler input before publishing."""
     unknown = {'collected_at': None, 'sections': [], 'stale': True,
@@ -290,8 +300,36 @@ def read_host_disk_inventory(data, host_disk_total, now=None):
             used += size
         if used > total:
             return unknown
+        physical = payload.get('physical_sections')
+        filesystem = payload.get('filesystem')
+        if physical is not None or filesystem is not None:
+            if not isinstance(physical, list) or not isinstance(filesystem, dict) or len(physical) != len(PHYSICAL_DISK_IDS):
+                return unknown
+            checked = {}
+            for row in physical:
+                if (not isinstance(row, dict) or row.get('id') not in PHYSICAL_DISK_IDS or
+                    row['id'] in checked or type(row.get('bytes')) is not int or
+                    row['bytes'] < 0 or row['bytes'] > total):
+                    return unknown
+                checked[row['id']] = row['bytes']
+            if checked.keys() != PHYSICAL_DISK_IDS:
+                return unknown
+            numeric = ('total_bytes', 'used_bytes', 'available_bytes', 'reserved_bytes',
+                       'classified_bytes', 'unclassified_bytes', 'overlap_bytes', 'scanned_entries')
+            if (any(type(filesystem.get(key)) is not int or filesystem[key] < 0 for key in numeric) or
+                type(filesystem.get('partial')) is not bool or
+                filesystem['total_bytes'] != total or filesystem['used_bytes'] > total or
+                filesystem['used_bytes'] + filesystem['available_bytes'] + filesystem['reserved_bytes'] != total or
+                filesystem['classified_bytes'] != sum(checked.values()) or
+                filesystem['classified_bytes'] + filesystem['unclassified_bytes'] -
+                    filesystem['overlap_bytes'] != filesystem['used_bytes'] or
+                (filesystem['overlap_bytes'] and filesystem['unclassified_bytes'])):
+                return unknown
+            physical = [{'id': key, 'bytes': checked[key]} for key in sorted(checked)]
+            filesystem = {key: filesystem[key] for key in numeric + ('partial',)}
         age = now - ts
         return {'collected_at': ts, 'sections': sections,
+                'physical_sections': physical, 'filesystem': filesystem,
                 'stale': age > 660, 'partial': payload['partial'] or any(r['partial'] for r in sections),
                 'error': age < 0 or age > 660}
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
