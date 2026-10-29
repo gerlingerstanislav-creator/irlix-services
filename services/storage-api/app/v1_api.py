@@ -8,6 +8,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import sqlite3
 from uuid import UUID, uuid4
 
 import boto3
@@ -67,13 +68,23 @@ def _decorate_entries(conn, entries: list[dict]) -> list[dict]:
     """
     if not entries:
         return entries
-    rows = conn.execute(
-        "SELECT o.id::text, o.updated_at, "
-        "(SELECT fv.size_bytes FROM storage.file_versions fv "
-        "WHERE fv.object_id=o.id ORDER BY fv.created_at DESC LIMIT 1) "
-        "FROM storage.objects o WHERE o.id = ANY(%s::uuid[])",
-        ([item["id"] for item in entries],),
-    ).fetchall()
+    ids = [item["id"] for item in entries]
+    if getattr(conn, "is_sqlite", False):
+        marks = ",".join("?" for _ in ids)
+        rows = conn.execute(
+            "SELECT o.id, o.updated_at, "
+            "(SELECT fv.size_bytes FROM storage.file_versions fv "
+            "WHERE fv.object_id=o.id ORDER BY fv.created_at DESC LIMIT 1) "
+            "FROM storage.objects o WHERE o.id IN (" + marks + ")", ids
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT o.id::text, o.updated_at, "
+            "(SELECT fv.size_bytes FROM storage.file_versions fv "
+            "WHERE fv.object_id=o.id ORDER BY fv.created_at DESC LIMIT 1) "
+            "FROM storage.objects o WHERE o.id = ANY(%s::uuid[])",
+            (ids,),
+        ).fetchall()
     by_id = {oid: {"modified": updated.isoformat() if updated else None,
                    "size": size} for oid, updated, size in rows}
     for item in entries:
@@ -287,7 +298,7 @@ def create_folder(request: Request, data: FolderInput):
                          "(id,kind,owner_employee_id,parent_id,display_name) "
                          "VALUES (%s,'folder',%s,%s,%s)",
                          (oid, owner, parent, title))
-        except psycopg.errors.UniqueViolation:
+        except (psycopg.errors.UniqueViolation, sqlite3.IntegrityError):
             raise HTTPException(409, "Название уже существует")
         _audit(repo, actor, oid, "folder.create")
     return {"id": oid, "name": title, "kind": "folder"}
@@ -322,7 +333,7 @@ async def upload(request: Request, file: UploadFile = File(...),
                          "(id,kind,owner_employee_id,parent_id,display_name,s3_key) "
                          "VALUES (%s,'file',%s,%s,%s,%s)",
                          (oid, owner, parent, title, key))
-        except psycopg.errors.UniqueViolation:
+        except (psycopg.errors.UniqueViolation, sqlite3.IntegrityError):
             raise HTTPException(409, "Название уже существует")
         _register_version(repo, actor, oid, key, len(data), hashlib.sha256(data).hexdigest())
         _audit(repo, actor, oid, "file.upload")
@@ -535,6 +546,15 @@ def search_objects(request: Request, q: str = Query(..., min_length=2, max_lengt
                 "FROM storage.objects WHERE state='active' AND "
                 "display_name ILIKE %s ESCAPE '\\' ORDER BY display_name LIMIT 200", (term,)
             ).fetchall()
+        elif getattr(conn, "is_sqlite", False):
+            # Search candidates only; the full per-object ancestor ACL check
+            # below remains authoritative and prevents leaking other owners.
+            rows = conn.execute(
+                "SELECT id,kind,owner_employee_id,parent_id,display_name "
+                "FROM storage.objects WHERE state='active' AND "
+                "display_name LIKE %s ESCAPE '\\' ORDER BY display_name LIMIT 200",
+                (term,),
+            ).fetchall()
         else:
             rows = conn.execute(
                 "WITH RECURSIVE scope AS ("
@@ -602,7 +622,7 @@ def move_object(request: Request, object_id: UUID, data: MoveInput):
         try:
             conn.execute("UPDATE storage.objects SET parent_id=%s,updated_at=now(),"
                          "revision=revision+1 WHERE id=%s", (dest, oid))
-        except psycopg.errors.UniqueViolation:
+        except (psycopg.errors.UniqueViolation, sqlite3.IntegrityError):
             raise HTTPException(409, "Объект с таким названием уже существует")
         _audit(repo, actor, oid, "object.move")
     return {"moved": True, "id": oid, "parent_id": dest}
@@ -626,7 +646,7 @@ def rename_object(request: Request, object_id: UUID, data: RenameInput):
         try:
             conn.execute("UPDATE storage.objects SET display_name=%s,updated_at=now(),"
                          "revision=revision+1 WHERE id=%s", (title, oid))
-        except psycopg.errors.UniqueViolation:
+        except (psycopg.errors.UniqueViolation, sqlite3.IntegrityError):
             raise HTTPException(409, "Название уже занято")
         _audit(repo, actor, oid, "object.rename")
     return {"name": title, "id": oid}
