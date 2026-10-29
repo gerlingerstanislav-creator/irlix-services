@@ -473,56 +473,118 @@ onMounted(() => refresh());
 
 <template>
   <section class="storage-v1">
-    <div class="storage-v1-toolbar">
-      <form class="storage-v1-search" role="search" @submit.prevent="applySearch">
-        <input v-model="searchQuery" type="search" placeholder="Поиск по доступным файлам" aria-label="Поиск по диску" />
-        <UiButton>Найти</UiButton>
-        <UiButton v-if="searchActive" type="button" variant="secondary" @click="searchQuery='';applySearch()">Сбросить</UiButton>
-      </form>
-      <div class="storage-v1-sections" role="group" aria-label="Раздел">
-        <UiButton v-for="part in [{id:'mine',label:'Мои файлы'},{id:'shared',label:'Доступные мне'},{id:'trash',label:'Корзина'}]"
-          :key="part.id" type="button" :variant="mode === part.id ? 'primary' : 'secondary'" @click="setMode(part.id)">{{ part.label }}</UiButton>
-        <UiButton v-if="parentId" type="button" variant="secondary" @click="router.push({ name: 'v1' })">← К корню</UiButton>
+
+    <div class="storage-toolbar storage-v1-toolbar">
+      <div class="storage-toolbar-tools">
+        <form class="storage-search" role="search" @submit.prevent="applySearch">
+          <UiIcon name="search" />
+          <input v-model="searchQuery" type="search" placeholder="Поиск по файлам"
+            aria-label="Поиск по диску" @input="queueSearch" />
+        </form>
+        <select v-model="sortBy" aria-label="Сортировка">
+          <option value="name">По названию</option>
+          <option value="date">По дате</option>
+          <option value="size">По размеру</option>
+        </select>
+        <div class="storage-switch" role="group" aria-label="Вид файлов">
+          <button type="button" :class="{ active: layout === 'list' }"
+            :aria-pressed="layout === 'list'" aria-label="Список" title="Список"
+            @click="layout = 'list'"><UiIcon name="list" /></button>
+          <button type="button" :class="{ active: layout === 'grid' }"
+            :aria-pressed="layout === 'grid'" aria-label="Плитки" title="Плитки"
+            @click="layout = 'grid'">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/>
+              <rect x="13.5" y="3.5" width="7" height="7" rx="1"/>
+              <rect x="3.5" y="13.5" width="7" height="7" rx="1"/>
+              <rect x="13.5" y="13.5" width="7" height="7" rx="1"/></svg>
+          </button>
+        </div>
+        <UiButton v-if="parentId" type="button" variant="secondary"
+          @click="router.push({ name: route.name })">← К корню</UiButton>
       </div>
-      <div v-if="selectedItems.length" class="storage-v1-actions">
-        <span>{{ selectedItems.length }} выбрано</span>
-        <UiButton v-if="mode === 'trash'" type="button" variant="secondary" :disabled="busy" @click="bulkAction('restore')">Восстановить</UiButton>
-        <template v-else>
-          <UiButton type="button" variant="secondary" :disabled="busy" @click="bulkAction('trash')">В корзину</UiButton>
-          <UiButton type="button" variant="secondary" :disabled="busy" @click="beginBulkMove">Переместить</UiButton>
+      <div class="storage-actions">
+        <template v-if="selectedItems.length">
+          <span class="storage-v1-count">{{ selectedItems.length }} выбрано</span>
+          <UiButton v-if="mode === 'trash'" type="button" variant="secondary"
+            :disabled="busy" @click="bulkAction('restore')">Восстановить</UiButton>
+          <template v-else>
+            <UiButton type="button" variant="secondary" :disabled="busy"
+              @click="bulkAction('trash')">В корзину</UiButton>
+            <UiButton type="button" variant="secondary" :disabled="busy"
+              @click="beginBulkMove">Переместить</UiButton>
+          </template>
+          <UiButton type="button" variant="secondary" @click="clearSelection">Снять выделение</UiButton>
         </template>
-        <UiButton type="button" variant="secondary" @click="clearSelection">Снять выделение</UiButton>
-      </div>
-      <div class="storage-v1-actions" v-if="canCreate">
-        <UiButton type="button" variant="secondary" :disabled="busy" @click="createFolderOpen = true">+ Папка</UiButton>
-        <UiButton type="button" :disabled="busy" @click="uploadInput?.click()">↑ Загрузить</UiButton>
+        <template v-if="canCreate">
+          <UiButton type="button" variant="secondary" :disabled="busy"
+            @click="createFolderOpen = true">＋ Папка</UiButton>
+          <UiButton type="button" :disabled="busy"
+            @click="uploadInput?.click()">↑ Загрузить файлы</UiButton>
+        </template>
         <input ref="uploadInput" type="file" hidden multiple @change="uploadFiles($event.target.files)" />
       </div>
     </div>
-    <p v-if="stats" class="storage-v1-notice" role="status">
-      Использовано с учётом версий: {{ readableSize(stats.bytes_with_versions) }}
-      <template v-if="stats.quota_bytes"> из {{ readableSize(stats.quota_bytes) }}</template>
-      · Файлов: {{ stats.files }} · Папок: {{ stats.folders }} · В корзине: {{ stats.trashed }}
-    </p>
-    <p class="storage-v1-notice">Отдельное файловое пространство V1. Ранее загруженные пилотные документы сюда не переносились и не открываются другим сотрудникам автоматически.</p>
     <p v-if="error" class="storage-v1-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="storage-v1-notice" role="status">{{ notice }}</p>
     <div class="storage-content">
       <div v-if="loading" class="storage-empty" role="status">Загружаем файлы…</div>
-      <div v-else-if="!entries.length" class="storage-empty">Здесь пока нет файлов</div>
-      <table v-else class="storage-table">
-        <thead><tr><th aria-label="Выбор файлов"></th><th>Название</th><th>Тип</th><th>Владелец</th><th>Действия</th></tr></thead>
-        <tbody>
-          <tr v-for="item in entries" :key="item.id">
-            <td><UiCheckbox :model-value="selected.has(item.id)" :disabled="busy"
-              :aria-label="'Выбрать: ' + item.name" @update:model-value="toggleSelected(item, $event)" /></td>
-            <td><button type="button" class="storage-v1-item" @click="open(item)">{{ item.kind === 'folder' ? '📁' : '📄' }} {{ item.name }}</button></td>
-            <td>{{ item.kind === 'folder' ? 'Папка' : 'Файл' }}</td>
-            <td>{{ item.owner_employee_id || '—' }}</td>
-            <td><UiActionMenu :items="actionsFor(item)" :aria-label="'Действия: ' + item.name" @select="mutate(item, $event)" /></td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-else-if="!visibleEntries.length" class="storage-empty">
+        <div class="storage-empty-icon">▤</div>
+        <h2>{{ searchActive ? 'Ничего не найдено' : mode === 'trash' ? 'Корзина пуста' : 'Папка пока пуста' }}</h2>
+        <p>{{ searchActive ? 'Попробуйте изменить запрос' : 'Здесь пока нет файлов или папок' }}</p>
+      </div>
+      <div v-else-if="layout === 'list'" class="storage-table-wrap">
+        <table class="storage-table storage-v1-table">
+          <thead><tr><th>Название</th><th>Размер</th><th>Изменён</th><th class="storage-download-cell"></th></tr></thead>
+          <tbody>
+            <tr v-for="item in visibleEntries" :key="item.id" tabindex="0"
+              @dblclick="open(item)" @keydown.enter="open(item)">
+              <td>
+                <UiCheckbox :model-value="selected.has(item.id)" :disabled="busy"
+                  :aria-label="'Выбрать: ' + item.name"
+                  @update:model-value="toggleSelected(item, $event)" />
+                <span class="storage-file-icon">{{ iconOf(item) }}</span>
+                <button type="button" class="storage-file-name" @click.stop="open(item)">{{ item.name }}</button>
+              </td>
+              <td>{{ displayedSize(item) }}</td>
+              <td>{{ dateText(item.modified || item.deleted_at) }}</td>
+              <td class="storage-download-cell" @click.stop @dblclick.stop>
+                <UiActionMenu :items="actionsFor(item)"
+                  :aria-label="'Действия: ' + item.name" @select="mutate(item, $event)" />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-else class="storage-grid">
+        <div v-for="item in visibleEntries" :key="item.id" class="storage-tile">
+          <div class="storage-v1-tile-select">
+            <UiCheckbox :model-value="selected.has(item.id)" :disabled="busy"
+              :aria-label="'Выбрать: ' + item.name"
+              @update:model-value="toggleSelected(item, $event)" />
+          </div>
+          <div class="storage-tile-actions">
+            <UiActionMenu :items="actionsFor(item)"
+              :aria-label="'Действия: ' + item.name" @select="mutate(item, $event)" />
+          </div>
+          <button type="button" class="storage-tile-open" @click="open(item)">
+            <span class="storage-tile-icon">
+              <img v-if="isImage(item) && mode !== 'trash'" class="storage-thumbnail"
+                :src="thumbnailUrl(item)" alt="" loading="lazy" decoding="async" />
+              <span v-else>{{ iconOf(item) }}</span>
+            </span>
+            <strong :title="item.name">{{ item.name }}</strong>
+            <small>{{ displayedSize(item) }}</small>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="storage-footer">
+      <span>{{ visibleEntries.filter(item => item.kind === 'folder').length }} папок ·
+        {{ visibleEntries.filter(item => item.kind === 'file').length }} файлов</span>
+      <span v-if="stats">Использовано с учётом версий: {{ readableSize(stats.bytes_with_versions) }}
+        <template v-if="stats.quota_bytes"> из {{ readableSize(stats.quota_bytes) }}</template>
+      </span>
     </div>
 
     <div v-if="createFolderOpen" class="storage-overlay" @click.self="createFolderOpen=false">
