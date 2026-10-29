@@ -281,3 +281,29 @@ test('Storage V1 special-role limit is enforced at session, gate and Employees a
   assert.ok(gate.includes('if (!$admitted ||'));
   assert.ok(session.includes('if (!$admitted ||'));
 });
+
+
+test('Storage favicon resolves under the canonical /storage/ URL', () => {
+  const index = text('../index.html');
+  const dockerfile = text('../Dockerfile');
+  const storageNginx = text('../nginx.conf');
+  const favicon = text('../../portal/favicon.svg');
+  assert.ok(index.includes('<link rel="icon" type="image/svg+xml" href="/storage/favicon.svg" />'));
+  assert.ok(dockerfile.includes('COPY apps/portal/favicon.svg /usr/share/nginx/html/favicon.svg'));
+  assert.ok(storageNginx.includes('try_files'));
+  assert.ok(favicon.includes('<svg'));
+});
+
+test('V1 PDF uses native Chrome PDF viewer without restrictive iframe sandbox', () => {
+  const v1 = text('../src/StorageV1.vue');
+  const pilot = text('../src/StorageDrive.vue');
+  const backend = text('../../../services/storage-api/app/v1_api.py');
+  assert.match(v1, /<iframe v-else-if="previewUrl && previewMime === 'pdf'" :src="previewUrl" :title="previewItem.name"\s*\/>/);
+  assert.doesNotMatch(v1, /<iframe[^>]*sandbox=/);
+  assert.ok(pilot.includes('<iframe v-else-if="typeOf(preview.name)===\'pdf\'"'));
+  assert.ok(v1.includes("await authenticatedFetch('/preview/' + encodeURIComponent(item.id))"));
+  assert.ok(v1.includes('URL.createObjectURL(bytes)'));
+  assert.ok(backend.includes('".pdf": raw.startswith(b"%PDF-")'));
+  assert.ok(backend.includes('"Content-Disposition": "inline"'));
+  assert.ok(backend.includes('"X-Content-Type-Options": "nosniff"'));
+});
