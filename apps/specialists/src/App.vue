@@ -12,6 +12,7 @@ const defaultNavItems = [
 ];
 
 const roleMatrixAdmin=ref(false);
+const roleAccessPhase=ref('loading');
 const navItems=computed(()=>[
   ...defaultNavItems,
   ...(roleMatrixAdmin.value?[{id:'role-permissions',label:'Разрешения',icon:'settings'}]:[]),
@@ -47,6 +48,17 @@ const api = async (path, options = {}) => {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) { const failure = new Error(payload.message || `Ошибка ${response.status}`); failure.status = response.status; throw failure; }
   return payload.data;
+};
+
+const loadRoleAccess = async () => {
+  roleAccessPhase.value='loading';
+  try {
+    roleMatrixAdmin.value=!!(await api('/role-permissions'))?.can_manage;
+    roleAccessPhase.value=roleMatrixAdmin.value?'allowed':'forbidden';
+  } catch(e) {
+    roleMatrixAdmin.value=false;
+    roleAccessPhase.value=e.status===403?'forbidden':'error';
+  }
 };
 
 const loadWorkspace = async () => {
@@ -256,9 +268,7 @@ onMounted(async () => {
     const permissions=await api('/permissions');
     canEditTechnologyCatalog.value=permissions?.catalog_manage === true;
   } catch (_) { canEditTechnologyCatalog.value=false; }
-  try {
-    roleMatrixAdmin.value=!!(await api('/role-permissions'))?.can_manage;
-  } catch (_) { roleMatrixAdmin.value=false; }
+  await loadRoleAccess();
   await loadWorkspace();
   const parents = (workspace.value.catalog.technologies || []).filter((t) => (workspace.value.catalog.technologies || []).some((c) => Number(c.parent_id) === Number(t.id)));
   expandedTechnologies.value = new Set(parents.map((t) => Number(t.id)));
@@ -287,12 +297,13 @@ const openPerson = id => navigate(`people/${id}`);
       <UiAppTopbar service="specialists" :section="sidebarSection" :items="navItems" :loading="loading" />
       <div class="content irlix-service-content">
       <div v-if="error" class="alert">{{ error }}</div>
-      <UiLoader v-if="loading" page label="Загрузка данных направления" />
+      <UiLoader v-if="loading || (route.section==='role-permissions' && roleAccessPhase==='loading')" page label="Загрузка данных направления" />
 
       <UiErrorState v-else-if="route.section === 'not-found'" :status="404" back-href="/specialists/" back-label="На главную Specialists" />
 
-      <UiErrorState v-else-if="route.section==='role-permissions' && !roleMatrixAdmin" :status="403"/>
-      <SpecialistsRolePermissionsView v-else-if="route.section==='role-permissions' && roleMatrixAdmin"/>
+      <UiErrorState v-else-if="route.section==='role-permissions' && roleAccessPhase==='error'" :status="503" description="Не удалось проверить права доступа." retryable @retry="loadRoleAccess" />
+      <UiErrorState v-else-if="route.section==='role-permissions' && roleAccessPhase==='forbidden'" :status="403"/>
+      <SpecialistsRolePermissionsView v-else-if="route.section==='role-permissions' && roleAccessPhase==='allowed'"/>
       <template v-else-if="route.section === 'dashboard'">
         <header class="page-head">
           <div><div class="eyebrow">Specialists</div><h1>Дашборд направления</h1><p>Профессиональный профиль команды и состояние компетенций.</p></div>
