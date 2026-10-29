@@ -41,6 +41,15 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+      - name: Install verified image-retention script for host maintenance
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.cleanup == true }}
+        run: |
+          # The capacity job is independent of the deployment job and a
+          # script-only release may not recreate any container. Always ship the
+          # source from this exact checked-out commit before running cleanup.
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            'sudo -n install -D -m 0644 /dev/stdin /opt/irlix-services/scripts/ci/prune_docker_images.py' \
+            < scripts/ci/prune_docker_images.py
       - name: Prune expired disposable data and report real disk usage
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.cleanup == true }}
         timeout-minutes: 20
