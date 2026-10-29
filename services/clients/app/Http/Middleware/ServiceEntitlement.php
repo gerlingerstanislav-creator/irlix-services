@@ -50,10 +50,6 @@ final class ServiceEntitlement
                 $request->attributes->set('client_contour_verified_at_entitlement',true);
             }
             return $next($request);
-                }
-                return response()->json(['message' => 'Service access denied'], 403);
-            }
-            return $next($request);
         }
 
         try {
