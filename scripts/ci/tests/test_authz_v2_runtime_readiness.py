@@ -63,6 +63,7 @@ class AuthzReadinessTests(unittest.TestCase):
              patch.object(mod, "matrix_counts",
                           return_value={"status":"ok","rows":1,
                                         "allow_rows":1,"explicit_deny_rows":0}), \
+             patch.object(mod, "critical_coverage", return_value={"status":"ok","missing_grants":[]}), \
              patch.object(mod, "role_sync", return_value="ready"):
             result = mod.collect(["docker","compose"], [])
         self.assertTrue(result["jwt_gate_consistent"])
