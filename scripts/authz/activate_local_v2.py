@@ -24,6 +24,7 @@ ORDER = ("clients", "timesheets", "vacations", "specialists",
          "recruitment", "equipment", "finance")
 NEGATIVE = {service: f"/api/{service}/permissions/me" for service in ORDER}
 NEGATIVE["equipment"] = "/api/equipment/permissions"
+NEGATIVE["specialists"] = "/api/specialists/permissions"
 NEGATIVE["finance"] = "/api/finance/me"
 
 
