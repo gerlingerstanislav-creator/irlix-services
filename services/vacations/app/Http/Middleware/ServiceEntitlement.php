@@ -13,6 +13,18 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class ServiceEntitlement
 {
+    /**
+     * Preserve the old Clients-only GET entry for specialist calendar/alerts.
+     * The independent Vacations grant and sensitive data checks still apply.
+     */
+    public static function hasCurrentServiceAdmission(string $path, string $method, array $services): bool
+    {
+        if (($services['vacations'] ?? null) === true) return true;
+        return $method === 'GET'
+            && in_array($path, ['api/client-service-calendar', 'api/client-service-absence-alerts'], true)
+            && ($services['clients'] ?? null) === true;
+    }
+
     public function handle(Request $request, Closure $next): Response
     {
         if ($request->is('api/health')) return $next($request);
@@ -47,7 +59,9 @@ final class ServiceEntitlement
             )) {
                 return response()->json(['message' => 'Vacations roles changed; refresh authentication'], 403);
             }
-            if ($fresh->json('data.services.vacations') !== true) {
+            if (!self::hasCurrentServiceAdmission(
+                $path, $method, (array) $fresh->json('data.services', [])
+            )) {
                 return response()->json(['message' => 'Existing Vacations admission denied'], 403);
             }
             if ($path === 'api/permissions') {

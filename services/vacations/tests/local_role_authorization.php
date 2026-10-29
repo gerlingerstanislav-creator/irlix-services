@@ -23,6 +23,23 @@ use App\Support\VacationsAccess;
 $test = static function (bool $condition, string $why): void {
     if (!$condition) throw new RuntimeException($why);
 };
+$entry = \App\Http\Middleware\ServiceEntitlement::class;
+$clientsOnly = ['clients'=>true,'vacations'=>false];
+$test($entry::hasCurrentServiceAdmission('api/client-service-calendar','GET',$clientsOnly),
+    'Clients-only specialist calendar legacy access was lost in V2');
+$test($entry::hasCurrentServiceAdmission('api/client-service-absence-alerts','GET',$clientsOnly),
+    'Clients-only specialist alerts legacy access was lost in V2');
+$test(!$entry::hasCurrentServiceAdmission('api/workspace','GET',$clientsOnly),
+    'Clients-only actor unexpectedly opened full Vacations workspace');
+$test(!$entry::hasCurrentServiceAdmission('api/absences/1/attachments/2/download','GET',$clientsOnly),
+    'Clients-only actor unexpectedly obtained Vacations attachments');
+$test(!$entry::hasCurrentServiceAdmission('api/client-service-calendar','POST',$clientsOnly),
+    'Clients-only actor obtained write access from calendar entry');
+$test(!$entry::hasCurrentServiceAdmission('api/client-service-calendar','GET',
+    ['clients'=>false,'vacations'=>false]), 'Explicit Clients service deny was bypassed');
+$test($entry::hasCurrentServiceAdmission('api/workspace','GET',
+    ['clients'=>false,'vacations'=>true]), 'Existing Vacations entry was lost');
+
 $rows = [
     ['role'=>'org:irlix','permission'=>'vacations.mine.view','allowed'=>true,'scope'=>'own'],
     ['role'=>'special:personnel-officer','permission'=>'vacations.manage.view','allowed'=>true,'scope'=>'all'],
