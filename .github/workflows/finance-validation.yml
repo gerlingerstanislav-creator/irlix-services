@@ -17,8 +17,38 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: finance-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  scope:
+    name: Select affected Finance checks
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.select.outputs.frontend }}
+      finance_frontend: ${{ steps.select.outputs.finance_frontend }}
+      clients_frontend: ${{ steps.select.outputs.clients_frontend }}
+      backend: ${{ steps.select.outputs.backend }}
+      clients_container: ${{ steps.select.outputs.clients_container }}
+      finance_container: ${{ steps.select.outputs.finance_container }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: select
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = pull_request ]; then
+            python3 scripts/ci/workflow_scope.py finance-validation --base "$PR_BASE"
+          else
+            python3 scripts/ci/workflow_scope.py finance-validation
+          fi
+
   frontend:
+    needs: scope
+    if: ${{ needs.scope.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 18
     steps:
@@ -26,10 +56,16 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
       - name: Install and compile Finance Vue/Vite
-        run: npm install --no-audit --no-fund && npm run build
+        if: ${{ needs.scope.outputs.finance_frontend == 'true' }}
+        run: |
+          if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+          npm run build
         working-directory: apps/finance
       - name: Build Clients Vue/Vite
-        run: npm install --no-audit --no-fund && npm run build
+        if: ${{ needs.scope.outputs.clients_frontend == 'true' }}
+        run: |
+          if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+          npm run build
         working-directory: apps/clients
       - name: Node Finance contract checks
         run: node --test apps/finance/tests/*.test.mjs
@@ -37,6 +73,8 @@ jobs:
         run: node --test apps/clients/tests/reporting-overtime.test.mjs
 
   backend:
+    needs: scope
+    if: ${{ needs.scope.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
@@ -73,6 +111,8 @@ jobs:
       - name: Check deployment shell syntax
         run: sh -n scripts/deploy-from-ghcr.sh
   clients-container:
+    needs: scope
+    if: ${{ needs.scope.outputs.clients_container == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:
@@ -106,6 +146,8 @@ jobs:
             irlix-clients-ci php artisan migrate --force
 
   container:
+    needs: scope
+    if: ${{ needs.scope.outputs.finance_container == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:
