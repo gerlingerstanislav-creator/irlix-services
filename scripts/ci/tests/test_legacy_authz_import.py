@@ -86,6 +86,7 @@ class LegacyAuthzImportTests(unittest.TestCase):
         self.assertIn("ClientContourPermission::query()", src)
         self.assertIn("->where('permission','like','timesheets.%')", src)
         self.assertIn("insertOrIgnore(", dest)
+        self.assertIn("Existing V2 rule conflicts with source legacy policy", dest)
         self.assertNotIn("updateOrCreate(", dest)
         self.assertIn("if (!$record['allowed'] && !$record['denied']) continue", dest)
         self.assertIn("'department-manager'=>'head:*'", dest)
