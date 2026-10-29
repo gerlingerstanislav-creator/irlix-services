@@ -54,15 +54,22 @@ migration_container_key() {
 }
 
 # One-time, owner-authorized restricted Storage V1 debug activation.
-# Marker remains in .env. Operators may subsequently disable the flags:
-# ordinary releases MUST NOT re-enable them after a manual shutdown.
+# Operators may later disable V1 in .env; a marker stops later reactivation.
 storage_debug_target=false
 if [ "$FULL" = true ]; then storage_debug_target=true; fi
 for deployed in $DEPLOY_SERVICES; do
   [ "$deployed" = "storage-api" ] && storage_debug_target=true
 done
-if [ "$storage_debug_target" = true ] && ! $SUDO grep -q '^STORAGE_V1_SQLITE_DEBUG_BOOTSTRAPPED=1
+if [ "$storage_debug_target" = true ] && ! $SUDO grep -q '^STORAGE_V1_SQLITE_DEBUG_BOOTSTRAPPED=1$' .env; then
+  upsert_env STORAGE_V1_ENABLED 1
+  upsert_env STORAGE_V1_ACCESS_ENABLED 1
+  upsert_env STORAGE_V1_SQLITE_DEBUG_BOOTSTRAPPED 1
+  echo "Restricted Storage V1 SQLite debug activated (platform-admin/top-management only)."
+fi
+
+IRLIX_PUBLIC_URL="${IRLIX_CANONICAL_ORIGIN:-http://services.lan}"
 upsert_env IRLIX_PUBLIC_URL "$IRLIX_PUBLIC_URL"
+
 upsert_env KEYCLOAK_PUBLIC_URL "${IRLIX_PUBLIC_URL}/keycloak/auth"
 upsert_env KEYCLOAK_ISSUER "${IRLIX_PUBLIC_URL}/keycloak/auth/realms/irlix"
 
