@@ -245,7 +245,10 @@ async function authenticatedFetch(path, options = {}) {
 async function request(path, options = {}) {
   const response = await authenticatedFetch(path, options);
   if (!response.ok) {
-    let message = response.status === 503 ? 'Новое файловое пространство ещё не подключено к базе метаданных.' : 'Операция не выполнена';
+    let message = response.status === 507 ? 'На сервере недостаточно места для загрузки файла.'
+      : response.status === 503 ? 'Файловое хранилище временно недоступно.'
+      : response.status >= 500 ? 'Ошибка файлового сервера (HTTP ' + response.status + ').'
+      : 'Операция не выполнена';
     try { message = (await response.json()).detail || message; } catch { /* empty response */ }
     throw new Error(message);
   }
