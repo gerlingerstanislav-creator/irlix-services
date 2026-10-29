@@ -315,7 +315,7 @@ jobs:
         timeout-minutes: 5
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            'cd /opt/irlix-services && if docker compose version >/dev/null 2>&1; then set -- docker compose; else set -- docker-compose; fi; if [ "$(id -u)" -eq 0 ]; then python3 - "$@"; else sudo -n python3 - "$@"; fi' \
+            'cd /opt/irlix-services && if [ "$(id -u)" -eq 0 ]; then python3 -; else sudo -n python3 -; fi' \
             < scripts/authz/inspect_runtime.py
       - name: Activate verified Keycloak authorization after bootstrap
         timeout-minutes: 12
