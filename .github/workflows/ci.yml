@@ -165,6 +165,8 @@ jobs:
           python3 -m unittest discover -s scripts/ci/tests -p 'test_app_key_provisioning.py' -v
           python3 -m unittest discover -s scripts/ci/tests -p 'test_resource_host_disk.py' -v
           PYTHONPATH=services/resource-monitor python3 -m unittest discover -s services/resource-monitor -p 'tests.py' -v
+          python3 -m unittest discover -s scripts/ci -p 'test_prune_docker_images.py' -v
+          sh -n scripts/server-storage-maintenance.sh
       - name: Store QA report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
