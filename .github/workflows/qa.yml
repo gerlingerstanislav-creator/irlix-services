@@ -96,7 +96,12 @@ jobs:
           fi
       - name: Build and test Laravel Migration service
         if: ${{ github.event_name != 'pull_request' || steps.migration-scope.outputs.changed == 'true' }}
-        run: docker build --target app --tag irlix-migration-integration -f services/migration/Dockerfile services/migration
+        uses: ./.github/actions/build-test-image
+        with:
+          service: migration
+          context: services/migration
+          tag: irlix-migration-integration
+          target: app
 
   browser:
     name: QA browser report
