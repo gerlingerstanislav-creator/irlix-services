@@ -97,4 +97,15 @@ $check(!$service->isEditableRole('account-manager')
     'Matrix editor can modify legacy or nonexistent roles');
 $check(!in_array('timesheets.mine.view',array_keys($matrix['special:platform-admin']),true),
     'Timesheets permission exposed in Clients superuser column');
+$put('unknown-old-role','clients.view',true,'all');
+$refused=false;
+try {
+    app(\App\Services\FinalizeLegacyClientPermissions::class)->run(['backend','qa']);
+} catch (\RuntimeException) {
+    $refused=true;
+}
+$check($refused, 'Unmapped active historical role was silently deleted');
+$check(DB::table('client_contour_permissions')->where('role','unknown-old-role')->exists(),
+    'Rejected cleanup was not atomic');
+DB::table('client_contour_permissions')->where('role','unknown-old-role')->delete();
 echo "Clients canonical matrix data migration and API: PASS\n";
