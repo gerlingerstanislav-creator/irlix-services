@@ -42,6 +42,9 @@ final class ServiceEntitlement
                 if (!\App\Services\TimesheetsRoleAuthorization::currentIdentityMatches(
                     $roles, (array) $live->json('data')
                 )) return response()->json(['message' => 'Timesheets roles changed'], 403);
+                if ($live->json('data.services.timesheets') !== true) {
+                    return response()->json(['message' => 'Existing Timesheets admission denied'], 403);
+                }
                 try {
                     $permissions = app(\App\Services\TimesheetsRoleAuthorization::class)->forVerifiedRoles($roles);
                 } catch (\Throwable) {
