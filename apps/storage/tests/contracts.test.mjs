@@ -459,3 +459,34 @@ test('V1 drag-drop batch failures are reported without retrying successful files
   assert.ok(api.includes('_require_capacity(repo, owner, len(data))'));
   assert.ok(api.includes('raise HTTPException(413, "Файл больше 10 МБ")'));
 });
+
+
+test('Storage V1 opens an authenticated in-app image viewer with controls', () => {
+  const viewer = text('../src/StorageV1.vue');
+  const css = text('../src/storage.css');
+  const api = text('../../../services/storage-api/app/v1_api.py');
+  assert.match(viewer, /\{ id: 'preview', label: 'Просмотреть' \}/);
+  assert.match(viewer, /if \(action === 'preview'\) return openPreview\(item\)/);
+  assert.ok(viewer.includes('async function openPreview(item)'));
+  assert.ok(viewer.includes("authenticatedFetch('/preview/' + encodeURIComponent(item.id))"));
+  assert.ok(viewer.includes("previewMime === 'image'"));
+  assert.ok(viewer.includes('URL.createObjectURL(bytes)'));
+  assert.ok(viewer.includes('URL.revokeObjectURL(previewUrl.value)'));
+  assert.ok(viewer.includes('if (serial !== previewSerial) return'));
+  assert.ok(viewer.includes("content-type"));
+  assert.ok(viewer.includes("previewLoading.value = true"));
+  assert.ok(viewer.includes('previewError.value ='));
+  assert.ok(viewer.includes('navigatePreview(direction)'));
+  assert.ok(viewer.includes("event.key === 'Escape'"));
+  assert.ok(viewer.includes("event.key === 'ArrowLeft'"));
+  assert.ok(viewer.includes("event.key === 'ArrowRight'"));
+  assert.ok(viewer.includes('document.removeEventListener'));
+  assert.ok(viewer.includes('aria-label="Увеличить изображение"'));
+  assert.ok(viewer.includes('aria-label="Следующее изображение"'));
+  assert.ok(viewer.includes('class="storage-preview-state" role="alert"'));
+  assert.ok(css.includes('.storage-v1 .storage-image-preview-content{overflow:auto'));
+  assert.ok(css.includes('.storage-v1 .storage-image-controls{'));
+  assert.ok(api.includes('_authorize(repo, actor, object_id, Permission.READ)'));
+  assert.ok(api.includes('"Content-Security-Policy": "sandbox; default-src'));
+  assert.ok(!viewer.includes('storage-s3:8333'));
+});
