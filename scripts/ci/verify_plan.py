@@ -217,6 +217,11 @@ def main():
     # Read-only cutover evidence on every production release, even a
     # script-only rollout. Never log DSNs, passwords or employee metadata.
     if not selected or selected.intersection(STORAGE_PREFLIGHT_SERVICES):
+        # Trigger schema creation only for the already-enabled SQLite debugging
+        # backend; exercise a rolled-back transaction, never touching user data.
+        subprocess.run([*sudo, *compose, "exec", "-T", "storage-api",
+                        "python3", "-m", "app.sqlite_smoke"],
+                       check=True, cwd=ROOT, timeout=90)
         subprocess.run([*sudo, "python3", str(ROOT / "scripts/storage/inspect-v1-readiness.py"), *compose],
                        check=True, cwd=ROOT, timeout=90)
     # Record *effective running-container* AuthZ switches and aggregate matrix
