@@ -707,6 +707,18 @@ def _storage_usage(repo, owner_id):
 
 
 def _require_capacity(repo, owner_id, extra_bytes):
+    if getattr(repo.conn, "is_sqlite", False):
+        try:
+            minimum = int(os.environ.get("STORAGE_V1_MIN_FREE_BYTES", "2147483648"))
+            if minimum < 0:
+                raise ValueError("negative minimum")
+            path = os.environ.get("STORAGE_V1_SQLITE_PATH", "/app/data/storage-v1.sqlite3")
+            fs = os.statvfs(os.path.dirname(path))
+            free = fs.f_bavail * fs.f_frsize
+        except (ValueError, OSError):
+            raise HTTPException(503, "Не удалось проверить запас места для файлов")
+        if free - extra_bytes < minimum:
+            raise HTTPException(507, "Недостаточно свободного места для безопасной загрузки")
     raw = os.environ.get("STORAGE_V1_QUOTA_BYTES", "0")
     try:
         cap = int(raw)
