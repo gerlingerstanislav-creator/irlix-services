@@ -62,6 +62,10 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/ci/tests -p 'test_resource_host_disk.py' -v
           PYTHONPATH=services/resource-monitor python3 -m unittest discover -s services/resource-monitor -p 'tests.py' -v
+      - name: Verify production Docker image retention rules (offline)
+        run: |
+          python3 -m unittest discover -s scripts/ci -p 'test_prune_docker_images.py' -v
+          sh -n scripts/server-storage-maintenance.sh
       - name: Save QA evidence
         if: always()
         uses: actions/upload-artifact@v4
