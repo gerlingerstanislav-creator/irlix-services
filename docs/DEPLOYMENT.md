@@ -50,6 +50,8 @@ Production-стенд автоматически обновляется посл
 
 Host nginx слушает `:80`, Docker-сервисы опубликованы только на loopback. Конфигурация host nginx хранится в `infra/nginx/irlix-services.conf`.
 
+**Storage uploads >1 MiB:** host Nginx uses `auth_request` for both `/api/storage/v1/` and legacy `/api/storage/`. Their *internal* authorization subrequests (`/_storage_v1_gate`, `/_storage_pilot_gate`) must explicitly set the same `client_max_body_size 11m` as the public upload locations. An auth gate left at Nginx's default 1m returns 413 for a 2–3 MiB request; `auth_request` converts this unexpected status to HTTP 500 before FastAPI sees the upload. `proxy_pass_request_body off` and the empty `Content-Length` forwarded to Employees must remain enabled. Storage API independently enforces its 10 MiB file limit. `scripts/ci/tests/test_storage_nginx_upload_limits.py` checks that both gate/public pairs stay aligned; production deploy checks `nginx -t` before reloading Nginx.
+
 | Порт | Сервис |
 |---|---|
 | 8080 | Employees web |
