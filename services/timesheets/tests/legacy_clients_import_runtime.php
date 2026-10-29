@@ -11,8 +11,8 @@ $pdo->exec('CREATE TABLE timesheets_role_permissions (
     permission TEXT NOT NULL, allowed INTEGER NOT NULL, scope TEXT NOT NULL,
     created_at TEXT, updated_at TEXT, UNIQUE(role, permission))');
 
-$run = static function (array $rows) use ($path): int {
-    $command = 'env DB_CONNECTION=sqlite DB_DATABASE='.escapeshellarg($path).
+$run = static function (array $rows, ?string $database = null) use ($path): int {
+    $command = 'env DB_CONNECTION=sqlite DB_DATABASE='.escapeshellarg($database ?? $path).
         ' APP_ENV=testing php /app/bin/import-clients-legacy-permissions.php';
     $pipes = [];
     $process = proc_open($command, [
@@ -43,9 +43,13 @@ try {
     $assert($run($rows) === 0, 'repeat import was not idempotent');
     $all = $pdo->query('SELECT role,permission,allowed,scope
         FROM timesheets_role_permissions')->fetchAll(PDO::FETCH_ASSOC);
-    $assert(count($all) === 6, 'expected view and management partner grants and explicit deny');
+    $assert(count($all) === 7, 'expected legacy personal view, partner grants and explicit deny');
     $byKey = [];
     foreach ($all as $row) $byKey[$row['role'].'|'.$row['permission']] = $row;
+    $assert(($byKey['org:irlix|timesheets.mine.view']['scope'] ?? null)==='own',
+        'Legacy employee workspace GET was lost when old Clients matrix had no row');
+    $assert((int)($byKey['org:irlix|timesheets.mine.view']['allowed'] ?? 0) === 1,
+        'Legacy personal workspace view was not restored');
     $assert(($byKey['org:account-management|timesheets.partner-hours.view']['scope'] ?? null)==='own',
         'partner view permission was not imported from account-manager');
     $assert(($byKey['head:*|timesheets.partner-hours.approve']['scope'] ?? null)==='team',
@@ -62,6 +66,26 @@ try {
         ->fetchColumn();
     $assert($scopeAfterFailure === 'own',
         'failed import unexpectedly altered the original granted scope');
+    // A previously configured explicit legacy deny MUST win over the
+    // inferred backend workspace default; test with a separate clean DB.
+    $deniedDb = sys_get_temp_dir().'/irlix-authz-denied-'.bin2hex(random_bytes(8)).'.sqlite';
+    $deniedPdo = new PDO('sqlite:'.$deniedDb);
+    $deniedPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $ddl = $pdo->query("SELECT sql FROM sqlite_master WHERE type='table' AND name='timesheets_role_permissions'")
+        ->fetchColumn();
+    $deniedPdo->exec($ddl);
+    try {
+        $assert($run([$grant('employee','timesheets.mine.view',false,'none',true)], $deniedDb) === 0,
+            'explicit legacy personal view deny import failed');
+        $saved = $deniedPdo->query("SELECT allowed,scope FROM timesheets_role_permissions
+            WHERE role='org:irlix' AND permission='timesheets.mine.view'")
+            ->fetch(PDO::FETCH_ASSOC);
+        $assert($saved && (int)$saved['allowed'] === 0 && $saved['scope']==='none',
+            'explicit old employee denial was overridden by inferred default');
+    } finally {
+        $deniedPdo = null;
+        @unlink($deniedDb);
+    }
     echo "Private Clients Timesheets V2 import and conflict integration: PASS\n";
 } finally {
     $pdo = null;
