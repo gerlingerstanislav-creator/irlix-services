@@ -95,7 +95,7 @@ test('Storage routes keep folders in history, reject unknown URLs and separate t
   assert.deepEqual(routes.map(route => [route.path, route.name]), [
     ['/', 'files'],
     ['/trash', 'trash'],
-    ['/v1', 'v1'],
+    ['/v1', undefined],
     ['/available', 'available'],
     ['/:pathMatch(.*)*', 'not-found'],
   ]);
@@ -110,7 +110,7 @@ test('Storage routes keep folders in history, reject unknown URLs and separate t
   assert.ok(wrapper.includes("encodeURIComponent(segments.slice(0, index + 1)"));
   assert.ok(wrapper.includes('UiErrorState v-else :status="404"'));
   assert.ok(wrapper.includes("activeSection === 'available'"));
-  assert.ok(wrapper.includes('общий доступ не подключён'));
+  assert.ok(wrapper.includes('Общий доступ появится'));
   assert.ok(!wrapper.includes('fetch(\'/api/storage/shared'));
 });
 
@@ -177,7 +177,7 @@ test('Pilot trash is reversible and denies direct reads, no physical object dele
   const routes = text('../src/routes.js');
   const shell = text('../src/StorageApp.vue');
   assert.ok(routes.includes("name: 'trash'"));
-  assert.ok(shell.includes('StorageTrash v-else-if="activeSection === \'trash\'"'));
+  assert.ok(shell.includes('StorageTrash v-else-if="legacyFallback && activeSection === \'trash\'"'));
   assert.ok(shell.includes("id: 'trash', label: 'Корзина'"));
   assert.ok(vue.includes("await api('/trash', { method: 'POST', body: form })"));
   assert.ok(vue.includes('aria-label="Перемещение в корзину"'));
@@ -198,8 +198,8 @@ test('V1 is isolated from legacy files and uses shared employee picker', () => {
   const app = text('../src/StorageApp.vue');
   const screen = text('../src/StorageV1.vue');
   const router = text('../src/routes.js');
-  assert.ok(router.includes("name: 'v1'"));
-  assert.ok(app.includes('<StorageV1 v-else-if="activeSection === \'v1\'"'));
+  assert.ok(router.includes("path: '/v1', redirect: '/'"));
+  assert.ok(app.includes('<StorageV1 v-else-if="[\'files\', \'available\', \'trash\'].includes(activeSection)"'));
   assert.ok(screen.includes('UiSearchSelect v-model="shareRecipient"'));
   assert.ok(screen.includes("request('/objects/'"));
   assert.ok(screen.includes("request('/folders'"));
@@ -239,4 +239,45 @@ test('V1 operations support immutable versions, scoped search, bulk actions, and
   assert.ok(versions.includes('storage.file_versions'));
   assert.ok(versions.includes('storage.reject_version_mutation'));
   assert.ok(!server.includes('delete_object('));
+});
+
+test('Storage V1 is the canonical three-section Drive, gated independently from legacy admin data', () => {
+  const app = text('../src/StorageApp.vue');
+  const screen = text('../src/StorageV1.vue');
+  const routes = text('../src/routes.js');
+  assert.ok(app.includes('const legacyFallback = ref(false)'));
+  assert.ok(app.includes("probe.status === 503 && isPlatformAdministratorAccess(result)"));
+  assert.ok(app.includes("'/api/storage/v1/items?scope=mine'"));
+  assert.ok(app.includes("id: 'files', label: 'Мои файлы'"));
+  assert.ok(app.includes("id: 'available', label: 'Доступные мне'"));
+  assert.ok(app.includes("id: 'trash', label: 'Корзина'"));
+  assert.ok(!app.includes('Новый диск (пилот)'));
+  assert.ok(routes.includes("path: '/v1', redirect: '/'"));
+  assert.ok(screen.includes("props.section === 'trash'"));
+  assert.ok(screen.includes("props.section === 'available'"));
+  assert.ok(screen.includes("router.push({ name: route.name, query: { folder_id: item.id } })"));
+  assert.ok(screen.includes('class="storage-switch"'));
+  assert.ok(screen.includes("layout === 'list'"));
+  assert.ok(screen.includes("layout === 'grid'"));
+  assert.ok(screen.includes('class="storage-table storage-v1-table"'));
+  assert.ok(screen.includes('class="storage-tile-open"'));
+  assert.ok(screen.includes('refreshSerial'));
+  assert.ok(!screen.includes('storage-v1-sections" role="group"'));
+});
+
+test('Storage V1 special-role limit is enforced at session, gate and Employees access matrix', () => {
+  const matrix = text('../../../services/employees/app/Support/EmployeesAccess.php');
+  const gate = text('../../../services/employees/app/Http/Controllers/StorageV1GateController.php');
+  const session = text('../../../services/employees/app/Http/Controllers/StorageV1SessionController.php');
+  const directory = text('../../../services/employees/app/Http/Controllers/StorageV1DirectoryController.php');
+  for (const source of [matrix, gate, session, directory]) {
+    assert.ok(source.includes('SpecialRoles::TopManagement'));
+    assert.ok(source.includes('STORAGE_V1_ACCESS_ENABLED'));
+  }
+  for (const source of [gate, session, directory]) {
+    assert.ok(source.includes('SpecialRoles::PlatformAdmin'));
+  }
+  assert.ok(matrix.includes("&& in_array(SpecialRoles::TopManagement, $roles, true)"));
+  assert.ok(gate.includes('if (!$admitted ||'));
+  assert.ok(session.includes('if (!$admitted ||'));
 });

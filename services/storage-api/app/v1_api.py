@@ -60,6 +60,27 @@ def _repo(conn, request):
     return MetadataRepository(conn, lambda employee: _employee_active(request, employee))
 
 
+def _decorate_entries(conn, entries: list[dict]) -> list[dict]:
+    """Attach display metadata only after the caller's per-object ACL checks.
+
+    A bounded, single lookup never expands the result set beyond authorized IDs.
+    """
+    if not entries:
+        return entries
+    rows = conn.execute(
+        "SELECT o.id::text, o.updated_at, "
+        "(SELECT fv.size_bytes FROM storage.file_versions fv "
+        "WHERE fv.object_id=o.id ORDER BY fv.created_at DESC LIMIT 1) "
+        "FROM storage.objects o WHERE o.id = ANY(%s::uuid[])",
+        ([item["id"] for item in entries],),
+    ).fetchall()
+    by_id = {oid: {"modified": updated.isoformat() if updated else None,
+                   "size": size} for oid, updated, size in rows}
+    for item in entries:
+        item.update(by_id.get(item["id"], {"modified": None, "size": None}))
+    return entries
+
+
 def _normalize_id(value) -> str:
     try:
         return str(UUID(str(value)))
@@ -183,6 +204,7 @@ def list_items(request: Request, parent_id: UUID | None = None, scope: str = "al
                                "parent_id": parent, "name": title, "state": state,
                                "can_edit": can_access(actor, oid, Permission.EDIT,
                                                       repo.load_objects(oid), repo.load_grants(oid))})
+        result = _decorate_entries(conn, result)
     return {"entries": result}
 
 
@@ -205,6 +227,7 @@ def available(request: Request):
                   for oid, kind, owner, title in rows
                   if can_access(actor, oid, Permission.READ,
                                 repo.load_objects(oid), repo.load_grants(oid))]
+        result = _decorate_entries(conn, result)
     return {"entries": result}
 
 
@@ -229,6 +252,7 @@ def list_trashed(request: Request):
             if can_access(actor, oid, Permission.RESTORE, repo.load_objects(oid), repo.load_grants(oid)):
                 result.append({"id": oid, "kind": kind, "name": title,
                                "owner_employee_id": owner, "deleted_at": removed})
+        result = _decorate_entries(conn, result)
     return {"entries": result}
 
 
@@ -536,6 +560,7 @@ def search_objects(request: Request, q: str = Query(..., min_length=2, max_lengt
                 result.append({"id": oid, "kind": kind, "owner_employee_id": owner,
                                "parent_id": parent, "name": title,
                                "can_edit": can_access(actor, oid, Permission.EDIT, objects, grants)})
+        result = _decorate_entries(conn, result)
     return {"entries": result}
 
 
