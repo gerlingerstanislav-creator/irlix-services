@@ -116,9 +116,14 @@ if ps -eo args | grep -E '[s]h scripts/deploy-from-ghcr.sh|[/]opt/irlix-services
 fi
 
 section "Safe system cache pruning"
-# Prune only images not referenced by a container; never --volumes or container prune.
-$SUDO docker image prune -af --filter 'until=168h' || true
-$SUDO docker builder prune -af --filter 'until=72h' || true
+# Preserve every image used by any container (including stopped containers)
+# and the two newest versions per IRLIX image repository for easy rollback.
+# Remove only unreferenced IRLIX image generations older than 48 hours.
+# Unrelated tagged images and Docker volumes are never touched.
+$SUDO python3 "$BASE/scripts/ci/prune_docker_images.py"
+# Remove only old dangling build artifacts, never tagged images of other projects.
+$SUDO docker image prune -f --filter 'until=168h'
+$SUDO docker builder prune -af --filter 'until=72h'
 if command -v journalctl >/dev/null 2>&1; then
   $SUDO journalctl --vacuum-time=14d --vacuum-size=512M || true
 fi
