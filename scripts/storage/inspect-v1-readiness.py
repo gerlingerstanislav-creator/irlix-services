@@ -13,23 +13,43 @@ from pathlib import Path
 ROOT = Path("/opt/irlix-services")
 CHECK_API = """
 import json, os
+backend = os.getenv("STORAGE_V1_METADATA_BACKEND", "postgres")
 result = {
     "enabled": os.getenv("STORAGE_V1_ENABLED") == "1",
-    "db_configured": bool(os.getenv("STORAGE_V1_DB_DSN")),
+    "metadata_backend": backend if backend in ("sqlite", "postgres") else "unknown",
+    "db_configured": False,
     "schema": "not_configured"
 }
-if result["db_configured"]:
-    try:
-        import psycopg
-        with psycopg.connect(os.environ["STORAGE_V1_DB_DSN"], connect_timeout=3) as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT to_regclass('storage.objects') IS NOT NULL, "
-                            "to_regclass('storage.grants') IS NOT NULL, "
-                            "to_regclass('storage.audit_events') IS NOT NULL, "
-                            "to_regclass('storage.file_versions') IS NOT NULL")
-                result["schema"] = "ready" if all(cur.fetchone()) else "incomplete"
-    except Exception:
-        result["schema"] = "unavailable"
+if backend == "sqlite":
+    import sqlite3
+    from pathlib import Path
+    path = Path(os.getenv("STORAGE_V1_SQLITE_PATH", "/app/data/storage-v1.sqlite3"))
+    result["db_configured"] = path.is_file()
+    if result["db_configured"]:
+        try:
+            # Never create or mutate metadata during a readiness check.
+            with sqlite3.connect("file:" + str(path) + "?mode=ro", uri=True, timeout=3) as conn:
+                names = {row[0] for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()}
+                result["schema"] = ("ready" if {"objects","grants","audit_events",
+                                                  "file_versions"} <= names else "incomplete")
+        except sqlite3.Error:
+            result["schema"] = "unavailable"
+elif backend == "postgres":
+    result["db_configured"] = bool(os.getenv("STORAGE_V1_DB_DSN"))
+    if result["db_configured"]:
+        try:
+            import psycopg
+            with psycopg.connect(os.environ["STORAGE_V1_DB_DSN"], connect_timeout=3) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT to_regclass('storage.objects') IS NOT NULL, "
+                                "to_regclass('storage.grants') IS NOT NULL, "
+                                "to_regclass('storage.audit_events') IS NOT NULL, "
+                                "to_regclass('storage.file_versions') IS NOT NULL")
+                    result["schema"] = "ready" if all(cur.fetchone()) else "incomplete"
+        except Exception:
+            result["schema"] = "unavailable"
 print(json.dumps(result))
 """
 CHECK_EMPLOYEES = (
@@ -61,6 +81,7 @@ def main(compose_args=None):
             if service == "api":
                 results[service] = {
                     "enabled": data.get("enabled") is True,
+                    "metadata_backend": data.get("metadata_backend") if data.get("metadata_backend") in {"sqlite", "postgres"} else "unknown",
                     "db_configured": data.get("db_configured") is True,
                     "schema": data.get("schema") if data.get("schema") in {
                         "not_configured", "ready", "incomplete", "unavailable"
