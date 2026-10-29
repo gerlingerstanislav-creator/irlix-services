@@ -28,9 +28,7 @@ jobs:
         with:
           fetch-depth: 0
       - id: select
-        env:
-          PR_BASE: ${{ github.event.pull_request.base.sha }}
-        run: python3 scripts/ci/workflow_scope.py client-history-ui-check --base "$PR_BASE"
+        run: python3 scripts/ci/workflow_scope.py client-history-ui-check --pr
 
   contract:
     runs-on: ubuntu-latest
