@@ -19,7 +19,7 @@ trap 'rm -f "$destination/schema.dump.tmp"' EXIT
 
 # Full service schema snapshot includes legacy matrix and its audit,
 # business records remain encrypted/protected by host filesystem controls.
-$COMPOSE exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -n "$1" -Fc' sh "$schema" > "$destination/schema.dump.tmp"
+sh -c "$COMPOSE exec -T postgres sh -c 'PGPASSWORD=\"\$POSTGRES_PASSWORD\" pg_dump -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -n \"$schema\" -Fc' > '$destination/schema.dump.tmp'"
 test -s "$destination/schema.dump.tmp" || {
     echo "Authorization backup failed; refusing to migrate policy" >&2
     exit 1
