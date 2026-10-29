@@ -304,7 +304,7 @@ fi
 
 for service in $MIGRATE_SERVICES; do
   case "$service" in
-    finance|equipment|timesheets|vacations|recruitment|clients) $SUDO sh scripts/authz/backup-local-matrices.sh "$service" ;;
+    finance|equipment|timesheets|vacations|recruitment|clients|specialists) $SUDO sh scripts/authz/backup-local-matrices.sh "$service" ;;
   esac
   $SUDO sh -c "$COMPOSE exec -T $service php artisan migrate --force < /dev/null"
 done
