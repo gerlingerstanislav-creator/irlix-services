@@ -43,10 +43,26 @@ class LegacyAuthzImportTests(unittest.TestCase):
         script = ROOT / "scripts/authz/backup-local-matrices.sh"
         deploy = (ROOT / "scripts/deploy-from-ghcr.sh").read_text()
         self.assertEqual(subprocess.run(["sh", "-n", str(script)], check=False).returncode, 0)
-        self.assertIn('finance|equipment)', script.read_text())
+        self.assertIn('finance|equipment|timesheets|vacations|recruitment)', script.read_text())
         self.assertIn('chmod 600 "$destination/schema.dump"', script.read_text())
         self.assertLess(deploy.index("scripts/authz/backup-local-matrices.sh"),
                         deploy.index("php artisan migrate --force"))
+
+    def test_personal_and_hr_baselines_are_scoped_and_do_not_grant_everyone_all(self):
+        baseline = {
+            "timesheets": ("2026_10_29_000001_import_legacy_personal_grants.php", "'scope'=>'own'"),
+            "vacations": ("2026_10_29_000001_import_legacy_personal_grants.php", "'scope'=>'own'"),
+            "recruitment": ("2026_10_29_000001_import_legacy_hr_grants.php", "'scope'=>'all'"),
+        }
+        for service, (filename, expected_scope) in baseline.items():
+            with self.subTest(service=service):
+                source = (ROOT / "services" / service / "database/migrations" / filename).read_text()
+                self.assertIn("insertOrIgnore(", source)
+                self.assertNotIn("updateOrCreate(", source)
+                self.assertIn(expected_scope, source)
+                self.assertNotIn("'role'=>'org:irlix','permission'=>'recruitment.", source)
+                gate = (ROOT / "services" / service / "app/Http/Middleware/ServiceEntitlement.php").read_text()
+                self.assertIn("data.services." + service, gate)
 
     def test_no_local_activation_in_import(self):
         for path in [
