@@ -108,7 +108,7 @@ class HostDiskTest(unittest.TestCase):
             # The same allocated 8 KiB inode appears in precisely one bucket.
             self.assertLessEqual(sizes['docker-volumes'] + sizes['os-config'],
                                  physical['classified_bytes'])
-            self.assertGreater(sizes['docker-volumes'], 0)
+            self.assertGreaterEqual(sizes['docker-volumes'] + sizes['os-config'], blob.stat().st_blocks * 512)
 
     def test_physical_scan_budget_exhaustion_is_explicit(self):
         with tempfile.TemporaryDirectory() as directory:
