@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
  * Finalize Clients' already-active AuthZ V2 matrix. Old role keys have been
  * imported by 000001, but remained visible/editable alongside the new keys.
  * New V2 rows always win: their administrator edits are the live policy.
+ * This intermediate migration NEVER deletes legacy source rows.
  * Never create new Keycloak identity/role assignments in this migration.
  */
 return new class extends Migration {
@@ -40,14 +41,10 @@ return new class extends Migration {
                     // business rights. Neither may be reintroduced as a row.
                     continue;
                 }
-                if (!isset($mapping[$oldRole])) {
-                    // Never discard a nonstandard manually configured grant.
-                    if (((bool) $row->allowed || (bool) ($row->denied ?? false))
-                        && isset($clientPermissions[$permission])) {
-                        throw new RuntimeException('Unmapped active Clients legacy role; V2 cleanup aborted');
-                    }
-                    continue;
-                }
+                // Unknown/production-manager role IDs are validated and
+                // resolved AFTER the inter-service Timesheets transfer,
+                // against Employees' actual production department aliases.
+                if (!isset($mapping[$oldRole])) continue;
                 if (!isset($clientPermissions[$permission])) continue;
                 $dest = $mapping[$oldRole];
                 $exists = DB::table('client_contour_permissions')
@@ -97,19 +94,11 @@ return new class extends Migration {
                 ]);
             }
 
-            // Timesheets has already imported its permissions into its own
-            // DB. Remove only Clients-owned historical copies here.
-            $rows = DB::table('client_contour_permissions')->get(['id','role','permission']);
-            $remove = [];
-            foreach ($rows as $row) {
-                $canonical = preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', (string) $row->role) === 1;
-                if (!$canonical || str_starts_with((string) $row->permission, 'timesheets.')) {
-                    $remove[] = (int) $row->id;
-                }
-            }
-            foreach (array_chunk($remove, 400) as $ids) {
-                DB::table('client_contour_permissions')->whereIn('id', $ids)->delete();
-            }
+            // Do not delete source rows yet. The deployment must first
+            // transfer Timesheets permissions to its owning service, then
+            // resolve production head:* aliases from Employees. The finalizer
+            // deletes ALL obsolete role/Timesheets rows atomically.
+
         });
     }
 
