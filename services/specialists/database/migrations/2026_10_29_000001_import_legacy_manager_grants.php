@@ -17,7 +17,6 @@ return new class extends Migration {
                 'specialists.profiles.view'=>'team',
                 'specialists.profiles.manage'=>'team',
                 'specialists.catalog.view'=>'all',
-                'specialists.catalog.manage'=>'all',
             ] as $permission=>$scope) {
                 DB::table('specialists_role_permissions')->insertOrIgnore([
                     'role'=>'head:*','permission'=>$permission,
