@@ -47,10 +47,10 @@ return new class extends Migration {
                 if (!isset($mapping[$oldRole])) continue;
                 if (!isset($clientPermissions[$permission])) continue;
                 $dest = $mapping[$oldRole];
-                $exists = DB::table('client_contour_permissions')
+                $target = DB::table('client_contour_permissions')
                     ->where('role', $dest)->where('permission', $permission)
-                    ->exists();
-                if (!$exists) {
+                    ->lockForUpdate()->first();
+                if (!$target) {
                     DB::table('client_contour_permissions')->insert([
                         'role' => $dest, 'permission' => $permission,
                         'allowed' => (bool) $row->allowed,
@@ -58,7 +58,36 @@ return new class extends Migration {
                         'denied' => (bool) ($row->denied ?? false),
                         'created_at' => now(), 'updated_at' => now(),
                     ]);
+                    continue;
                 }
+                $same = (bool) $target->allowed === (bool) $row->allowed
+                    && (string) $target->scope === (string) $row->scope
+                    && (bool) ($target->denied ?? false) === (bool) ($row->denied ?? false);
+                if ($same) continue;
+                // The old UI and the new UI coexisted for a while. A newer
+                // audited administrator edit wins even if it was made on the
+                // historical column. Missing or equal audit timestamps are
+                // ambiguous: never silently discard a different live rule.
+                $oldEdit = DB::table('client_contour_permission_audit')
+                    ->where('role', $oldRole)->where('permission', $permission)
+                    ->max('created_at');
+                $newEdit = DB::table('client_contour_permission_audit')
+                    ->where('role', $dest)->where('permission', $permission)
+                    ->max('created_at');
+                if ($oldEdit !== null && ($newEdit === null
+                    || strtotime((string)$oldEdit) > strtotime((string)$newEdit))) {
+                    DB::table('client_contour_permissions')
+                        ->where('id', $target->id)->update([
+                            'allowed'=>(bool)$row->allowed,
+                            'scope'=>(string)$row->scope,
+                            'denied'=>(bool)($row->denied ?? false),
+                            'updated_at'=>now(),
+                        ]);
+                } elseif ($newEdit === null || ($oldEdit !== null
+                    && strtotime((string)$oldEdit) === strtotime((string)$newEdit))) {
+                    throw new RuntimeException('Conflicting Clients role settings require review');
+                }
+
             }
 
             // Head of Client Service gets the combined Clients business
