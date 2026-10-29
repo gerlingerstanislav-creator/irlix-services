@@ -2,6 +2,16 @@
 
 ClientMember relationship expansion is deployed separately from historical import. This release introduces Clients ClientMember/partner directory/MemberTerms and Timesheets integration but does not run the legacy Migration coordinator or transfer old Timesheets facts. Preserve all existing production business data. Backwards Laravel migrations are not a data-preserving rollback; take normal DB snapshots before promotion, run deployment migrations and verify internal Clients ↔ Timesheets APIs, permissions and UI. Historical-data cutover remains tracked in PR #564.
 
+## CI checks and deployment notifications
+
+Integration Docker builds share BuildKit caches with the registered image build
+pipeline; integration images are **never** pushed as production artifacts.
+An empty Docker image plan avoids an unnecessary runner, but production remains
+gated by exact-SHA `CI verified`, the release candidate and post-deploy smoke.
+Telegram success notifications are sent only when the actual deploy and stand
+verification succeed, not for an intentionally skipped deploy. The one-time
+Timesheets 278 repair is manual-only with a confirmation input on `main`.
+
 ## Защита активной миграции во время релиза
 
 При выпуске изменений `migration`, `migration-worker`, `migration-ops`
