@@ -94,12 +94,18 @@ final class TimesheetsRoleAuthorization
     public static function restrictToLegacy(array $v2, array $legacy): array
     {
         $rank = ['none'=>0,'own'=>1,'team'=>2,'all'=>3];
-        foreach ([
-            'timesheets.management.view','timesheets.management.manage',
-            'timesheets.analytics.view','timesheets.audit.view',
-        ] as $permission) {
+        $sources = [
+            'timesheets.management.view'=>'timesheets.management.view',
+            'timesheets.management.manage'=>'timesheets.management.manage',
+            'timesheets.analytics.view'=>'timesheets.analytics.view',
+            'timesheets.audit.view'=>'timesheets.audit.view',
+            'timesheets.partner-hours.view'=>'timesheets.management.view',
+            'timesheets.partner-hours.manage'=>'timesheets.management.manage',
+            'timesheets.partner-hours.approve'=>'timesheets.management.manage',
+        ];
+        foreach ($sources as $permission => $legacyPermission) {
             $new = (array) ($v2[$permission] ?? []);
-            $old = (array) ($legacy[$permission] ?? []);
+            $old = (array) ($legacy[$legacyPermission] ?? []);
             $newScope = (string) ($new['scope'] ?? 'none');
             $oldScope = (string) ($old['scope'] ?? 'none');
             $newRank = $rank[$newScope] ?? 0;
