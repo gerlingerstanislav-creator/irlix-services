@@ -169,4 +169,14 @@ DB::table('timesheets_role_permissions')->delete();
 $test($execute($token, '/api/workspace')[0] === 403,
     'Missing V2 grant was replaced by the historical fallback');
 
-echo "Timesheets isolated real Keycloak-signed JWT -> local V2 own/deny: PASS\n";
+// Isolated request-level rollback rehearsal, not a production container
+// restart: with V2 failing closed, switching only this service's flag back
+// to false must restore its original signed service:timesheets admission.
+putenv('IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED=false');
+$test($execute($token, '/api/workspace')[0] === 200,
+    'Disabling only Timesheets V2 did not restore legacy signed admission');
+putenv('IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED=true');
+$test($execute($token, '/api/workspace')[0] === 403,
+    'Re-enabled Timesheets V2 did not reinstate default deny');
+
+echo "Timesheets isolated real Keycloak-signed JWT -> local V2 own/deny and flag rollback: PASS\n";
