@@ -56,7 +56,7 @@ function closeMenu() { menuOpen.value = false; }
           </nav>
         </header>
 
-        <main id="site-concept-home">
+        <div id="site-concept-home">
           <section class="site-hero" aria-labelledby="site-hero-title">
             <div class="site-hero__copy">
               <p class="site-kicker"><span class="site-kicker__line"></span> ENGINEERING × AI × PEOPLE</p>
@@ -157,7 +157,7 @@ function closeMenu() { menuOpen.value = false; }
               <a class="site-link-button site-link-button--light" href="https://irlix.com/" target="_blank" rel="noopener noreferrer">Обсудить задачу <span aria-hidden="true">↗</span></a>
             </div>
           </section>
-        </main>
+        </div>
 
         <footer class="site-footer">
           <img :src="darkLogo" alt="IRLIX" width="106" height="46" />
