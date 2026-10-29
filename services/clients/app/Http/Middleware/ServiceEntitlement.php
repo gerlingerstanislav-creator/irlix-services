@@ -74,6 +74,11 @@ final class ServiceEntitlement
             }
             $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
             if (!in_array('service:clients', $roles, true)) {
+                if ($request->is('api/permissions/me')
+                    && in_array('service:timesheets', $roles, true)) {
+                    $request->attributes->set('clients_timesheets_only', true);
+                    return $next($request);
+                }
                 return response()->json(['message' => 'Service access denied'], 403);
             }
             return $next($request);
