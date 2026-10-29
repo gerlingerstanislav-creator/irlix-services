@@ -29,6 +29,10 @@ const error = ref('');
 const notice = ref('');
 const createName = ref('');
 const createFolderOpen = ref(false);
+const permanentDeleteEnabled = ref(false);
+const purgeItem = ref(null);
+const purgeConfirmName = ref('');
+const purgeError = ref('');
 const uploadInput = ref(null);
 const dropActive = ref(false);
 const dropTargetId = ref('');
@@ -150,7 +154,11 @@ const actionsFor = item => [
     { id: 'move', label: 'Переместить' }, { id: 'share', label: 'Настроить доступ' },
     { id: 'history', label: 'История действий' }, { id: 'trash', label: 'В корзину', danger: true },
   ] : []),
-  ...(mode.value === 'trash' && canManage(item) ? [{ id: 'restore', label: 'Восстановить' }] : []),
+  ...(mode.value === 'trash' && canManage(item) ? [
+    ...(!item.purge_pending ? [{ id: 'restore', label: 'Восстановить' }] : []),
+    ...(permanentDeleteEnabled.value && item.kind === 'file'
+      ? [{ id: 'purge', label: item.purge_pending ? 'Повторить полное удаление' : 'Удалить навсегда', danger: true }] : []),
+  ] : []),
 ];
 const showingNormal = computed(() => mode.value !== 'trash');
 const canCreate = computed(() => mode.value === 'mine' || (mode.value === 'shared' && Boolean(parentId.value)));
@@ -285,6 +293,7 @@ async function refresh() {
     const result = await request(url);
     if (serial !== refreshSerial) return;
     entries.value = Array.isArray(result.entries) ? result.entries : [];
+    permanentDeleteEnabled.value = mode.value === 'trash' && result.permanent_delete_enabled === true;
     clearSelection();
     try { const data = await request('/stats'); if (serial === refreshSerial) stats.value = data; }
     catch { if (serial === refreshSerial) stats.value = null; }
@@ -292,7 +301,7 @@ async function refresh() {
   finally { if (serial === refreshSerial) loading.value = false; }
 }
 async function bulkAction(action) {
-  const chosen = selectedItems.value.filter(item => action === 'restore' || canManage(item));
+  const chosen = selectedItems.value.filter(item => !item.purge_pending && (action === 'restore' || canManage(item)));
   if (!chosen.length || busy.value) return;
   if (action === 'trash' && !window.confirm('Переместить выбранные объекты в корзину?')) return;
   busy.value = true; error.value = '';
@@ -476,8 +485,38 @@ async function uploadFiles(chosen, destinationId = parentId.value) {
     if (uploadInput.value) uploadInput.value.value = '';
   }
 }
+function openPurge(item) {
+  if (!permanentDeleteEnabled.value || mode.value !== 'trash' || item.kind !== 'file' || !canManage(item)) return;
+  purgeItem.value = item;
+  purgeConfirmName.value = '';
+  purgeError.value = '';
+}
+async function submitPurge() {
+  const item = purgeItem.value;
+  if (!item || busy.value || purgeConfirmName.value !== item.name) return;
+  busy.value = true;
+  purgeError.value = '';
+  error.value = '';
+  try {
+    await request('/objects/' + encodeURIComponent(item.id) + '/purge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm_name: purgeConfirmName.value }),
+    });
+    purgeItem.value = null;
+    purgeConfirmName.value = '';
+    notice.value = 'Рабочая копия и все версии файла удалены навсегда';
+    await refresh();
+  } catch (err) {
+    purgeError.value = err.message || 'Удаление не удалось. Можно повторить.';
+    await refresh();
+  } finally {
+    busy.value = false;
+  }
+}
 async function mutate(item, action) {
   if (busy.value) return;
+  if (action === 'purge') return openPurge(item);
   if (action === 'preview') return openPreview(item);
   if (action === 'download') return download(item);
   if (action === 'share') return openSharing(item);
@@ -848,6 +887,29 @@ onMounted(() => refresh());
       </span>
     </div>
 
+    <div v-if="purgeItem" class="storage-overlay" @click.self="!busy && (purgeItem=null)">
+      <form class="storage-modal storage-small-modal storage-v1-purge" @submit.prevent="submitPurge">
+        <div class="storage-modal-head">
+          <h2>Удалить файл навсегда?</h2>
+          <button type="button" :disabled="busy" aria-label="Закрыть" @click="purgeItem=null">×</button>
+        </div>
+        <p>Из рабочего хранилища будут удалены файл <strong>{{ purgeItem.name }}</strong> и все его версии.
+          Восстановить его через корзину нельзя. Резервные архивы сохраняются до истечения своего срока хранения.</p>
+        <p v-if="purgeItem.purge_pending" role="status">Предыдущая попытка завершилась не полностью.
+          Повторение продолжит удаление оставшихся версий.</p>
+        <label>Для подтверждения введите точное название файла:
+          <input v-model="purgeConfirmName" :disabled="busy" :placeholder="purgeItem.name"
+            autocomplete="off" maxlength="160" required />
+        </label>
+        <p v-if="purgeError" class="storage-v1-purge-error" role="alert">{{ purgeError }}</p>
+        <div class="storage-modal-actions">
+          <UiButton type="button" variant="secondary" :disabled="busy" @click="purgeItem=null">Отмена</UiButton>
+          <UiButton :disabled="busy || purgeConfirmName !== purgeItem.name">
+            {{ busy ? 'Удаляем…' : 'Удалить навсегда' }}
+          </UiButton>
+        </div>
+      </form>
+    </div>
     <div v-if="createFolderOpen" class="storage-overlay" @click.self="createFolderOpen=false">
       <form class="storage-modal storage-small-modal" @submit.prevent="createFolder">
         <div class="storage-modal-head"><h2>Новая папка</h2><button type="button" @click="createFolderOpen=false">×</button></div>
