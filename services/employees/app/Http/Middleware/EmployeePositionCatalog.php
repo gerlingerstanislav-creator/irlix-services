@@ -16,6 +16,13 @@ class EmployeePositionCatalog
             return $next($request);
         }
 
+        // Historical corrections validate their own position scope and permit an
+        // unchanged closed position from an older assignment.
+        if ($request->isMethod('PUT')
+            && preg_match('~^api/employees/\d+/assignment-history/\d+$~', $request->path())) {
+            return $next($request);
+        }
+
         $method = strtoupper($request->method());
         if (in_array($method, ['GET', 'HEAD', 'OPTIONS', 'DELETE'], true)) {
             return $next($request);
