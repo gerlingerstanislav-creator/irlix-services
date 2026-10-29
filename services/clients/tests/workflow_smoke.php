@@ -219,7 +219,7 @@ namespace {
     $departmentChain = [];
     $generic = $resolver->resolve(workflowRequest());
     check(!in_array('department-manager', $generic['roles'], true) && !isset($generic['permissions']['attempts.manage']), 'Nonproduction manager gains Clients role');
-    check(isset($generic['permissions']['timesheets.management.view']), 'Generic manager lost existing Timesheets grants');
+    check(!isset($generic['permissions']['timesheets.management.view']), 'Clients still grants Timesheets rights after their move to the Timesheets service');
     seed([]);
     $create = workflowRequest(['specialist_id' => 201, 'specialist_name' => 'Synthetic specialist'], ['department-manager']);
     $create->attributes->set('client_contour_access', $access);
