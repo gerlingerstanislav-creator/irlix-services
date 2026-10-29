@@ -170,6 +170,7 @@ jobs:
           python3 -m unittest discover -s scripts/tests -p 'test_migration_control.py' -v
           python3 -m unittest discover -s scripts/tests -p 'test_migration_retention.py' -v
           python3 -m unittest discover -s scripts/tests -p 'test_keycloak_authz_rollout.py' -v
+          python3 -m unittest discover -s scripts/ci/tests -p 'test_authz_v2_activation.py' -v
           python3 -m unittest discover -s scripts/ci/tests -p 'test_authz_production_preflight.py' -v
           python3 -m unittest discover -s scripts/ci/tests -p 'test_app_key_provisioning.py' -v
           python3 -m unittest discover -s scripts/ci/tests -p 'test_resource_host_disk.py' -v
