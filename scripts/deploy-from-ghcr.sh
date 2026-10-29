@@ -358,8 +358,10 @@ finance_policy_import=false
 for service in $MIGRATE_SERVICES; do
   case "$service" in employees|finance) finance_policy_import=true ;; esac
 done
-if [ "$finance_policy_import" = true ]; then
+finance_import_done=$($SUDO sh -c "grep '^IRLIX_FINANCE_V2_DENIAL_IMPORT_DONE=' .env 2>/dev/null | tail -n1 | cut -d= -f2-" || true)
+if [ "$finance_policy_import" = true ] && [ "$finance_import_done" != true ]; then
   $SUDO python3 scripts/authz/transfer_employees_finance.py
+  upsert_env IRLIX_FINANCE_V2_DENIAL_IMPORT_DONE true
 fi
 
 # Financial records must not become available through the portal before the
