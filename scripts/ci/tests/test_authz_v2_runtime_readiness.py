@@ -72,6 +72,10 @@ class AuthzReadinessTests(unittest.TestCase):
         self.assertEqual(result["signed_role_object_e2e"], "NOT TESTED")
         self.assertEqual(result["protected_matrix_backups"], "NOT TESTED")
 
+    def test_required_timesheets_personal_view_is_audited(self):
+        self.assertIn("timesheets.mine.view", mod.CRITICAL_PERMISSIONS["timesheets"])
+        self.assertNotIn("INSERT ", mod.CRITICAL_COVERAGE_PHP.upper())
+
     def test_probe_output_never_forwards_secrets_or_raw_roles(self):
         safe = {"format":"irlix-authz-runtime-readiness-v1",
                 "jwt_gate_consistent":True,"all_local_flags_disabled":True}
