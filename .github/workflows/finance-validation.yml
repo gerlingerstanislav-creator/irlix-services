@@ -37,11 +37,9 @@ jobs:
         with:
           fetch-depth: 0
       - id: select
-        env:
-          PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           if [ "${GITHUB_EVENT_NAME}" = pull_request ]; then
-            python3 scripts/ci/workflow_scope.py finance-validation --base "$PR_BASE"
+            python3 scripts/ci/workflow_scope.py finance-validation --pr
           else
             python3 scripts/ci/workflow_scope.py finance-validation
           fi
