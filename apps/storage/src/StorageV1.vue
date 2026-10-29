@@ -116,7 +116,7 @@ const typeLabel = item => ({
 })[typeOf(item)] || '';
 const typeIcon = item => item.kind === 'folder' ? 'folder' : 'file-text';
 const isImage = item => item.kind === 'file' && /\.(png|jpe?g|gif|webp)$/i.test(item.name);
-const thumbnailUrl = item => '/api/storage/v1/preview/' + encodeURIComponent(item.id);
+const thumbnailUrl = item => '/api/storage/v1/thumbnail/' + encodeURIComponent(item.id);
 const displayedSize = item => item.kind === 'folder' ? 'Папка' : (item.size == null ? '—' : readableSize(item.size));
 function toggleSelected(item, checked) {
   const next = new Set(selected.value);
