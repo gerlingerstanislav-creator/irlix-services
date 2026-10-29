@@ -484,7 +484,7 @@ test('Storage V1 opens an authenticated in-app image viewer with controls', () =
   assert.ok(viewer.includes('aria-label="Увеличить изображение"'));
   assert.ok(viewer.includes('aria-label="Следующее изображение"'));
   assert.ok(viewer.includes('class="storage-preview-state" role="alert"'));
-  assert.ok(css.includes('.storage-v1 .storage-image-preview-content{overflow:auto'));
+  assert.ok(css.includes('.storage-v1 .storage-preview-modal .storage-image-preview-content{overflow:auto'));
   assert.ok(css.includes('.storage-v1 .storage-image-controls{'));
   assert.ok(api.includes('_authorize(repo, actor, object_id, Permission.READ)'));
   assert.ok(api.includes('"Content-Security-Policy": "sandbox; default-src'));
