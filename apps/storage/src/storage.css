@@ -444,3 +444,11 @@ body:has(.storage-v1-share) > .ui-search-select__menu--teleported .ui-search-sel
   .storage-v1 .storage-image-controls{justify-content:center;gap:8px}
   .storage-v1 .storage-image-controls-group{gap:5px}
 }
+
+.storage-v1 .storage-v1-purge p{
+  font-size:12px;line-height:1.55;overflow-wrap:anywhere;
+  color:var(--irlix-color-text);
+}
+.storage-v1 .storage-v1-purge .storage-v1-purge-error{
+  color:var(--irlix-color-danger,#b42318);
+}

@@ -84,6 +84,17 @@ CREATE TRIGGER IF NOT EXISTS versions_no_update BEFORE UPDATE ON file_versions
 BEGIN SELECT RAISE(ABORT, 'versions are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS versions_no_delete BEFORE DELETE ON file_versions
 BEGIN SELECT RAISE(ABORT, 'versions are append-only'); END;
+CREATE TABLE IF NOT EXISTS purge_requests (
+    object_id TEXT PRIMARY KEY REFERENCES objects(id) ON DELETE RESTRICT,
+    owner_employee_id INTEGER NOT NULL CHECK(owner_employee_id > 0),
+    requested_by_employee_id INTEGER NOT NULL CHECK(requested_by_employee_id > 0),
+    state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending', 'completed')),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP,
+    CHECK((state='pending' AND completed_at IS NULL)
+      OR (state='completed' AND completed_at IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS purge_requests_owner_idx ON purge_requests(owner_employee_id,state);
 COMMIT;
 """
 
@@ -97,7 +108,7 @@ class SQLiteCompatConnection:
 
     def execute(self, sql, params=()):
         # Never interpolate request parameters into SQL text.
-        sql = re.sub(r"\bstorage\.(objects|grants|audit_events|file_versions)\b",
+        sql = re.sub(r"\bstorage\.(objects|grants|audit_events|file_versions|purge_requests)\b",
                      lambda match: match.group(1), sql)
         sql = re.sub(r"::(?:text|bigint|jsonb)", "", sql, flags=re.I)
         sql = re.sub(r"\bnow\(\)", "CURRENT_TIMESTAMP", sql, flags=re.I)

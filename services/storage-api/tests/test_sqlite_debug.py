@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from PIL import Image
+from botocore.exceptions import ClientError
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -26,6 +27,8 @@ class FakeS3:
         self.objects[Key] = (bytes(Body), dict(Metadata), ContentType)
 
     def head_object(self, *, Bucket, Key):
+        if Key not in self.objects:
+            raise ClientError({"Error": {"Code": "404"}}, "HeadObject")
         body, meta, content_type = self.objects[Key]
         return {"ContentLength": len(body), "Metadata": meta, "ContentType": content_type}
 
@@ -36,6 +39,15 @@ class FakeS3:
 
     def copy_object(self, *, Bucket, Key, CopySource):
         self.objects[Key] = self.objects[CopySource["Key"]]
+
+    def get_bucket_versioning(self, *, Bucket):
+        return {"Status": getattr(self, "versioning", "")}
+
+    def delete_object(self, *, Bucket, Key):
+        if Key == getattr(self, "fail_delete_key", None):
+            raise ClientError({"Error": {"Code": "ServiceUnavailable"}}, "DeleteObject")
+        self.objects.pop(Key, None)
+        return {}
 
 
 class SQLiteDebugTests(unittest.TestCase):
@@ -224,6 +236,100 @@ class SQLiteDebugTests(unittest.TestCase):
                                       files={"file": ("fake.png", b"invalid", "image/png")})
                 self.assertEqual(caller(client, 11, "get",
                                         f"/v1/thumbnail/{invalid_file.json()['id']}").status_code, 415)
+        finally:
+            app.dependency_overrides.clear()
+
+
+    def test_permanent_purge_all_versions_retries_and_keeps_immutable_audit(self):
+        fake = FakeS3()
+        from app import v1_api
+
+        async def actor(request: Request):
+            request.state.storage_actor_id = int(request.headers.get("x-test-actor", "11"))
+            request.state.storage_platform_admin = request.headers.get("x-test-admin") == "1"
+
+        def call(client, employee, method, path, **kw):
+            headers = {"x-test-actor": str(employee)}
+            return getattr(client, method)(path, headers=headers, **kw)
+
+        app.dependency_overrides[v1_guard] = actor
+        try:
+            with patch.dict(os.environ, {
+                "STORAGE_V1_PERMANENT_DELETE_ENABLED": "1",
+                "STORAGE_V1_QUOTA_BYTES": str(10 * 1024 * 1024),
+            }), patch.object(v1_api, "_s3", return_value=fake), \
+                 patch.object(v1_api, "_employee_active", side_effect=lambda _req, emp: emp == 12), \
+                 TestClient(app) as client:
+                file = call(client, 11, "post", "/v1/files",
+                            files={"file": ("final.txt", b"version1", "text/plain")}).json()
+                oid = file["id"]
+                updated = call(client, 11, "post", f"/v1/objects/{oid}/versions",
+                               files={"file": ("final.txt", b"version2", "text/plain")})
+                self.assertEqual(updated.status_code, 200, updated.text)
+                keys = set(fake.objects)
+                self.assertEqual(len(keys), 2)
+                self.assertEqual(call(client, 11, "get", "/v1/stats").json()["bytes_with_versions"], 16)
+                self.assertEqual(call(client, 11, "post", f"/v1/objects/{oid}/trash").status_code, 200)
+                endpoint = f"/v1/objects/{oid}/purge"
+                self.assertEqual(call(client, 12, "post", endpoint, json={"confirm_name": "final.txt"}).status_code, 403)
+                self.assertEqual(call(client, 11, "post", endpoint, json={"confirm_name": "wrong"}).status_code, 422)
+                self.assertEqual(len(fake.objects), 2)
+                fake.fail_delete_key = sorted(keys)[-1]
+                pending = call(client, 11, "post", endpoint, json={"confirm_name": "final.txt"})
+                self.assertEqual(pending.status_code, 503, pending.text)
+                trash = call(client, 11, "get", "/v1/trash").json()
+                self.assertTrue(trash["permanent_delete_enabled"])
+                self.assertTrue(trash["entries"][0]["purge_pending"])
+                self.assertEqual(call(client, 11, "get", f"/v1/files/{oid}").status_code, 403)
+                self.assertEqual(call(client, 11, "post", f"/v1/objects/{oid}/restore").status_code, 403)
+                fake.fail_delete_key = None
+                done = call(client, 11, "post", endpoint, json={"confirm_name": "final.txt"})
+                self.assertEqual(done.status_code, 200, done.text)
+                self.assertTrue(done.json()["purged"])
+                self.assertEqual(fake.objects, {})
+                self.assertEqual(call(client, 11, "get", "/v1/trash").json()["entries"], [])
+                self.assertEqual(call(client, 11, "get", "/v1/stats").json()["bytes_with_versions"], 0)
+                with metadata_connection() as conn:
+                    self.assertEqual(conn.execute(
+                        "SELECT COUNT(*) FROM storage.file_versions WHERE object_id=%s", (oid,)
+                    ).fetchone()[0], 2)
+                    events = [row[0] for row in conn.execute(
+                        "SELECT action FROM storage.audit_events WHERE object_id=%s", (oid,)
+                    ).fetchall()]
+                    self.assertEqual(events.count("file.purge.requested"), 1)
+                    self.assertEqual(events.count("file.purge.completed"), 1)
+                replacement = call(client, 11, "post", "/v1/files",
+                                    files={"file": ("final.txt", b"new", "text/plain")})
+                self.assertEqual(replacement.status_code, 200, replacement.text)
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_purge_flag_and_native_s3_versions_block_irreversible_mutation(self):
+        fake = FakeS3()
+        from app import v1_api
+
+        async def actor(request: Request):
+            request.state.storage_actor_id = 11
+            request.state.storage_platform_admin = False
+
+        app.dependency_overrides[v1_guard] = actor
+        try:
+            with patch.object(v1_api, "_s3", return_value=fake), TestClient(app) as client:
+                upload = client.post("/v1/files", files={"file": ("photo.txt", b"x")})
+                self.assertEqual(upload.status_code, 200, upload.text)
+                oid = upload.json()["id"]
+                self.assertEqual(client.post(f"/v1/objects/{oid}/trash").status_code, 200)
+                disabled = client.post(f"/v1/objects/{oid}/purge", json={"confirm_name": "photo.txt"})
+                self.assertEqual(disabled.status_code, 503)
+                with patch.dict(os.environ, {"STORAGE_V1_PERMANENT_DELETE_ENABLED": "1"}):
+                    fake.versioning = "Enabled"
+                    blocked = client.post(f"/v1/objects/{oid}/purge", json={"confirm_name": "photo.txt"})
+                    self.assertEqual(blocked.status_code, 409)
+                    self.assertEqual(len(fake.objects), 1)
+                    self.assertFalse(client.get("/v1/trash").json()["entries"][0]["purge_pending"])
+                    fake.versioning = ""
+                    self.assertEqual(client.post(f"/v1/objects/{oid}/purge",
+                                                 json={"confirm_name": "photo.txt"}).status_code, 200)
         finally:
             app.dependency_overrides.clear()
 

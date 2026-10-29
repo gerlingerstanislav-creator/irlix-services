@@ -247,29 +247,43 @@ def available(request: Request):
     return {"entries": result}
 
 
+def _purge_enabled():
+    # Only enable after backup/restore, retention/legal hold and working-copy
+    # S3 versioning preflight. User intent alone cannot prove recoverability.
+    return os.environ.get("STORAGE_V1_PERMANENT_DELETE_ENABLED", "0") == "1"
+
+
 @router.get("/trash")
 def list_trashed(request: Request):
     actor = _identity(request)
     with metadata_connection() as conn:
         repo = _repo(conn, request)
+        select = (
+            "SELECT o.id::text,o.kind,o.owner_employee_id,o.display_name,o.deleted_at,pr.state "
+            "FROM storage.objects o LEFT JOIN storage.purge_requests pr ON pr.object_id=o.id "
+            "WHERE o.state='trashed' AND (pr.state IS NULL OR pr.state='pending') "
+        )
         if actor.platform_admin:
-            rows = conn.execute(
-                "SELECT id::text,kind,owner_employee_id,display_name,deleted_at "
-                "FROM storage.objects WHERE state='trashed' ORDER BY deleted_at DESC LIMIT 200"
-            ).fetchall()
+            rows = conn.execute(select + "ORDER BY o.deleted_at DESC LIMIT 200").fetchall()
         else:
             rows = conn.execute(
-                "SELECT id::text,kind,owner_employee_id,display_name,deleted_at "
-                "FROM storage.objects WHERE owner_employee_id=%s AND state='trashed' "
-                "ORDER BY deleted_at DESC LIMIT 200", (actor.employee_id,)
+                select + "AND o.owner_employee_id=%s ORDER BY o.deleted_at DESC LIMIT 200",
+                (actor.employee_id,)
             ).fetchall()
         result = []
-        for oid, kind, owner, title, removed in rows:
-            if can_access(actor, oid, Permission.RESTORE, repo.load_objects(oid), repo.load_grants(oid)):
+        for oid, kind, owner, title, removed, purge_state in rows:
+            pending = purge_state == "pending"
+            if pending:
+                allowed = actor.platform_admin or owner == actor.employee_id
+            else:
+                allowed = can_access(actor, oid, Permission.RESTORE, repo.load_objects(oid),
+                                     repo.load_grants(oid))
+            if allowed:
                 result.append({"id": oid, "kind": kind, "name": title,
-                               "owner_employee_id": owner, "deleted_at": removed})
+                               "owner_employee_id": owner, "deleted_at": removed,
+                               "purge_pending": pending})
         result = _decorate_entries(conn, result)
-    return {"entries": result}
+    return {"entries": result, "permanent_delete_enabled": _purge_enabled()}
 
 
 @router.get("/objects/{object_id}/audit")
@@ -546,6 +560,114 @@ def restore(request: Request, object_id: UUID):
     return {"restored": True}
 
 
+def _delete_current_s3_bytes(client, key: str):
+    """Delete a known unversioned working-copy key and verify it is absent.
+
+    S3 bucket-native versioning is separately rejected before any mutation:
+    application-level versions are independent, recorded S3 keys.
+    """
+    try:
+        client.delete_object(Bucket=_bucket(), Key=key)
+        try:
+            client.head_object(Bucket=_bucket(), Key=key)
+        except ClientError as err:
+            if err.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+                return
+            raise
+        raise HTTPException(503, "Удаление файла пока не подтверждено")
+    except (ClientError, BotoCoreError, OSError):
+        raise HTTPException(503, "Не удалось удалить файл из рабочего хранилища")
+
+
+class PurgeInput(BaseModel):
+    confirm_name: str = Field(min_length=1, max_length=160)
+
+
+@router.post("/objects/{object_id}/purge")
+def purge_file(request: Request, object_id: UUID, data: PurgeInput):
+    """Explicit, retryable, owner-only deletion of ALL working S3 file versions.
+
+    Phase one commits a tombstone preventing restore/download. Phase two deletes
+    immutable version keys; only after confirming absence is the file marked
+    completed and omitted from quotas and Trash. Backups are not contacted.
+    """
+    actor = _identity(request)
+    if not _purge_enabled():
+        raise HTTPException(503, "Полное удаление пока не включено: требуется подтверждение восстановления")
+    oid = _normalize_id(object_id)
+    client = _s3()
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        repo.lock()
+        item = repo.object_summary(oid)
+        if not item:
+            raise HTTPException(404, "Файл не найден")
+        if not actor.platform_admin and item[2] != actor.employee_id:
+            raise HTTPException(403, "Полное удаление доступно только владельцу")
+        if item[1] != "file" or item[6] != "trashed":
+            raise HTTPException(409, "Удалять навсегда можно только файлы из корзины")
+        row = conn.execute(
+            "SELECT state FROM storage.purge_requests WHERE object_id=%s", (oid,)
+        ).fetchone()
+        if row and row[0] == "completed":
+            return {"purged": True, "id": oid}
+        if data.confirm_name != item[4]:
+            raise HTTPException(422, "Название файла не совпадает")
+        if not item[5] or not item[5].startswith(S3_ROOT):
+            raise HTTPException(409, "Недопустимое пространство хранения")
+        try:
+            # Never leave hidden physical S3 bucket-native versions behind.
+            versioning = client.get_bucket_versioning(Bucket=_bucket())
+        except (ClientError, BotoCoreError, AttributeError):
+            raise HTTPException(503, "Не удалось проверить настройки версий S3")
+        if versioning.get("Status") in {"Enabled", "Suspended"}:
+            raise HTTPException(409, "Полное удаление при включённом версионировании S3 недоступно")
+        if versioning.get("Status") not in (None, ""):
+            raise HTTPException(503, "Неизвестные настройки версий S3")
+        if not row:
+            conn.execute(
+                "INSERT INTO storage.purge_requests "
+                "(object_id,owner_employee_id,requested_by_employee_id) VALUES (%s,%s,%s)",
+                (oid, item[2], actor.employee_id)
+            )
+            _audit(repo, actor, oid, "file.purge.requested")
+        keys = {item[5]}
+        keys.update(row[0] for row in conn.execute(
+            "SELECT s3_key FROM storage.file_versions WHERE object_id=%s", (oid,)
+        ).fetchall())
+        if any(not key or not key.startswith(S3_ROOT) for key in keys):
+            raise HTTPException(409, "Версии содержат недопустимые ключи")
+    # A committed pending marker blocks every other operation on this ID.
+    # Partial failures remain pending for deliberate retry; never report success.
+    for key in sorted(keys):
+        _delete_current_s3_bytes(client, key)
+    with metadata_connection() as conn:
+        repo = _repo(conn, request)
+        repo.lock()
+        state = conn.execute("SELECT state FROM storage.purge_requests WHERE object_id=%s", (oid,)).fetchone()
+        if not state:
+            raise HTTPException(503, "Состояние удаления не найдено")
+        if state[0] == "pending":
+            # Free the original filename for new uploads, preserving the immutable
+            # file version rows and technical audit trail without original bytes.
+            conn.execute(
+                "UPDATE storage.objects SET display_name=%s,updated_at=now(),revision=revision+1 "
+                "WHERE id=%s AND state='trashed'",
+                ("purged-" + oid, oid)
+            )
+            conn.execute(
+                "UPDATE storage.grants SET revoked_at=now() WHERE object_id=%s AND revoked_at IS NULL",
+                (oid,)
+            )
+            conn.execute(
+                "UPDATE storage.purge_requests "
+                "SET state='completed',completed_at=now() WHERE object_id=%s AND state='pending'",
+                (oid,)
+            )
+            _audit(repo, actor, oid, "file.purge.completed")
+    return {"purged": True, "id": oid}
+
+
 @router.get("/folders/targets")
 def folder_targets(request: Request):
     actor = _identity(request)
@@ -741,7 +863,9 @@ def _storage_usage(repo, owner_id):
     row = repo.conn.execute(
         "SELECT COALESCE(SUM(v.size_bytes),0)::bigint "
         "FROM storage.file_versions v JOIN storage.objects o ON o.id=v.object_id "
-        "WHERE o.owner_employee_id=%s", (owner_id,)
+        "WHERE o.owner_employee_id=%s AND NOT EXISTS ("
+        "SELECT 1 FROM storage.purge_requests pr "
+        "WHERE pr.object_id=o.id AND pr.state='completed')", (owner_id,)
     ).fetchone()
     return int(row[0] if row else 0)
 
@@ -787,7 +911,9 @@ def storage_statistics(request: Request, employee_id: int | None = None):
             "SELECT COUNT(*) FILTER (WHERE kind='file'), "
             "COUNT(*) FILTER (WHERE kind='folder'), "
             "COUNT(*) FILTER (WHERE state='trashed') "
-            "FROM storage.objects WHERE owner_employee_id=%s", (owner,)
+            "FROM storage.objects o WHERE owner_employee_id=%s "
+            "AND NOT EXISTS (SELECT 1 FROM storage.purge_requests pr "
+            "WHERE pr.object_id=o.id AND pr.state='completed')", (owner,)
         ).fetchone()
     raw = os.environ.get("STORAGE_V1_QUOTA_BYTES", "0")
     try:

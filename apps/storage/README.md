@@ -170,3 +170,29 @@ A new **isolated** V1 implementation resides in `services/storage-api/app/access
 - Apply `001_storage_acl_audit.sql` followed by `002_file_versions.sql` in a disposable environment after S3+metadata backup. V1 remains disabled by both service admission flags until credentials, backup/restore, ACL, security and real-user QA are verified.
 - Authenticated V1 preview supports only bounded, whitelisted PDF, PNG/JPEG/GIF/WebP, UTF-8 text, CSV/log, and short MP4/WebM using a private no-store response and client-managed blob URLs. No active HTML, SVG or Office document is rendered inline. The same server-side file ACL applies to preview and download; antivirus/quarantine is still a release prerequisite.
 - Office document preview/conversion, automated retention, full-text document indexing and integrations with business service attachment histories are **not** part of these opt-in features. Do not enable public or external links.
+
+## Permanent file deletion in Storage V1 (activation gated)
+
+The owner or platform administrator can explicitly purge **individual files
+from Trash** with a filename confirmation. All application-level S3 working
+versions are deleted and verified missing; immutable audit and version
+descriptors remain as technical tombstones. Existing file names become
+available again and bytes are excluded from quota accounting. No folder
+or bulk irreversible deletion is provided.
+
+A durable purge request is committed before touching S3, immediately
+denying restore and all direct reads, and allowing reattempt after partial
+S3 failure. The UI offers "Повторить полное удаление" on a pending file.
+No background automatic purge is introduced. S3 native versioning must be
+disabled, or the request fails closed without deleting bytes; all existing
+application version keys are individually removed.
+
+The feature is **disabled by default** with
+`STORAGE_V1_PERMANENT_DELETE_ENABLED=0` (or unset). Only the operator
+can enable it after successful backup + restore rehearsal, retention/legal
+hold review, confirmed S3 versioning configuration and production readiness.
+The UI does not display the destructive action while disabled.
+
+Only live working-copy bytes are deleted. Backups and replicas are not
+modified; their expiration depends on separately configured retention
+policies, which are not implemented or validated by this feature.

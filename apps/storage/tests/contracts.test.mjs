@@ -241,7 +241,10 @@ test('V1 operations support immutable versions, scoped search, bulk actions, and
   assert.ok(compose.includes('STORAGE_V1_QUOTA_BYTES:'));
   assert.ok(versions.includes('storage.file_versions'));
   assert.ok(versions.includes('storage.reject_version_mutation'));
-  assert.ok(!server.includes('delete_object('));
+  // Reversible Trash never deletes bytes; only the separately gated purge endpoint may.
+  assert.ok(server.includes('def _purge_enabled()'));
+  assert.ok(server.includes('@router.post("/objects/{object_id}/purge")'));
+  assert.ok(server.includes("if not _purge_enabled():"));
 });
 
 test('Storage V1 is the canonical three-section Drive, gated independently from legacy admin data', () => {
@@ -503,4 +506,30 @@ test('Storage V1 opens an authenticated in-app image viewer with controls', () =
   assert.ok(api.includes('_authorize(repo, actor, object_id, Permission.READ)'));
   assert.ok(api.includes('"Content-Security-Policy": "sandbox; default-src'));
   assert.ok(!viewer.includes('storage-s3:8333'));
+});
+
+
+test('Storage V1 permanent deletion requires Trash, owner confirmation and backend readiness', () => {
+  const vue = text('../src/StorageV1.vue');
+  const server = text('../../../services/storage-api/app/v1_api.py');
+  const sqlite = text('../../../services/storage-api/app/sqlite_metadata.py');
+  const sql = text('../../../services/storage-api/migrations/003_purge_requests.sql');
+  assert.ok(vue.includes("permanentDeleteEnabled.value = mode.value === 'trash' && result.permanent_delete_enabled === true"));
+  assert.ok(vue.includes("item.kind === 'file'"));
+  assert.ok(vue.includes("id: 'purge'"));
+  assert.ok(vue.includes("if (action === 'purge') return openPurge(item)"));
+  assert.ok(vue.includes("purgeConfirmName.value !== item.name"));
+  assert.ok(vue.includes("method: 'POST'"));
+  assert.ok(vue.includes("body: JSON.stringify({ confirm_name: purgeConfirmName.value })"));
+  assert.ok(vue.includes('Удалить файл навсегда?'));
+  assert.ok(vue.includes('Резервные архивы сохраняются до истечения своего срока хранения.'));
+  assert.ok(server.includes('@router.post("/objects/{object_id}/purge")'));
+  assert.ok(server.includes('def _purge_enabled()'));
+  assert.ok(server.includes('STORAGE_V1_PERMANENT_DELETE_ENABLED'));
+  assert.ok(server.includes("SELECT s3_key FROM storage.file_versions WHERE object_id=%s"));
+  assert.ok(server.includes('client.get_bucket_versioning(Bucket=_bucket())'));
+  assert.ok(server.includes('client.delete_object(Bucket=_bucket(), Key=key)'));
+  assert.ok(server.includes('pr.state=\'completed\''));
+  assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS storage.purge_requests'));
+  assert.ok(sqlite.includes('CREATE TABLE IF NOT EXISTS purge_requests'));
 });
