@@ -16,6 +16,21 @@ UI_APPS = ("web", "clients", "vacations", "timesheets", "specialists",
 KEYCLOAK_BACKENDS = ("platform-core", "migration", "employees", "finance")
 
 
+def pr_merge_base():
+    """First parent of the actual checked-out PR merge SHA is its tested base.
+
+    GitHub event pull_request.base.sha can lag behind the base embedded in
+    refs/pull/N/merge when development advances independently.
+    """
+    parents = subprocess.check_output(
+        ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
+        cwd=ROOT, text=True,
+    ).strip().split()
+    if len(parents) != 3:
+        raise RuntimeError("PR checkout must be a two-parent merge commit")
+    return parents[1]
+
+
 def diff_paths(base):
     if not base or not all(c in "0123456789abcdefABCDEF" for c in base):
         raise ValueError("PR base must be a nonempty commit SHA")
@@ -85,9 +100,13 @@ def main():
         "ui-appearance-check", "keycloak-authz", "client-history-ui-check",
         "finance-validation",
     ])
-    parser.add_argument("--base", help="PR target SHA; omit only for manual/full run")
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--base", help="Explicit base SHA")
+    selection.add_argument("--pr", action="store_true",
+                           help="Use first parent of checked-out GitHub PR merge commit")
     args = parser.parse_args()
-    result = select(args.mode, diff_paths(args.base) if args.base else None)
+    base = pr_merge_base() if args.pr else args.base
+    result = select(args.mode, diff_paths(base) if base else None)
     encoded = {key: json.dumps(value, separators=(",", ":")) if isinstance(value, dict)
                else str(value).lower() if isinstance(value, bool) else value
                for key, value in result.items()}
