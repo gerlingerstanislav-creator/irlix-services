@@ -40,16 +40,37 @@ final class FinalizeLegacyClientPermissions
                         ->where('role', $role)
                         ->where('permission', $legacy->permission)
                         ->lockForUpdate()->first();
-                    // New administrator-edited V2 policy always wins. A
-                    // seeded unassigned row is not an intentional deny.
+                    // Previously the generic manager and the concrete head
+                    // were two simultaneous roles. Preserve their effective
+                    // widest scope and explicit deny, unless a newer audited
+                    // edit on the canonical head intentionally replaced it.
                     if ($dest) {
-                        $hasAudit = ClientContourPermissionAudit::query()
-                            ->where('role', $role)->where('permission', $legacy->permission)
-                            ->exists();
-                        if ($hasAudit || (bool) $dest->allowed || (bool) ($dest->denied ?? false)) continue;
-                        $dest->allowed = (bool) $legacy->allowed;
-                        $dest->denied = (bool) ($legacy->denied ?? false);
-                        $dest->scope = $dest->denied ? 'none' : (string) $legacy->scope;
+                        $headAudit = ClientContourPermissionAudit::query()
+                            ->where('role', $role)
+                            ->where('permission', $legacy->permission)
+                            ->max('created_at');
+                        $oldAudit = ClientContourPermissionAudit::query()
+                            ->where('role', 'department-manager')
+                            ->where('permission', $legacy->permission)
+                            ->max('created_at');
+                        if ($headAudit !== null && ($oldAudit === null
+                            || strtotime((string)$headAudit) >= strtotime((string)$oldAudit))) {
+                            continue;
+                        }
+                        $oldDeny = (bool) ($legacy->denied ?? false);
+                        if ($oldDeny) {
+                            $dest->denied = true;
+                            $dest->allowed = false;
+                            $dest->scope = 'none';
+                        } elseif (!(bool) ($dest->denied ?? false)) {
+                            $rank=['none'=>0,'own'=>1,'team'=>2,'all'=>3];
+                            if (!$dest->allowed ||
+                                ($rank[(string)$legacy->scope] ?? 0) >
+                                ($rank[(string)$dest->scope] ?? 0)) {
+                                $dest->allowed = true;
+                                $dest->scope = (string)$legacy->scope;
+                            }
+                        }
                         $dest->save();
                         continue;
                     }
