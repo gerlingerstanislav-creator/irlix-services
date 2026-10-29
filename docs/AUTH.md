@@ -249,3 +249,19 @@ The desired boundary is **Employees assignments → Keycloak signed identity lab
 - Проверка актуальности подписанных организационных и специальных ролей в подготавливаемых локальных режимах обращается к Employees `/access/me` только как к источнику текущих **назначений**, без использования его чужих бизнес-permissions. Старые токены с отозванной ролью должны быть отклонены. В Vacations отдельно ужесточён текущий JWT режим для кадровой роли и platform-admin; при отзыве запрет распространяется на весь устаревший токен, включая старый `scope:all`.
 - Превышать локальную область объекта нельзя: Finance/Equipment/Recruitment пока технически поддерживают только `none/all` из-за отсутствия безопасных row-level ограничителей. Specialists сохраняет ограничение production-manager tree даже при локальном `all`. Vacations workflow approvals, документы и кадровые этапы не наследуют разрешения от организационного членства автоматически.
 - **Критерий владельца 29.10.2026:** целевая V2-модель, а не совпадение со старой матрицей, определяет разрешения. Полная поимённая parity старых/новых effective grants и подключение к рабочей базе ради такой сверки не обязательны. Обязательны сохранность старых матриц и ручных записей, явная настройка разрешений V2, положительные/отрицательные сценарии по ролям и объектам, отказ в доступе к чужим конфиденциальным данным, администраторское восстановление и rollback переключателя. Сравнение со старыми правами — дополнительная диагностика несогласованных изменений. Наличие кода в production и зелёный synthetic smoke не являются приёмкой локальной V2-модели.
+
+## Initial service authorization UX
+
+A frontend must not render a `403` merely because its permission map or scoped
+role check has not resolved. During initial authorization, show the shared
+`UiLoader`/`UiPreloader` page state. After an authoritative permission response:
+
+- **allowed**: render the requested page (and keep ordinary data loading separate);
+- **forbidden**: show `403` only for an explicit denial or a resolved missing grant;
+- **error**: show a retryable `503` when the permission request fails, times out,
+  or produces an unusable response. A network error is not a denial.
+
+This is a presentation-state contract only; backend permission/scope checks remain
+mandatory and unchanged. The loading gate must apply to deep links into role
+administration pages as well as default service routes. Regression coverage lives
+in `tests/authz-loading-ui.test.mjs`.
