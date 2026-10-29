@@ -74,6 +74,44 @@ if [ "${STORAGE_UPLOAD_DIAGNOSTICS:-0}" = "1" ] && command -v docker >/dev/null 
       for (e in errors) printf "exception_class=%s count=%d\n", e, errors[e]
     }
   ' || true
+
+  # Upstream nginx can generate HTTP 500 before a request reaches FastAPI.
+  # Print counts ONLY; never expose client addresses, request headers or paths.
+  section "Storage V1 Nginx upload diagnostic (sanitized)"
+  if [ -e /var/log/nginx/access.log ]; then
+    $SUDO tail -n 20000 /var/log/nginx/access.log 2>/dev/null | awk '
+      /"POST \/api\/storage\/v1\/files HTTP\/[0-9.]+"/ {
+        item=$0
+        sub(/^.*"POST \/api\/storage\/v1\/files HTTP\/[0-9.]+"[[:space:]]+/, "", item)
+        code=substr(item, 1, 3)
+        if (code ~ /^[0-9][0-9][0-9]$/) totals[code]++
+      }
+      END {
+        for (code in totals) printf "nginx_v1_upload_status=%s count=%d\n", code, totals[code]
+      }
+    ' || true
+  else
+    echo "nginx_access_log=unavailable"
+  fi
+  if [ -e /var/log/nginx/error.log ]; then
+    $SUDO tail -n 20000 /var/log/nginx/error.log 2>/dev/null | awk '
+      /auth request unexpected status/ { auth_status++ }
+      /while reading client request body/ { body_read++ }
+      /client intended to send too large body/ { body_limit++ }
+      /No space left on device/ { no_space++ }
+      /Permission denied/ { permission++ }
+      /upstream timed out/ { upstream_timeout++ }
+      /upstream prematurely closed connection/ { upstream_closed++ }
+      /client_body_temp/ { body_temp++ }
+      /open\(\).*failed/ { open_failed++ }
+      END {
+        printf "nginx_errors auth_status=%d body_read=%d body_limit=%d no_space=%d permission=%d upstream_timeout=%d upstream_closed=%d body_temp=%d open_failed=%d\n", auth_status, body_read, body_limit, no_space, permission, upstream_timeout, upstream_closed, body_temp, open_failed
+      }
+    ' || true
+  else
+    echo "nginx_error_log=unavailable"
+  fi
+
   # A real >1 MiB multipart request is spooled to /tmp by Starlette. This
   # self-contained probe checks that path without touching any user files.
   if $SUDO docker exec "$storage_container" python -c 'import tempfile; f=tempfile.SpooledTemporaryFile(max_size=1048576); f.write(b"x" * 3145728); f.seek(0); assert len(f.read()) == 3145728; f.close()' >/dev/null 2>&1; then
