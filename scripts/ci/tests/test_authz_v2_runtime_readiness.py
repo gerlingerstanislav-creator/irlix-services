@@ -76,6 +76,42 @@ class AuthzReadinessTests(unittest.TestCase):
         self.assertIn("timesheets.mine.view", mod.CRITICAL_PERMISSIONS["timesheets"])
         self.assertNotIn("INSERT ", mod.CRITICAL_COVERAGE_PHP.upper())
 
+    def test_read_only_legacy_timesheets_source_coverage(self):
+        counts = {key: {"allowed_rows": 1, "explicit_deny_rows": 0}
+                  for key in ("timesheets.mine.view", "timesheets.management.view",
+                              "timesheets.management.manage", "timesheets.analytics.view",
+                              "timesheets.audit.view")}
+        payload = {"status": "ok", "permissions": counts,
+                   "employee_mine_view_own": True}
+        with patch.object(mod, "invoke",
+                          return_value=subprocess.CompletedProcess(
+                              [], 0, json.dumps(payload), "")):
+            result = mod.legacy_timesheets_coverage(
+                [], ["docker", "compose"])
+        self.assertEqual(result["status"], "ok")
+        self.assertTrue(result["employee_personal_view_own_in_legacy"])
+        self.assertEqual(result["source_allowed_role_counts"]["timesheets.mine.view"], 1)
+        self.assertNotIn("employee_id", json.dumps(result))
+        self.assertNotIn("SELECT *", mod.LEGACY_TIMESHEETS_PHP.upper())
+        for operation in ("INSERT ", "UPDATE ", "DELETE ", "TRUNCATE "):
+            self.assertNotIn(operation, mod.LEGACY_TIMESHEETS_PHP.upper())
+
+    def test_legacy_probe_fails_closed_on_invalid_output(self):
+        for body in ("", "garbage", '{"status":"unavailable"}',
+                     '{"status":"ok","permissions":{},"employee_mine_view_own":true}'):
+            with self.subTest(body=body), patch.object(
+                mod, "invoke",
+                return_value=subprocess.CompletedProcess([], 0, body, "")
+            ):
+                self.assertEqual(
+                    mod.legacy_timesheets_coverage([], ["docker", "compose"])["status"],
+                    "unverified")
+
+    def test_legacy_probe_does_not_seed_missing_grants(self):
+        self.assertNotIn("insertOrIgnore", mod.LEGACY_TIMESHEETS_PHP)
+        self.assertIn('where("role","employee")', mod.LEGACY_TIMESHEETS_PHP)
+        self.assertIn('where("role","not like","%:%")', mod.LEGACY_TIMESHEETS_PHP)
+
     def test_probe_output_never_forwards_secrets_or_raw_roles(self):
         safe = {"format":"irlix-authz-runtime-readiness-v1",
                 "jwt_gate_consistent":True,"all_local_flags_disabled":True}
