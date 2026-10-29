@@ -26,6 +26,26 @@ extra physical partition or new S3 instance is required for this stage.
 - Prior to wider launch decide capacity, separate volumes, PostgreSQL migration,
   backup/restore, retention and security/ACL acceptance.
 
+## Drag-and-drop upload in Storage V1
+
+Files from the desktop may be dropped into the **current folder's file area**
+(including an empty folder), or onto a **writable folder** in either the list or
+tile view. The current directory shows a drop hint; a folder target highlights.
+Dropping on an existing file uploads alongside it, never overwrites the file or
+creates a new version. The ordinary upload button uses the same uploader.
+
+- Multi-file drops are uploaded individually through the existing authenticated
+  `/api/storage/v1/files` endpoint with an explicit target `parent_id`.
+- Storage verifies parent WRITE permission, filename, quota and per-file size.
+  The browser prevents drops into Trash, onto non-editable folders or into a
+  read-only current directory. The API remains the authoritative check.
+- Success count and failed filenames are displayed separately: successful
+  uploads remain saved, and failed uploads are not automatically retried.
+- Dragging complete desktop directories (as opposed to their files) is not
+  supported; show an error rather than silently creating an empty object.
+- Changes are UI-only; no new backend permissions, tables, or file storage
+  infrastructure are introduced.
+
 ## Canonical Storage V1 shell — staged replacement
 
 The user-facing Drive keeps the same shared `UiAppShell` and three sidebar
