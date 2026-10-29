@@ -1,5 +1,48 @@
 # CI/CD: service registry and release policy
 
+## Optimized pull-request checks and build scope
+
+For a PR into `development`, `.github/workflows/ci.yml` compares its checkout with
+`github.event.pull_request.base.sha` (`--base`), not the last successful
+`development` push. This prevents unrelated changes accumulated on the integration
+branch from selecting extra Docker images. Pushes to `development` retain the
+previous-successful-CI baseline so cancelled/failed builds are not silently missed;
+`main` retains the last actually deployed ancestor as the release baseline.
+
+Scoped QA (Node tests, changed PHP syntax and synthetic Chromium) and the offline
+migration, Keycloak and Resource Monitor regressions belong to mandatory CI.
+`.github/workflows/qa.yml` is now **manual diagnostics only**; it does not run
+again on every PR or build System for unrelated changes. Its `workflow_dispatch`
+scope remains available for an explicit full/deep QA investigation.
+
+`scripts/ci/workflow_scope.py` selects the expensive portions of specialized PR
+workflows from `base...HEAD`. An unresolved PR base fails the scope job rather
+than silently skipping tests. The selector is regression-tested by
+`scripts/ci/tests/test_workflow_scope.py`:
+
+- UI Appearance builds only modified apps. Shared UI source changes still build
+  all registered appearance consumers; UI tests/docs alone do not trigger builds.
+- Finance runs frontend builds, backend checks, Clients PG and Finance PG checks
+  according to their actual inputs. Finance and Clients frontends are chosen
+  separately; cross-service backend dependencies still receive database tests.
+- Keycloak integration still issues real JWTs and exercises Clients middleware;
+  its extra backend Docker build matrix now includes only modified services, or
+  all backends after a realm/integration change.
+- Client history runs contract tests, but skips unrelated frontend builds and
+  PHP lint for backend-unrelated changes.
+
+All specialized PR workflows cancel superseded runs for the same PR. Previous
+temporary feature-branch `push` triggers are removed to prevent duplicate
+push-plus-PR execution. `workflow_dispatch` explicitly runs their full coverage
+where supported. Do not disable the main `development`-push CI, exact-SHA
+release-candidate check, provenance gate or production smoke.
+
+Telegram “deploy successful” notifications require **both** a successful actual
+deploy job and successful authentication/stand smoke job in the main CI run.
+No such notification is sent for docs-only / test-only runs where deployment is
+correctly skipped. The one-time Timesheets 278 recovery workflow is manual-only
+and requires an explicit confirmation input on `main`.
+
 ## ClientMember validation
 
 `client-member-validation.yml` checks populated PostgreSQL upgrades, concurrency and actual HTTP contracts using synthetic fixtures. Its separate feature-push-only `actual-source-copy-dry-run` job rehearses the owner-authorized migration on a private disposable copy, with production reads enforced as read-only and no production writes/deploy. PRs receive no SSH secrets. Private rows and keys must never be logged, cached or uploaded. See [the cutover guide](CLIENT_MEMBER_CUTOVER.md#actual-source-rehearsal) for boundaries and interpretation of the results. This workflow does not replace the required development/release checks.
