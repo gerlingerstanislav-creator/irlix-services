@@ -7,6 +7,7 @@ This probe does NOT activate flags and is NOT a substitute for role/object E2E.
 """
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -285,8 +286,29 @@ def collect(compose, sudo):
     }
 
 
+def default_production_compose():
+    """Use the SAME service registry/Compose overlays as production deploy."""
+    info = invoke([sys.executable, str(ROOT / "scripts/ci/service_plan.py"),
+                   "compose-args", "--env-file", ".env"], timeout=20)
+    if info is None or info.returncode != 0:
+        return None
+    try:
+        args = shlex.split(info.stdout.strip())
+    except ValueError:
+        return None
+    if args[:2] != ["docker", "compose"] and args[:1] != ["docker-compose"]:
+        return None
+    if "--env-file" not in args or ".env" not in args:
+        return None
+    return args
+
+
 def main(args=None):
-    compose = list(sys.argv[1:] if args is None else args) or ["docker", "compose"]
+    supplied = list(sys.argv[1:] if args is None else args)
+    compose = supplied or default_production_compose()
+    if not compose:
+        print("[authz-v2-readiness] Production Compose configuration unavailable.", flush=True)
+        raise SystemExit(2)
     sudo = [] if os.geteuid() == 0 else ["sudo", "-n"]
     evidence = collect(compose, sudo)
     print("[authz-v2-readiness] " + json.dumps(evidence, sort_keys=True), flush=True)
