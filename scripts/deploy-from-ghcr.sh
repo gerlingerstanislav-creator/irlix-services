@@ -19,7 +19,7 @@ $SUDO python3 scripts/provision-app-keys.py --env-file .env --project irlix-serv
 storage_pilot_requested="$FULL"
 for storage_service in $DEPLOY_SERVICES; do
   case "$storage_service" in
-    storage-api|storage-s3|storage-drive) storage_pilot_requested=true ;;
+    storage-api|storage-s3) storage_pilot_requested=true ;;
   esac
 done
 if [ "$storage_pilot_requested" = true ]; then
