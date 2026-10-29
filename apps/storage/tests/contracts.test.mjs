@@ -241,7 +241,10 @@ test('V1 operations support immutable versions, scoped search, bulk actions, and
   assert.ok(compose.includes('STORAGE_V1_QUOTA_BYTES:'));
   assert.ok(versions.includes('storage.file_versions'));
   assert.ok(versions.includes('storage.reject_version_mutation'));
-  assert.ok(!server.includes('delete_object('));
+  // Reversible Trash never deletes bytes; only the separately gated purge endpoint may.
+  assert.ok(server.includes('def _purge_enabled()'));
+  assert.ok(server.includes('@router.post("/objects/{object_id}/purge")'));
+  assert.ok(server.includes("if not _purge_enabled():"));
 });
 
 test('Storage V1 is the canonical three-section Drive, gated independently from legacy admin data', () => {
