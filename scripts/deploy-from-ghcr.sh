@@ -351,6 +351,19 @@ if [ "$timesheets_policy_import" = true ]; then
   $SUDO python3 scripts/authz/transfer_clients_timesheets.py
 fi
 
+# Finance owns V2 business grants. Import legacy Employees finance DENIALS
+# once into Finance-owned persisted rows before any local V2 activation;
+# other Employees records and real financial data never cross service DBs.
+finance_policy_import=false
+for service in $MIGRATE_SERVICES; do
+  case "$service" in employees|finance) finance_policy_import=true ;; esac
+done
+finance_import_done=$($SUDO sh -c "grep '^IRLIX_FINANCE_V2_DENIAL_IMPORT_DONE=' .env 2>/dev/null | tail -n1 | cut -d= -f2-" || true)
+if [ "$finance_policy_import" = true ] && [ "$finance_import_done" != true ]; then
+  $SUDO python3 scripts/authz/transfer_employees_finance.py
+  upsert_env IRLIX_FINANCE_V2_DENIAL_IMPORT_DONE true
+fi
+
 # Financial records must not become available through the portal before the
 # backend can read its migrated, isolated PostgreSQL schema. Check the actual
 # Finance API rather than trusting a running container or static 200 status.

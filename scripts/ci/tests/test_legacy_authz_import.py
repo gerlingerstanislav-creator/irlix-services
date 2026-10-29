@@ -30,14 +30,31 @@ class LegacyAuthzImportTests(unittest.TestCase):
         self.assertIn("saved->denied", migration)
         self.assertNotIn("updateOrCreate(", migration)
 
-    def test_finance_preserves_existing_manual_denials(self):
+    def test_finance_v2_independent_and_imported_denials_are_private(self):
         role = (ROOT / "services/finance/app/Services/FinanceRoleAuthorization.php").read_text()
         gate = (ROOT / "services/finance/app/Http/Middleware/KeycloakBearer.php").read_text()
-        self.assertIn("function intersectLegacy(", role)
-        self.assertIn("legacy['permissions'][$permission]", role)
-        self.assertIn("legacy['services']['finance']", role)
-        self.assertIn("FinanceRoleAuthorization::intersectLegacy(", gate)
+        source = (ROOT / "services/employees/bin/export-finance-v2-denials.php").read_text()
+        dest = (ROOT / "services/finance/bin/import-employees-finance-denials.php").read_text()
+        transfer = (ROOT / "scripts/authz/transfer_employees_finance.py").read_text()
+        deploy = (ROOT / "scripts/deploy-from-ghcr.sh").read_text()
+        self.assertNotIn("function intersectLegacy(", role)
+        self.assertNotIn("FinanceRoleAuthorization::intersectLegacy(", gate)
         self.assertIn("FinanceRoleAuthorization::currentIdentityMatches(", gate)
+        self.assertIn("data.services.finance", gate)
+        self.assertIn("head:*", role)
+        self.assertIn("->where('enabled', false)", source)
+        self.assertIn("->get(['role','permission'])", source)
+        self.assertIn("finance_permission_audit", dest)
+        self.assertIn("Existing V2 rule was manually edited", dest)
+        self.assertIn("DB::transaction(", dest)
+        self.assertIn("capture_output=True", transfer)
+        self.assertNotIn("print(source.stdout)", transfer)
+        self.assertIn("transfer_employees_finance.py", deploy)
+        self.assertLess(deploy.index("php artisan migrate --force"),
+                        deploy.index("transfer_employees_finance.py"))
+        self.assertIn("COPY bin/export-finance-v2-denials.php",
+                      (ROOT / "services/employees/Dockerfile").read_text())
+        self.assertIn("COPY bin /app/bin", (ROOT / "services/finance/Dockerfile").read_text())
 
     def test_equipment_does_not_restore_explicit_service_deny(self):
         role = (ROOT / "services/equipment/app/Services/EquipmentRoleAuthorization.php").read_text()

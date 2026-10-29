@@ -170,6 +170,7 @@ jobs:
           python3 -m unittest discover -s scripts/tests -p 'test_migration_control.py' -v
           python3 -m unittest discover -s scripts/tests -p 'test_migration_retention.py' -v
           python3 -m unittest discover -s scripts/tests -p 'test_keycloak_authz_rollout.py' -v
+          python3 -m unittest discover -s scripts/ci/tests -p 'test_authz_v2_activation.py' -v
           python3 -m unittest discover -s scripts/ci/tests -p 'test_authz_production_preflight.py' -v
           python3 -m unittest discover -s scripts/ci/tests -p 'test_app_key_provisioning.py' -v
           python3 -m unittest discover -s scripts/ci/tests -p 'test_resource_host_disk.py' -v
@@ -387,6 +388,16 @@ jobs:
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             'cd /opt/irlix-services && if [ "$(id -u)" -eq 0 ]; then python3 -; else sudo -n python3 -; fi' \
             < scripts/authz/production_preflight.py
+      - name: Activate independent AuthZ V2 service matrices in production
+        # Explicit release opt-in; never run on regular builds or development.
+        # The host script verifies protected snapshots + each live flag and
+        # rolls back only flags changed by this invocation on failure.
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.deploy.result == 'success' && contains(github.event.head_commit.message, '[authz-v2-cutover]') }}
+        timeout-minutes: 30
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            'cd /opt/irlix-services && if [ "$(id -u)" -eq 0 ]; then python3 -; else sudo -n python3 -; fi' \
+            < scripts/authz/activate_local_v2.py
       - name: Snapshot Employees before test migration
         timeout-minutes: 60
         if: needs.deploy.result == 'success' && contains(github.event.head_commit.message, '[migration-test-snapshot]')

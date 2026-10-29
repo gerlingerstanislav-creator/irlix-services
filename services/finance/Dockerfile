@@ -6,8 +6,9 @@ COPY app /app/app
 COPY routes /app/routes
 COPY bootstrap/app.php /app/bootstrap/app.php
 COPY database/migrations /app/database/migrations
+COPY bin /app/bin
 COPY tests /app/tests
-RUN find /app/app /app/routes /app/bootstrap /app/database/migrations -name '*.php' -print0 | xargs -0 -n1 php -l
+RUN find /app/app /app/routes /app/bootstrap /app/database/migrations /app/bin -name '*.php' -print0 | xargs -0 -n1 php -l
 RUN IRLIX_AUTHZ_JWT_ENABLED=true php /app/tests/finance_jwt_auth.php
 RUN php /app/tests/finance_role_authorization.php
 

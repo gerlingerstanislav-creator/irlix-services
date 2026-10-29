@@ -42,24 +42,23 @@ $live['roles']=['personnel-officer','platform-admin'];
 $check(Authz::currentIdentityMatches([...$v2Signed,'platform-admin'],$live),
     'Current administrator was incorrectly rejected');
 
-// Legacy Employees permission rules remain the upper bound after importing
-// the old accountant/head defaults. A manual deny can never be resurrected
-// by a broad org:accounting V2 allow.
-$legacy = ['services'=>['finance'=>true], 'permissions'=>[
-    'finance.view'=>true, 'finance.salary.view'=>false,
-    'finance.invoices.manage'=>true,
-]];
-$clamped = Authz::intersectLegacy([
-    'finance.view'=>true, 'finance.salary.view'=>true,
-    'finance.invoices.manage'=>true, 'finance.cash.confirm'=>true,
-], $legacy);
-$check($clamped['finance.view'] && $clamped['finance.invoices.manage'],
-    'Existing allowed Finance capabilities lost during migration');
-$check(!$clamped['finance.salary.view'] && !$clamped['finance.cash.confirm'],
-    'Missing or explicitly denied Finance capabilities were restored');
-$legacy['services']['finance'] = false;
-$check(!array_filter(Authz::intersectLegacy(['finance.view'=>true,
-    'finance.salary.view'=>true], $legacy)),
-    'Employees service-level denial was bypassed by V2 matrix');
+// Legacy denials are transferred into Finance-owned V2 role rows once.
+// The V2 permission engine makes the full decision from its own matrix.
+$importedDenials = [
+    ['role'=>'org:accounting','permission'=>'finance.view','allowed'=>true,'scope'=>'all'],
+    ['role'=>'org:accounting','permission'=>'finance.salary.view','allowed'=>false,'scope'=>'none'],
+    ['role'=>'head:*','permission'=>'finance.cash.confirm','allowed'=>false,'scope'=>'none'],
+    ['role'=>'org:accounting','permission'=>'finance.cash.confirm','allowed'=>true,'scope'=>'all'],
+];
+$granted = Authz::evaluate(['org:accounting'], $importedDenials);
+$check($granted['finance.view'] && !$granted['finance.salary.view'],
+    'Imported explicit Finance denial not applied independently');
+$manager = Authz::evaluate(['org:accounting','head:backend'], $importedDenials);
+$check(!$manager['finance.cash.confirm'],
+    'Imported generic head:* deny failed to override Finance allow');
+$nonHead = Authz::evaluate(['org:accounting'], $importedDenials);
+$check($nonHead['finance.cash.confirm'], 'Generic head deny leaked to non-head');
+$check(!method_exists(Authz::class, 'intersectLegacy'),
+    'Finance V2 still depends on per-request Employees legacy permissions');
 
 echo "Finance V2 local authorization: PASS\n";

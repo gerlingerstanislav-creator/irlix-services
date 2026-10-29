@@ -70,32 +70,11 @@ final class ServiceEntitlement
                     in_array($path, ['api/permissions'], true) => null,
                     default => null,
                 };
-                // Manager and analytics privileges were historically
-                // configured in Clients. Compare the actual effective old
-                // matrix for this actor; local grants must not expand it.
-                if (in_array($required, [
-                    'timesheets.mine.view',
-                    'timesheets.management.view','timesheets.management.manage',
-                    'timesheets.analytics.view','timesheets.audit.view',
-                    'timesheets.partner-hours.view','timesheets.partner-hours.manage',
-                    'timesheets.partner-hours.approve',
-                ], true)) {
-                    $clientsBase = rtrim((string) env('CLIENTS_URL', 'http://clients:8000/api'), '/');
-                    try {
-                        $legacyResponse = Http::withToken((string) $token)->acceptJson()
-                            ->timeout(5)->get($clientsBase.'/permissions/me');
-                    } catch (\Throwable) {
-                        return response()->json(['message'=>'Legacy Timesheets policy unavailable'],503);
-                    }
-                    if (!$legacyResponse->successful()
-                        || !is_array($legacyResponse->json('data.permissions'))) {
-                        return response()->json(['message'=>'Legacy Timesheets policy unavailable'],503);
-                    }
-                    $permissions = \App\Services\TimesheetsRoleAuthorization::restrictToLegacy(
-                        $permissions, (array) $legacyResponse->json('data.permissions'),
-                        $legacyResponse->json('data.legacy_timesheets_implicit_mine_view') === true
-                    );
-                }
+                // AuthZ V2 is the Timesheets-owned persisted permission matrix.
+                // Historic Clients grants were imported before activation;
+                // there must be no live Clients permission ceiling in V2.
+                // Current Employees is queried above ONLY for identity freshness
+                // and the separately approved service-entry entitlement.
                 $admin = in_array('platform-admin', $roles, true)
                     || in_array('special:platform-admin', $roles, true);
                 if ($required === null && !$admin) {

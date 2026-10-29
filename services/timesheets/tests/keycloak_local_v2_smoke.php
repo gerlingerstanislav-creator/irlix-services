@@ -71,12 +71,11 @@ $liveRoles = $signedNamespaced;
 $employeesAllowed = true;
 $employeesStatus = 200;
 $legacyPermissions = [];
-$implicitOwn = true;
 $clientsStatus = 200;
 Http::preventStrayRequests();
 Http::fake(static function ($request) use (
     $jwks, &$liveEmployeeId, &$liveRoles, &$employeesAllowed,
-    &$employeesStatus, &$legacyPermissions, &$implicitOwn, &$clientsStatus
+    &$employeesStatus, &$legacyPermissions, &$clientsStatus
 ) {
     $url = (string) $request->url();
     if (str_ends_with($url, '/protocol/openid-connect/certs')) {
@@ -94,7 +93,6 @@ Http::fake(static function ($request) use (
     if (str_ends_with($url, '/permissions/me')) {
         return Http::response(['data'=>[
             'permissions'=>$legacyPermissions,
-            'legacy_timesheets_implicit_mine_view'=>$implicitOwn,
         ]], $clientsStatus);
     }
     return Http::response(['message'=>'No synthetic route'], 404);
@@ -152,18 +150,16 @@ $test($execute($token, '/api/workspace')[0] === 503,
     'Unavailable Employees identity source was not fail-closed');
 $employeesStatus = 200;
 
-$implicitOwn = false;
-$test($execute($token, '/api/workspace')[0] === 403,
-    'Missing historical-absence attestation manufactured a grant');
-$implicitOwn = true;
+// V2 must NOT depend on old Clients permissions: the persisted own grant
+// is sufficient, while Employees still validates live service entitlement.
 $legacyPermissions = ['timesheets.mine.view'=>['allowed'=>false,'scope'=>'none']];
-$test($execute($token, '/api/workspace')[0] === 403,
-    'Explicit old Clients denial was bypassed');
-$legacyPermissions = [];
+$test($execute($token, '/api/workspace')[0] === 200,
+    'Old Clients permission deny incorrectly overrides an explicit Timesheets V2 own grant');
 $clientsStatus = 503;
-$test($execute($token, '/api/workspace')[0] === 503,
-    'Unavailable old Clients ceiling was not fail-closed');
+$test($execute($token, '/api/workspace')[0] === 200,
+    'Timesheets local V2 still depends on unavailable Clients legacy business policy');
 $clientsStatus = 200;
+$legacyPermissions = [];
 
 DB::table('timesheets_role_permissions')->delete();
 $test($execute($token, '/api/workspace')[0] === 403,
@@ -189,4 +185,4 @@ $setFlag(true);
 $test($execute($token, '/api/workspace')[0] === 403,
     'Re-enabled Timesheets V2 did not reinstate default deny');
 
-echo "Timesheets isolated real Keycloak-signed JWT -> local V2 own/deny and flag rollback: PASS\n";
+echo "Timesheets isolated real Keycloak-signed JWT -> independent V2 own/deny and flag rollback: PASS\n";
