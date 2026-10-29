@@ -3,6 +3,7 @@ namespace App\Services;
 
 use App\Models\ClientContourPermission;
 use App\Models\ClientContourPermissionAudit;
+use App\Support\ClientContourAccess;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -83,16 +84,66 @@ final class FinalizeLegacyClientPermissions
                 }
             }
 
-            // Fail closed on any active noncanonical business role not mapped
-            // by the static conversion or resolved production-head transfer.
+            // Known old columns WERE migrated to the existing V2 roles
+            // before this finalizer. They must not be classified as UNKNOWN.
+            // Verify each effective old rule has a corresponding V2 row.
+            // A manually edited V2 decision may intentionally differ, but
+            // without an audit trace any difference aborts deletion.
+            $known = [
+                'employee' => 'org:irlix',
+                'client-service' => 'org:client-service',
+                'account-manager' => 'org:account-management',
+                'accounting-head' => 'head:account-management',
+                'sales-manager' => 'org:sales',
+                'sales-head' => 'head:sales',
+                'client-service-head' => 'head:client-service',
+                'personnel-officer' => 'special:personnel-officer',
+                'system-admin' => 'special:system-admin',
+            ];
+            $recognized = array_fill_keys(
+                array_keys(ClientContourAccess::PERMISSION_LABELS), true
+            );
             foreach ($rows as $old) {
                 $role = (string) $old->role;
+                $permission = (string) $old->permission;
                 if (preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $role) === 1
-                    || str_starts_with((string)$old->permission,'timesheets.')
-                    || $role === 'platform-admin'
-                    || $role === 'department-manager') continue;
-                if ((bool) $old->allowed || (bool) ($old->denied ?? false)) {
-                    throw new RuntimeException('Active unknown legacy Clients role; cleanup aborted');
+                    || str_starts_with($permission, 'timesheets.')) continue;
+                if ($role === 'platform-admin' || $role === 'platform-tester') {
+                    // Both were explicitly excluded from regular Clients
+                    // grants; the only superuser is special:platform-admin.
+                    continue;
+                }
+                if ($role === 'department-manager') continue;
+                $active = (bool) $old->allowed || (bool) ($old->denied ?? false);
+                if (!isset($known[$role])) {
+                    if ($active) throw new RuntimeException('Unrecognized active legacy Clients role');
+                    continue;
+                }
+                if (!isset($recognized[$permission])) {
+                    if ($active) throw new RuntimeException('Unrecognized active Clients permission');
+                    continue;
+                }
+                $v2 = ClientContourPermission::query()
+                    ->where('role', $known[$role])
+                    ->where('permission', $permission)
+                    ->first();
+                if (!$v2) {
+                    if ($active) throw new RuntimeException('Missing V2 role permission after import');
+                    continue;
+                }
+                $same = (bool) $v2->allowed === (bool) $old->allowed
+                    && (string) $v2->scope === (string) $old->scope
+                    && (bool) ($v2->denied ?? false) === (bool) ($old->denied ?? false);
+                if ($same) continue;
+                $oldAudit = ClientContourPermissionAudit::query()
+                    ->where('role', $role)->where('permission', $permission)
+                    ->max('created_at');
+                $v2Audit = ClientContourPermissionAudit::query()
+                    ->where('role', $known[$role])->where('permission', $permission)
+                    ->max('created_at');
+                if ($v2Audit === null || ($oldAudit !== null
+                    && strtotime((string) $v2Audit) <= strtotime((string) $oldAudit))) {
+                    throw new RuntimeException('Unreconciled Clients policy difference');
                 }
             }
             // No business right stored under a retired role survives.
