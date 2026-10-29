@@ -48,13 +48,24 @@ foreach ($source['rows'] as $record) {
     if (!$denied && !isset($allowedScopes[$scope])) {
         throw new RuntimeException('Allowed permission has no valid scope');
     }
-    $key = $role.'|'.$permission;
-    if (isset($rows[$key])) throw new RuntimeException('Ambiguous permission mapping');
-    $rows[$key] = [
-        'role'=>$role,'permission'=>$permission,
-        'allowed'=>!$denied && $record['allowed'],
-        'scope'=>$denied ? 'none' : $scope,
-    ];
+    // Partner hours historically reuse Clients' management.view/manage,
+    // including final approval. Preserve the exact old scope and denies.
+    $targets = [$permission];
+    if ($permission === 'timesheets.management.view') {
+        $targets[] = 'timesheets.partner-hours.view';
+    } elseif ($permission === 'timesheets.management.manage') {
+        $targets[] = 'timesheets.partner-hours.manage';
+        $targets[] = 'timesheets.partner-hours.approve';
+    }
+    foreach ($targets as $target) {
+        $key = $role.'|'.$target;
+        if (isset($rows[$key])) throw new RuntimeException('Ambiguous permission mapping');
+        $rows[$key] = [
+            'role'=>$role,'permission'=>$target,
+            'allowed'=>!$denied && $record['allowed'],
+            'scope'=>$denied ? 'none' : $scope,
+        ];
+    }
 }
 
 \Illuminate\Support\Facades\DB::transaction(static function () use ($rows): void {
