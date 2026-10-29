@@ -22,4 +22,22 @@ foreach ([
     }
 }
 
+// A Timesheets-only request must not expose Clients capabilities,
+// employee directory metadata or other Clients service information.
+$request = \Illuminate\Http\Request::create('/api/permissions/me', 'GET');
+$request->attributes->set('clients_timesheets_only', true);
+$request->attributes->set('client_contour_access', [
+    'permissions'=>[
+        'timesheets.mine.view'=>['allowed'=>true,'scope'=>'own'],
+        'clients.view'=>['allowed'=>true,'scope'=>'all'],
+    ],
+    'employee'=>['id'=>112], 'roles'=>['account-manager'],
+]);
+$response = (new $controller())->me($request, app(\App\Support\ClientContourAccess::class));
+$data = json_decode($response->getContent(), true);
+if (($data['data']['permissions']['timesheets.mine.view']['scope'] ?? null) !== 'own'
+    || isset($data['data']['permissions']['clients.view'])
+    || isset($data['data']['employee']) || isset($data['data']['roles'])) {
+    throw new RuntimeException('Timesheets-only permission projection leaks Clients data');
+}
 echo "Clients contour permissions routes: PASS\n";

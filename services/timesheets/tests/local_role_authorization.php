@@ -101,4 +101,16 @@ $check($legacyPartner['timesheets.partner-hours.view']['scope']==='own',
 $check(!$legacyPartner['timesheets.partner-hours.manage']['allowed']
     && !$legacyPartner['timesheets.partner-hours.approve']['allowed'],
     'Partner-hours final approval bypassed old management denial');
+$personal = Authz::restrictToLegacy(
+    ['timesheets.mine.view'=>['allowed'=>true,'scope'=>'all']],
+    ['timesheets.mine.view'=>['allowed'=>true,'scope'=>'own']]
+);
+$check($personal['timesheets.mine.view']['scope']==='own',
+    'Personal view expanded beyond Clients existing scope');
+$deniedPersonal = Authz::restrictToLegacy(
+    ['timesheets.mine.view'=>['allowed'=>true,'scope'=>'own']],
+    ['timesheets.mine.view'=>['allowed'=>false,'scope'=>'none']]
+);
+$check(!$deniedPersonal['timesheets.mine.view']['allowed'],
+    'Old personal-view denial bypassed by new org:irlix role');
 echo "Timesheets V2 local authorization: PASS\n";

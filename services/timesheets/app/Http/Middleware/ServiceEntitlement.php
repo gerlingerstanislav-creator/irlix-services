@@ -74,6 +74,7 @@ final class ServiceEntitlement
                 // configured in Clients. Compare the actual effective old
                 // matrix for this actor; local grants must not expand it.
                 if (in_array($required, [
+                    'timesheets.mine.view',
                     'timesheets.management.view','timesheets.management.manage',
                     'timesheets.analytics.view','timesheets.audit.view',
                     'timesheets.partner-hours.view','timesheets.partner-hours.manage',

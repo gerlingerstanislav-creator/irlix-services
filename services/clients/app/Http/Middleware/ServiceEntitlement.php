@@ -37,7 +37,13 @@ final class ServiceEntitlement
                 if (!$liveAdmission->successful() || !is_array($liveAdmission->json('data'))) {
                     return response()->json(['message'=>'Clients admission unavailable'],503);
                 }
-                if ($liveAdmission->json('data.services.clients') !== true) {
+                $timesheetsOnly = $request->is('api/permissions/me')
+                    && $liveAdmission->json('data.services.timesheets') === true
+                    && $liveAdmission->json('data.services.clients') !== true;
+                if ($timesheetsOnly) {
+                    $request->attributes->set('clients_timesheets_only', true);
+                }
+                if ($liveAdmission->json('data.services.clients') !== true && !$timesheetsOnly) {
                     return response()->json(['message'=>'Clients admission denied'],403);
                 }
                 try {
@@ -46,6 +52,11 @@ final class ServiceEntitlement
                     return response()->json(['message' => 'Clients authorization denied'], $error->getStatusCode());
                 } catch (\Throwable) {
                     return response()->json(['message' => 'Clients authorization unavailable'], 503);
+                }
+                if ($timesheetsOnly) {
+                    $request->attributes->set('client_contour_access', $access);
+                    $request->attributes->set('client_contour_verified_at_entitlement', true);
+                    return $next($request);
                 }
                 $granted = (bool) ($access['platform_admin'] ?? false);
                 foreach ((array) ($access['permissions'] ?? []) as $permission => $effect) {
@@ -63,6 +74,11 @@ final class ServiceEntitlement
             }
             $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
             if (!in_array('service:clients', $roles, true)) {
+                if ($request->is('api/permissions/me')
+                    && in_array('service:timesheets', $roles, true)) {
+                    $request->attributes->set('clients_timesheets_only', true);
+                    return $next($request);
+                }
                 return response()->json(['message' => 'Service access denied'], 403);
             }
             return $next($request);
