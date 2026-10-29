@@ -42,6 +42,8 @@ assert.match(finance, /const accessPhase = ref\('loading'\)/);
 assert.match(finance, /<UiLoader v-if="accessPhase==='loading'" page/);
 assert.match(finance, /<UiErrorState v-else-if="accessPhase==='error'" :status="503"/);
 assert.match(finance, /accessPhase==='forbidden' \|\| \(accessPhase==='allowed'/);
+assert.match(finance, /rolePermissionPhase\.value=e\.status===403\?'forbidden':'error'/);
+assert.match(finance, /rolePermissionPhase==='error'.*:status="503"/);
 for (const app of [equipment, specialists]) {
   assert.match(app, /const roleAccessPhase=ref\('loading'\)/);
   assert.match(app, /roleAccessPhase\.value=e\.status===403\?'forbidden':'error'/);
