@@ -100,7 +100,9 @@ $execute = static function (string $jwt, string $path, array $headers = []): arr
 
 [$status, $payload] = $execute($token, '/api/workspace');
 $test($status === 200 && ($payload['scope'] ?? null) === 'own',
-    'Legitimately signed personal workspace was not constrained to own scope');
+    'Legitimately signed personal workspace was not constrained to own scope'
+    .' (HTTP '.$status.', scope '.(string)($payload['scope'] ?? 'none')
+    .', reason '.(string)($payload['message'] ?? 'none').')');
 $test($execute($token, '/api/management')[0] === 403,
     'Personal workspace grant created unauthorized management access');
 $test($execute($token, '/api/workspace', ['X-Irlix-Role-Preview'=>'platform-admin'])[0] === 403,
