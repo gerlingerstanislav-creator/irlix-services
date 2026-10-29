@@ -84,15 +84,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           FULL_BUILD: ${{ inputs.full || false }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           args=()
           if [ "$FULL_BUILD" = true ]; then args+=(--full); fi
-          # PR plans must compare to their actual target, never the previous
-          # successful development push (which includes unrelated commits).
+          # The event base SHA can be stale if development moves while the
+          # PR's synthetic merge ref is generated. Its first parent is the
+          # EXACT development commit used by the checkout under test.
           if [ "${GITHUB_EVENT_NAME}" = pull_request ]; then
-            test -n "$PR_BASE_SHA"
-            args+=(--base "$PR_BASE_SHA")
+            read -r merge_commit base_sha pr_head extra <<< "$(git rev-list --parents -n 1 HEAD)"
+            test -n "$pr_head" && test -z "$extra"
+            args+=(--base "$base_sha")
           fi
           python3 scripts/ci/service_plan.py plan "${args[@]}"
       - uses: actions/upload-artifact@v4
@@ -145,15 +146,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Resolve actual QA diff base
+        env:
+          PUSH_BASE: ${{ github.event.before }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = pull_request ]; then
+            read -r merge_commit base_sha pr_head extra <<< "$(git rev-list --parents -n 1 HEAD)"
+            test -n "$pr_head" && test -z "$extra"
+            echo "QA_BASE=$base_sha" >> "$GITHUB_ENV"
+          else
+            echo "QA_BASE=$PUSH_BASE" >> "$GITHUB_ENV"
+          fi
       - name: Validate AI orchestration syntax
         run: node --check scripts/agents/handoff.mjs && node --check scripts/agents/route.mjs
       - name: Run scoped QA contract checks
-        env:
-          QA_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: node scripts/qa/run.mjs --scope changed
       - name: Lint changed backend PHP files
-        env:
-          QA_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: node scripts/qa/php-lint.mjs --scope changed
       - name: Authorization V2 read-only parity guard tests
         run: php scripts/tests/authz_parity.php
@@ -188,9 +196,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run local synthetic Playwright scenarios
+      - name: Resolve actual QA diff base
         env:
-          QA_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          PUSH_BASE: ${{ github.event.before }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = pull_request ]; then
+            read -r merge_commit base_sha pr_head extra <<< "$(git rev-list --parents -n 1 HEAD)"
+            test -n "$pr_head" && test -z "$extra"
+            echo "QA_BASE=$base_sha" >> "$GITHUB_ENV"
+          else
+            echo "QA_BASE=$PUSH_BASE" >> "$GITHUB_ENV"
+          fi
+      - name: Run local synthetic Playwright scenarios
         run: node scripts/qa/browser.mjs --scope changed
       - name: Save browser evidence
         if: ${{ !cancelled() }}
