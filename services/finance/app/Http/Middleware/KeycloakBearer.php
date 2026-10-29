@@ -97,6 +97,18 @@ class KeycloakBearer
                 } catch (\Throwable) {
                     return response()->json(['message' => 'Finance local authorization unavailable'], 503);
                 }
+                // Preserve the EXISTING Employees service gate and every
+                // administrator-defined finance denial while importing its
+                // grants into the new service-local V2 matrix. A signed
+                // organizational label may never widen legacy privileges.
+                $liveAccess = (array) $currentResponse->json('data');
+                if (($liveAccess['services']['finance'] ?? false) !== true) {
+                    return response()->json(['message' => 'Finance service admission denied'], 403);
+                }
+                foreach ($permissions as $name => $granted) {
+                    $permissions[$name] = $granted === true
+                        && ($liveAccess['permissions'][$name] ?? false) === true;
+                }
                 if (!($permissions['finance.view'] ?? false)) {
                     return response()->json(['message' => 'Finance access is not granted'], 403);
                 }
