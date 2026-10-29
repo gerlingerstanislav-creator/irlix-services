@@ -1,11 +1,12 @@
 import unittest
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from unittest.mock import patch
 from app.main import app, guard, v1_guard
 from app.metadata_repository import metadata_connection
-from app.v1_api import _identity, _name, _normalize_id, _employee_active
+from app.v1_api import _identity, _name, _normalize_id, _employee_active, _decorate_entries
 
 
 class V1BoundaryTests(unittest.TestCase):
@@ -47,6 +48,28 @@ class V1BoundaryTests(unittest.TestCase):
             with self.assertRaises(HTTPException) as context:
                 metadata_connection()
         self.assertEqual(context.exception.status_code, 503)
+
+    def test_display_metadata_does_not_expand_acl_filtered_list(self):
+        class Cursor:
+            def fetchall(self):
+                return [("00000000-0000-4000-8000-000000000001",
+                         datetime(2026, 10, 29, tzinfo=timezone.utc), 24)]
+
+        class Connection:
+            def execute(self, query, params):
+                self.assert_called = (query, params)
+                return Cursor()
+
+        conn = Connection()
+        authorized = [{"id": "00000000-0000-4000-8000-000000000001",
+                       "name": "visible.txt", "kind": "file"}]
+        result = _decorate_entries(conn, authorized)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["size"], 24)
+        self.assertEqual(result[0]["modified"], "2026-10-29T00:00:00+00:00")
+        self.assertEqual(conn.assert_called[1], ([authorized[0]["id"]],))
+        self.assertIn("storage.file_versions", conn.assert_called[0])
+        self.assertEqual(_decorate_entries(conn, []), [])
 
     def test_recipient_lookup_fails_closed_without_signed_cookie(self):
         request = SimpleNamespace(cookies={})
