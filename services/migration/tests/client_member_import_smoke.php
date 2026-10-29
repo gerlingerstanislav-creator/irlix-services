@@ -140,6 +140,54 @@ try {
     check(runFixture($clients,true)['conflicts']>0,'Protected reporting period blocks a mapped term rewrite');
     $clients->fixture['rates'][0]['rate'] = '1500.50';
     $clients->fixture['rates'][1]['rate'] = '1500.50';
+
+    // Production #372: previously deferred NULL amounts can be backfilled
+    // after recovering the legacy APP_KEY, even within a submitted report.
+    // Only this single NULL -> numeric field is exempt from the protected
+    // commercial-terms guard; changed workload or existing price is not.
+    $legacyKey = 'base64:'.base64_encode(str_repeat('z', 32));
+    $cipher = \App\Migration\Core\LegacyClientsCipher::encrypter($legacyKey, 'AES-256-CBC');
+    $encryptedAmount = $cipher->encryptString('1500.50');
+    foreach ($clients->fixture['rates'] as &$row) $row['rate'] = $encryptedAmount;
+    unset($row);
+    config(['migration.clients_app_key' => $legacyKey, 'migration.clients_cipher' => 'AES-256-CBC']);
+    $originalIds = target('clients')->table('member_terms')->orderBy('id')->pluck('id')->all();
+    target('clients')->table('member_terms')->update(['hourly_rate'=>null]);
+    $beforeBackfill = target('clients')->table('member_terms')->orderBy('id')->get()->toArray();
+    $dryBackfill = runFixture($clients, true);
+    check($dryBackfill['conflicts']===0, 'Encrypted legacy amount can fill NULL in a submitted reporting period');
+    check(target('clients')->table('member_terms')->whereNotNull('hourly_rate')->count()===0,
+        'Dry run must not fill protected period amounts');
+    $wrongKey = 'base64:'.base64_encode(str_repeat('q', 32));
+    config(['migration.clients_app_key'=>$wrongKey]);
+    check(runFixture($clients, true)['conflicts']>0, 'Wrong recovered key must still fail decryption');
+    config(['migration.clients_app_key'=>$legacyKey]);
+    $clients->fixture['rates'][0]['workload'] = 7;
+    $clients->fixture['rates'][1]['workload'] = 7;
+    check(runFixture($clients, true)['conflicts']>0,
+        'Changed workload with missing rate must still be protected');
+    $clients->fixture['rates'][0]['workload'] = 8;
+    $clients->fixture['rates'][1]['workload'] = 8;
+    check(runFixture($clients, false)['conflicts']===0, 'Backfill deferred encrypted rates without remapping');
+    $afterBackfill = target('clients')->table('member_terms')->orderBy('id')->get()->toArray();
+    check(array_column($afterBackfill, 'id')===$originalIds,
+        'Backfill preserves existing target term identities');
+    foreach ($afterBackfill as $index => $term) {
+        check((float)$term->hourly_rate===1500.5, 'Backfilled rate must match decrypted legacy amount');
+        foreach (['client_member_id','project_member_id','technology','level','hours_per_day','valid_from','valid_to'] as $field) {
+            check($term->$field === $beforeBackfill[$index]->$field,
+                'Backfill must not change historical '.$field);
+        }
+    }
+    check(runFixture($clients, false)['conflicts']===0,
+        'Idempotent repeat after protected-period backfill');
+    $clients->fixture['rates'][0]['rate'] = $cipher->encryptString('1600.50');
+    $clients->fixture['rates'][1]['rate'] = $clients->fixture['rates'][0]['rate'];
+    check(runFixture($clients, true)['conflicts']>0,
+        'Changing a previously populated amount in submitted report is still blocked');
+    $clients->fixture['rates'][0]['rate'] = $encryptedAmount;
+    $clients->fixture['rates'][1]['rate'] = $encryptedAmount;
+    config(['migration.clients_app_key'=>null]);
     $legacyRun = $store->beginRun('clients','migrate');
     $store->saveMapping($legacyRun,'clients','default_projects','legacy-only',1);
     $result = runFixture($clients,true);
