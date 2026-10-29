@@ -64,6 +64,19 @@ final class ConnectionProfileStore
             throw new InvalidArgumentException('Confirm that a dedicated read-only legacy DB user is being used.');
         }
 
+        // The legacy Clients APP_KEY only decrypts amounts; replacing it does not
+        // change the PostgreSQL login, read-only role or connection safety.
+        // Keep a successful DB verification when *only* that key/cipher changed.
+        // Any changed DB setting, password or read-only acknowledgement still
+        // requires a new live read-only check.
+        $connectionUnchanged = $existing
+            && $password === ''
+            && $existing->host === $host
+            && (int) $existing->port === $port
+            && $existing->database === $database
+            && $existing->username === $username
+            && $existing->sslmode === $sslmode
+            && (bool) $existing->readonly_acknowledged === $readonly;
         $payload = [
             'host' => $host,
             'port' => $port,
@@ -78,6 +91,11 @@ final class ConnectionProfileStore
             'verified_at' => null,
             'updated_at' => now(),
         ];
+        if ($connectionUnchanged) {
+            foreach (['verification_status', 'verification_message', 'verified_database', 'verified_user', 'verified_at'] as $field) {
+                $payload[$field] = $existing->$field;
+            }
+        }
         if ($password !== '') {
             $payload['password_encrypted'] = $this->cipher->encryptString($password);
         }
@@ -215,6 +233,30 @@ final class ConnectionProfileStore
             ->where('verification_status', 'verified')
             ->whereNotNull('verified_at')
             ->exists();
+    }
+
+    /**
+     * A confirmed migration start must never bypass legacy read-only safety.
+     * Recheck a stale verification marker against the actual PostgreSQL role,
+     * rather than rejecting valid profiles after a Clients APP_KEY update.
+     * Returns a safe operator message on failure; no credentials are returned.
+     */
+    public function ensureReadyForStart(string $service): ?string
+    {
+        $profile = $this->publicProfile($service);
+        if (!$profile) return 'Параметры подключения отсутствуют. Сохраните доступ к исходной БД.';
+        if ($profile['credential_status'] !== 'ready') {
+            return 'Сохранённый пароль БД не расшифровывается. Повторно сохраните пароль в настройках.';
+        }
+        if ($this->isVerified($service)) return null;
+
+        try {
+            $this->markVerified($service, (new LegacyReader($service))->assertSafe());
+        } catch (\Throwable $error) {
+            $this->markVerificationFailed($service, $error->getMessage());
+            return 'Повторная read-only проверка PostgreSQL не прошла. Откройте настройки подключения и проверьте права пользователя.';
+        }
+        return null;
     }
 
     public function delete(string $service): void
