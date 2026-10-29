@@ -10,8 +10,24 @@ eval "$(python3 scripts/ci/service_plan.py deploy-controls)"
 # Always provision before the first Compose config/up. Existing running/stopped
 # containers provide old keys so legacy ciphertext remains decryptable.
 $SUDO python3 scripts/provision-app-keys.py --env-file .env --project irlix-services
-# Pilot Storage secrets and host capacity are checked before image or container mutations.
-$SUDO sh scripts/storage/provision-pilot.sh
+# Storage disk preflight is an initial-activation guard, not a global release
+# prerequisite. A non-Storage update (for example AuthZ) must not be blocked
+# when the existing Storage pilot disk is below its initial 8 GiB threshold.
+# Never skip this guard for a full release or an explicitly changed Storage
+# component: those releases still fail safely before any image/container update.
+# BEGIN STORAGE PILOT TARGET GUARD
+storage_pilot_requested="$FULL"
+for storage_service in $DEPLOY_SERVICES; do
+  case "$storage_service" in
+    storage-api|storage-s3|storage-drive) storage_pilot_requested=true ;;
+  esac
+done
+if [ "$storage_pilot_requested" = true ]; then
+  $SUDO sh scripts/storage/provision-pilot.sh
+else
+  echo "Storage pilot preflight: not applicable to this release."
+fi
+# END STORAGE PILOT TARGET GUARD
 
 upsert_env() {
   key="$1"; value="$2"; file=.env
