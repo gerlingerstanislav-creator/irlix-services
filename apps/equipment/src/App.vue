@@ -34,6 +34,7 @@ const settingsLoaded = ref(false);
 const settingsSaved = ref(false);
 const permissions = reactive({ view: false, manage: false, operate: false });
 const localRoleAdmin=ref(false);
+const roleAccessPhase=ref('loading');
 const navigation=computed(()=>[
   ...sections,
   ...(localRoleAdmin.value ? [{id:'role-permissions',label:'Разрешения',href:'/equipment/role-permissions',icon:'settings'}] : []),
@@ -115,7 +116,7 @@ const filtered = computed(() => items.value.filter(item =>
   return String(a.model||'').localeCompare(String(b.model||''),'ru',{sensitivity:'base'});
 }));
 
-const api = async (url, options = {}) => { const response=await fetch(url, options); const body=await response.json().catch(()=>({})); if(!response.ok)throw new Error(body.errors?Object.values(body.errors).flat()[0]:body.message||`HTTP ${response.status}`); return body.data; };
+const api = async (url, options = {}) => { const response=await fetch(url, options); const body=await response.json().catch(()=>({})); if(!response.ok){const failure=new Error(body.errors?Object.values(body.errors).flat()[0]:body.message||`HTTP ${response.status}`);failure.status=response.status;throw failure;} return body.data; };
 const ensureEmployees = async () => { if(!employees.value.length)employees.value=await api('/api/employees-directory'); };
 const loadSettings = async (force = false) => {
   if (settingsLoaded.value && !force) return;
@@ -126,15 +127,22 @@ const loadSettings = async (force = false) => {
 };
 const load = async () => {
   loading.value=true; error.value=''; settingsSaved.value=false;
+  roleAccessPhase.value='loading';
   try {
     Object.assign(permissions,await api('/api/permissions'));
-    localRoleAdmin.value=!!(await api('/api/role-permissions').catch(()=>null))?.can_manage;
+    try {
+      localRoleAdmin.value=!!(await api('/api/role-permissions'))?.can_manage;
+      roleAccessPhase.value=localRoleAdmin.value?'allowed':'forbidden';
+    } catch(e) {
+      localRoleAdmin.value=false;
+      roleAccessPhase.value=e.status===403?'forbidden':'error';
+    }
     if(section.value==='role-permissions') return;
     if(section.value==='assignments'){await ensureEmployees(); assignments.value=await api('/api/assignments');}
     else if(section.value==='valuation'){valuation.value=await api('/api/valuation');}
     else if(section.value==='settings'){await loadSettings(true);}
     else {await ensureEmployees(); items.value=await api('/api/items?all=1');}
-  } catch(e){error.value=e.message;} finally{loading.value=false;}
+  } catch(e){error.value=e.message;if(roleAccessPhase.value==='loading')roleAccessPhase.value='error';} finally{loading.value=false;}
 };
 const refreshAfterMutation = async () => { drawerVersion.value += 1; await load(); };
 const changeSection = next => { if (router.hasRoute(next)) router.push({ name: next }); };
@@ -183,8 +191,10 @@ watch(() => editor.type, (type, previous) => { if(editor.open && type !== previo
 
     <main class="equipment-page" :class="{ 'equipment-page--with-filter': section === 'registry' || section === 'written-off' }">
       <UiErrorState v-if="section === 'not-found'" :status="404" back-href="/equipment/" back-label="К учёту техники" />
-      <UiErrorState v-else-if="section==='role-permissions' && !localRoleAdmin" :status="403" />
-      <EquipmentRolePermissionsView v-else-if="section==='role-permissions' && localRoleAdmin" />
+      <UiLoader v-else-if="section==='role-permissions' && roleAccessPhase==='loading'" page label="Проверяем доступ к разрешениям" />
+      <UiErrorState v-else-if="section==='role-permissions' && roleAccessPhase==='error'" :status="503" description="Не удалось проверить права доступа." retryable @retry="load" />
+      <UiErrorState v-else-if="section==='role-permissions' && roleAccessPhase==='forbidden'" :status="403" />
+      <EquipmentRolePermissionsView v-else-if="section==='role-permissions' && roleAccessPhase==='allowed'" />
       <div v-if="error" class="equipment-error">{{ error }}</div>
       <UiPanel v-if="section==='registry' || section==='written-off'" class="equipment-registry-panel" :aria-busy="loading"><UiRegistryTable class="equipment-shared-registry" :columns="['12%','10%','270px','14%','10%','10%','auto']" min-width="1080px" aria-label="Техника" density="compact"><template #head><tr><th>Инв. №</th><th class="equipment-cell-center">Тип</th><th class="equipment-model-column">Изготовитель / модель</th><th>Серийный номер</th><th class="equipment-cell-center">Назначение</th><th class="equipment-cell-center">Состояние</th><th class="equipment-issued-column">Выдана</th></tr></template><tr v-for="item in filtered" :key="item.id"><td><button type="button" class="equipment-inventory-link" @click="openItem(item)">{{ item.inventory_number }}</button></td><td class="equipment-cell-center">{{ labels[item.type] }}</td><td class="equipment-model-column">{{ [item.manufacturer, item.model].filter(Boolean).join(' ') }}</td><td>{{ item.serial_number || '—' }}</td><td class="equipment-cell-center">{{ !item.purpose || item.purpose === 'unknown' ? '—' : (labels[item.purpose] || item.purpose) }}</td><td class="equipment-cell-center"><UiBadge :tone="item.condition === 'ok' ? 'success' : item.condition === 'damaged' ? 'danger' : item.condition === 'needs_repair' ? 'warning' : 'neutral'">{{ labels[item.condition] || item.condition || '—' }}</UiBadge></td><td class="equipment-issued-column"><span>{{ item.assignment ? shortEmployeeName(item.assignment.employee_id) : '—' }}</span> <UiButton v-if="permissions.operate && !item.written_off_at && item.assignment" compact variant="ghost" class="equipment-text-action" @click="openReturn(item)">(вернуть)</UiButton><UiButton v-else-if="permissions.operate && !item.written_off_at" compact variant="ghost" class="equipment-text-action" @click="openAssign(item)">(выдать)</UiButton></td></tr><tr v-if="!loading && !filtered.length"><td colspan="7" class="equipment-empty">Нет данных</td></tr></UiRegistryTable><UiLoader v-if="loading" overlay label="Загрузка техники" /></UiPanel>
 

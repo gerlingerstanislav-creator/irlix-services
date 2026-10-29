@@ -32,6 +32,8 @@ const route = useRoute();
 const router = useRouter();
 const view = computed(() => route.meta.section || 'not-found');
 const loading = ref(false);
+// Service-level admission is already checked by main.js; defer section denies until this view is initialized.
+const startupPhase = ref('loading');
 const loadingMore = ref(false);
 const hasMore = ref(false);
 const nextPage = ref(1);
@@ -391,6 +393,7 @@ watch(selectedLead, lead => {
   }
 });
 async function load() {
+  startupPhase.value = 'loading';
   loading.value = true; error.value = '';
   try {
     const directory = await api('/api/employees/clients-directory');
@@ -401,8 +404,9 @@ async function load() {
     actorEmployeeId.value = Number(directory.data?.actor?.id) || null;
     accountingEmployeeId.value = directory.data?.accounting ? (Number(directory.data?.actor?.id) || null) : null;
     initialized.value = true;
+    startupPhase.value = 'ready';
     await loadSection();
-  } catch (e) { error.value = e.message || String(e); loading.value = false; }
+  } catch (e) { error.value = e.message || String(e); loading.value = false; startupPhase.value = 'error'; }
 }
 
 const clients = computed(() => {
@@ -634,8 +638,10 @@ onBeforeUnmount(() => clearTimeout(filterDebounce));
       </template>
     <main class="content" :class="{'content--clients':view==='clients','content--cashflow':view==='cashflow','content--roster':view==='specialists'}">
       <div v-if="error" class="error-banner">{{error}}<button @click="load">Повторить</button></div>
-      <UiLoader v-if="loading" overlay label="Загрузка клиентского сервиса" />
-      <UiErrorState v-if="!titles[view]" :status="404" back-href="/clients/clients/" back-label="К клиентам" />
+      <UiLoader v-if="loading && startupPhase==='ready'" overlay label="Загрузка клиентского сервиса" />
+      <UiLoader v-if="startupPhase==='loading'" page label="Проверяем доступ к клиентскому сервису" />
+      <UiErrorState v-else-if="startupPhase==='error'" :status="503" description="Не удалось завершить загрузку прав доступа." retryable @retry="load" />
+      <UiErrorState v-else-if="!titles[view]" :status="404" back-href="/clients/clients/" back-label="К клиентам" />
       <UiErrorState v-else-if="!loading && (!allowedSections.includes(view) || (route.name === 'attempt-funnel' && !can('attempts.analytics.view')))" :status="403" />
       <template v-else-if="view==='clients'">
         <div class="clients-registry">
