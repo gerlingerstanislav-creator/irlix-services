@@ -46,7 +46,7 @@ class ClientsV2FinalizerDiagnosticsTests(unittest.TestCase):
     def test_active_head_alias_export_error_is_classified_without_private_payload(self):
         with patch.object(mod.subprocess, "check_output", return_value="docker compose"), patch.object(
             mod.subprocess, "run", return_value=subprocess.CompletedProcess([], 1,
-                stdout=b'PRIVATE-ROLE', stderr=b'PRIVATE EMPLOYEE ID\\n[clients-head-export] missing-managed-alias\\n')
+                stdout=b'PRIVATE-ROLE', stderr=b'PRIVATE EMPLOYEE ID\n[clients-head-export] missing-managed-alias\n')
         ):
             with self.assertRaisesRegex(RuntimeError, "Production department with an assigned manager needs a canonical alias") as caught:
                 mod.run()
