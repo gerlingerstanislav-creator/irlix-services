@@ -297,6 +297,20 @@ test('Storage favicon resolves under the canonical /storage/ URL', () => {
   assert.ok(favicon.includes('<svg'));
 });
 
+test('Storage V1 tiles use a resized and ACL-checked thumbnail, not original preview bytes', () => {
+  const screen = text('../src/StorageV1.vue');
+  const server = text('../../../services/storage-api/app/v1_api.py');
+  assert.ok(screen.includes("'/api/storage/v1/thumbnail/' + encodeURIComponent(item.id)"));
+  assert.ok(screen.includes(':src="thumbnailUrl(item)" alt="" loading="lazy" decoding="async"'));
+  assert.ok(screen.includes("await authenticatedFetch('/preview/' + encodeURIComponent(item.id))"));
+  assert.ok(server.includes('@router.get("/thumbnail/{object_id}")'));
+  assert.ok(server.includes('preview = preview_safe(request, object_id)'));
+  assert.ok(server.includes('picture.thumbnail((320, 240), Image.Resampling.LANCZOS)'));
+  assert.ok(server.includes('rgb.save(output, format="JPEG", quality=78, optimize=True)'));
+  assert.ok(server.includes('"Cache-Control": "private, no-store"'));
+  assert.ok(!screen.includes("'/api/storage/v1/preview/' + encodeURIComponent(item.id)"));
+});
+
 test('V1 PDF uses native Chrome PDF viewer without restrictive iframe sandbox', () => {
   const v1 = text('../src/StorageV1.vue');
   const pilot = text('../src/StorageDrive.vue');
