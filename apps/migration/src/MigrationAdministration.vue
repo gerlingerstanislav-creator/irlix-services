@@ -242,11 +242,11 @@ async function commitBackup(){
           </fieldset>
           <div class="mctrl-admin-actions">
             <UiButton type="submit" :disabled="!canChange||!form.readonly_acknowledged">Сохранить доступ</UiButton>
-            <UiButton variant="secondary" :disabled="!canChange" @click="run('reachability')">Проверить сервер</UiButton>
-            <UiButton variant="secondary" :disabled="!canChange" @click="run('verify')">Проверить подключение</UiButton>
-            <UiButton variant="secondary" :disabled="!canChange||!isVerified" @click="run('inspect')">Inspect</UiButton>
-            <UiButton variant="secondary" :disabled="!canChange||!isVerified" @click="run('dry-run')">Dry run</UiButton>
-            <UiButton variant="danger" :disabled="!canChange" @click="run('delete')">Удалить доступ</UiButton>
+            <UiButton type="button" variant="secondary" :disabled="!canChange" @click="run('reachability')">Проверить сервер</UiButton>
+            <UiButton type="button" variant="secondary" :disabled="!canChange" @click="run('verify')">Проверить подключение</UiButton>
+            <UiButton type="button" variant="secondary" :disabled="!canChange||!isVerified" @click="run('inspect')">Inspect</UiButton>
+            <UiButton type="button" variant="secondary" :disabled="!canChange||!isVerified" @click="run('dry-run')">Dry run</UiButton>
+            <UiButton type="button" variant="danger" :disabled="!canChange" @click="run('delete')">Удалить доступ</UiButton>
           </div>
         </form>
       </template>
