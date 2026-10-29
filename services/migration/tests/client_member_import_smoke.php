@@ -185,8 +185,8 @@ try {
     $clients->fixture['rates'][1]['rate'] = $clients->fixture['rates'][0]['rate'];
     check(runFixture($clients, true)['conflicts']>0,
         'Changing a previously populated amount in submitted report is still blocked');
-    $clients->fixture['rates'][0]['rate'] = $encryptedAmount;
-    $clients->fixture['rates'][1]['rate'] = $encryptedAmount;
+    foreach ($clients->fixture['rates'] as &$row) $row['rate'] = '1500.50';
+    unset($row);
     config(['migration.clients_app_key'=>null]);
     $legacyRun = $store->beginRun('clients','migrate');
     $store->saveMapping($legacyRun,'clients','default_projects','legacy-only',1);
