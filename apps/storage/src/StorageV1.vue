@@ -530,11 +530,13 @@ onMounted(() => refresh());
           <input v-model="searchQuery" type="search" placeholder="Поиск по файлам"
             aria-label="Поиск по диску" @input="queueSearch" />
         </form>
-        <select v-model="sortBy" aria-label="Сортировка">
-          <option value="name">По названию</option>
-          <option value="date">По дате</option>
-          <option value="size">По размеру</option>
-        </select>
+        <div class="storage-sort">
+          <select v-model="sortBy" aria-label="Сортировка">
+            <option value="name">По названию</option>
+            <option value="date">По дате</option>
+            <option value="size">По размеру</option>
+          </select>
+        </div>
         <div class="storage-switch" role="group" aria-label="Вид файлов">
           <button type="button" :class="{ active: layout === 'list' }"
             :aria-pressed="layout === 'list'" aria-label="Список" title="Список"
@@ -592,8 +594,16 @@ onMounted(() => refresh());
                 <UiCheckbox :model-value="selected.has(item.id)" :disabled="busy"
                   :aria-label="'Выбрать: ' + item.name"
                   @update:model-value="toggleSelected(item, $event)" />
-                <span class="storage-file-icon">{{ iconOf(item) }}</span>
+                <span class="storage-file-icon" :class="'storage-type--' + typeOf(item)" aria-hidden="true">
+                  <span v-if="item.kind === 'folder'">📁</span>
+                  <template v-else><UiIcon name="file-text" /><small>{{ typeLabel(item) }}</small></template>
+                </span>
                 <button type="button" class="storage-file-name" @click.stop="open(item)">{{ item.name }}</button>
+                <button v-if="canManage(item) && item.shared_count > 0" type="button"
+                  class="storage-shared-badge" :title="'Доступ предоставлен: ' + item.shared_count"
+                  :aria-label="'Управлять доступом к файлу: ' + item.name"
+                  @click.stop="openSharing(item)"><UiIcon name="users" />
+                  <span>Доступ: {{ item.shared_count }}</span></button>
               </td>
               <td>{{ displayedSize(item) }}</td>
               <td>{{ dateText(item.modified || item.deleted_at) }}</td>
@@ -620,10 +630,16 @@ onMounted(() => refresh());
             <span class="storage-tile-icon">
               <img v-if="isImage(item) && mode !== 'trash'" class="storage-thumbnail"
                 :src="thumbnailUrl(item)" alt="" loading="lazy" decoding="async" />
-              <span v-else>{{ iconOf(item) }}</span>
+              <span v-else class="storage-type-large" :class="'storage-type--' + typeOf(item)" aria-hidden="true">
+                <span v-if="item.kind === 'folder'">📁</span>
+                <template v-else><UiIcon name="file-text" /><small>{{ typeLabel(item) }}</small></template>
+              </span>
             </span>
             <strong :title="item.name">{{ item.name }}</strong>
             <small>{{ displayedSize(item) }}</small>
+            <span v-if="canManage(item) && item.shared_count > 0" class="storage-shared-indicator"
+              :title="'Доступ предоставлен: ' + item.shared_count"><UiIcon name="users" />
+              Доступ: {{ item.shared_count }}</span>
           </button>
         </div>
       </div>
@@ -678,8 +694,10 @@ onMounted(() => refresh());
     <div v-if="previewItem" class="storage-overlay" @click.self="closePreview">
       <section class="storage-modal storage-preview-modal" role="dialog" aria-modal="true" aria-label="Просмотр файла">
         <div class="storage-modal-head">
-          <h2>{{ previewItem.name }}</h2>
-          <div><UiButton type="button" variant="secondary" @click="download(previewItem)">Скачать</UiButton>
+          <h2 :title="previewItem.name">{{ previewItem.name }}</h2>
+          <div><button type="button" class="storage-preview-download" @click="download(previewItem)">
+              <span aria-hidden="true">↓</span> Скачать
+            </button>
             <button type="button" aria-label="Закрыть" @click="closePreview">×</button></div>
         </div>
         <div class="storage-preview-content">
@@ -724,23 +742,48 @@ onMounted(() => refresh());
         </table>
       </section>
     </div>
-    <div v-if="shareItem" class="storage-overlay" @click.self="shareItem=null">
-      <section class="storage-modal storage-v1-share" role="dialog" aria-modal="true" aria-label="Управление доступом">
-        <div class="storage-modal-head"><h2>Доступ: {{ shareItem.name }}</h2><button type="button" @click="shareItem=null">×</button></div>
-        <label>Сотрудник
-          <UiSearchSelect v-model="shareRecipient" :options="directoryOptions" placeholder="Выберите сотрудника" aria-label="Получатель доступа" :teleport="true" />
-        </label>
-        <label>Право
-          <select v-model="shareRole"><option value="reader">Просмотр и скачивание</option><option value="editor">Редактирование и загрузка</option></select>
-        </label>
-        <div class="storage-modal-actions"><UiButton type="button" :disabled="busy || !shareRecipient" @click="grant">Предоставить доступ</UiButton></div>
-        <h3>Предоставленные доступы</h3>
-        <p v-if="!grants.length">Пока никому не предоставлен доступ</p>
-        <div v-for="grantRow in grants" :key="grantRow.employee_id" class="storage-v1-grant">
-          <span>Сотрудник #{{ grantRow.employee_id }} · {{ grantRow.role === 'editor' ? 'Редактирование' : 'Просмотр' }}</span>
-          <UiButton type="button" variant="secondary" :disabled="busy" @click="revoke(grantRow.employee_id)">Отозвать</UiButton>
+    <div v-if="shareItem" class="storage-overlay" @click.self="!busy && (shareItem=null)">
+      <section class="storage-modal storage-v1-share" role="dialog" aria-modal="true" aria-labelledby="storage-share-title">
+        <div class="storage-modal-head">
+          <h2 id="storage-share-title">Управление доступом</h2>
+          <button type="button" aria-label="Закрыть" :disabled="busy" @click="shareItem=null">×</button>
         </div>
-        <div class="storage-modal-actions"><UiButton type="button" variant="secondary" @click="shareItem=null">Закрыть</UiButton></div>
+        <p class="storage-share-filename" :title="shareItem.name">{{ shareItem.name }}</p>
+        <div v-if="shareError" class="storage-share-error" role="alert">{{ shareError }}</div>
+        <div v-if="shareFeedback" class="storage-share-feedback" role="status">{{ shareFeedback }}</div>
+        <div class="storage-share-form">
+          <label>Сотрудник
+            <UiSearchSelect v-model="shareRecipient" :options="directoryOptions"
+              placeholder="Выберите сотрудника" aria-label="Получатель доступа"
+              :disabled="busy || shareLoading" :teleport="true" />
+          </label>
+          <label>Уровень доступа
+            <select v-model="shareRole" :disabled="busy || shareLoading">
+              <option value="reader">Просмотр и скачивание</option>
+              <option value="editor">Редактирование и загрузка</option>
+            </select>
+          </label>
+          <div class="storage-share-submit">
+            <UiButton type="button" :disabled="busy || shareLoading || !shareRecipient"
+              @click="grant">Предоставить доступ</UiButton>
+          </div>
+        </div>
+        <div class="storage-share-list">
+          <h3>Кому предоставлен доступ <span v-if="!shareLoading">({{ grants.length }})</span></h3>
+          <p v-if="shareLoading" class="storage-share-empty" role="status">Загрузка разрешений…</p>
+          <p v-else-if="!grants.length" class="storage-share-empty">Пока никому не предоставлен доступ</p>
+          <div v-for="grantRow in grants" :key="grantRow.employee_id" class="storage-v1-grant">
+            <div class="storage-grant-person">
+              <strong>{{ recipientName(grantRow.employee_id) }}</strong>
+              <small>{{ grantLabel(grantRow.role) }}</small>
+            </div>
+            <UiButton type="button" variant="secondary" :disabled="busy"
+              :aria-label="'Отозвать доступ: ' + recipientName(grantRow.employee_id)"
+              @click="revoke(grantRow.employee_id)">Отозвать</UiButton>
+          </div>
+        </div>
+        <div class="storage-modal-actions"><UiButton type="button" variant="secondary"
+          :disabled="busy" @click="shareItem=null">Закрыть</UiButton></div>
       </section>
     </div>
   </section>
