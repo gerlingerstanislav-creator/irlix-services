@@ -45,7 +45,7 @@ jobs:
         # Independent of privileged maintenance: never hide disk numbers
         # just because cleanup has failed on the remote host.
         run: |
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'sh -s' < scripts/server-capacity.sh
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'STORAGE_UPLOAD_DIAGNOSTICS=1 sh -s' < scripts/server-capacity.sh
       - name: Install verified image-retention script for host maintenance
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.cleanup == true }}
         run: |
