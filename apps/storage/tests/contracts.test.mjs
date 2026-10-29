@@ -200,7 +200,7 @@ test('V1 is isolated from legacy files and uses shared employee picker', () => {
   const router = text('../src/routes.js');
   assert.ok(router.includes("path: '/v1', redirect: '/'"));
   assert.ok(app.includes('<StorageV1 v-else-if="[\'files\', \'available\', \'trash\'].includes(activeSection)"'));
-  assert.ok(screen.includes('UiSearchSelect v-model="shareRecipient"'));
+  assert.ok(screen.includes('UiSearchSelect v-model="shareRecipients"'));
   assert.ok(screen.includes("request('/objects/'"));
   assert.ok(screen.includes("request('/folders'"));
   assert.ok(screen.includes("request('/files'"));
@@ -263,7 +263,7 @@ test('Storage V1 is the canonical three-section Drive, gated independently from 
   assert.ok(screen.includes("layout === 'list'"));
   assert.ok(screen.includes("layout === 'grid'"));
   assert.ok(screen.includes('class="storage-table storage-v1-table"'));
-  assert.ok(screen.includes('class="storage-tile-open"'));
+  assert.ok(screen.includes('class="storage-tile-open" :title="item.name"'));
   assert.ok(screen.includes('refreshSerial'));
   assert.ok(!screen.includes('storage-v1-sections" role="group"'));
 });
@@ -366,4 +366,51 @@ test('V1 preview and all modals inherit compact design system typography', () =>
   assert.ok(css.includes('font-size:14px'));
   assert.ok(css.includes('.storage-v1 .storage-preview-modal{'));
   assert.ok(css.includes('padding:10px'));
+});
+
+
+test('Storage V1 employee selector supports compact multi-select and explicit chosen names', () => {
+  const screen = text('../src/StorageV1.vue');
+  const css = text('../src/storage.css');
+  const ui = text('../../../packages/ui/src/components/UiSearchSelect.vue');
+  assert.ok(screen.includes('const shareRecipients = ref([])'));
+  assert.ok(screen.includes('UiSearchSelect v-model="shareRecipients"'));
+  assert.ok(screen.includes(':multiple="true" :disabled="busy || shareLoading" :teleport="true"'));
+  assert.ok(screen.includes('v-for="employeeId in shareRecipients"'));
+  assert.ok(screen.includes('removeRecipient(employeeId)'));
+  assert.ok(screen.includes(':disabled="busy || shareLoading || !shareRecipients.length"'));
+  assert.ok(ui.includes("const selectedValues = computed(() => props.multiple"));
+  assert.ok(ui.includes("role=\"listbox\" :aria-multiselectable=\"multiple || undefined\""));
+  assert.ok(css.includes('body:has(.storage-v1-share) > .ui-search-select__menu--teleported'));
+  assert.ok(css.includes('.ui-search-select__option{'));
+  assert.ok(css.includes('font-size:12px'));
+  assert.ok(css.includes('.storage-v1 .storage-recipient-chips'));
+});
+
+test('Storage V1 multiple grants reuse individually audited API and retain failures for retry', () => {
+  const screen = text('../src/StorageV1.vue');
+  const api = text('../../../services/storage-api/app/v1_api.py');
+  const segment = screen.slice(screen.indexOf('async function grant()'), screen.indexOf('async function revoke('));
+  assert.ok(segment.includes('new Set(shareRecipients.value.map(Number))'));
+  assert.ok(segment.includes('for (const employeeId of targetIds)'));
+  assert.ok(segment.includes('employee_id: employeeId, role: shareRole.value'));
+  assert.ok(segment.includes('failures.push({ id: employeeId, message: err.message })'));
+  assert.ok(segment.includes('shareRecipients.value = failures.map(entry => entry.id)'));
+  assert.ok(segment.includes('await loadGrants(item)'));
+  assert.ok(api.includes('@router.post("/objects/{object_id}/grants")'));
+});
+
+test('Storage V1 tile isolates thumbnail and long title in separate bounded rows', () => {
+  const screen = text('../src/StorageV1.vue');
+  const css = text('../src/storage.css');
+  assert.ok(screen.includes('class="storage-tile-media"'));
+  assert.ok(screen.includes('class="storage-tile-title"'));
+  assert.ok(screen.includes('class="storage-tile-size"'));
+  assert.ok(screen.includes('class="storage-tile-sharing"'));
+  assert.ok(css.includes('grid-template-rows:126px 38px 17px 18px'));
+  assert.ok(css.includes('.storage-v1 .storage-tile-media{'));
+  assert.ok(css.includes('height:126px;overflow:hidden;'));
+  assert.ok(css.includes('object-fit:contain;border-radius:0;'));
+  assert.ok(css.includes('-webkit-line-clamp:2'));
+  assert.ok(css.includes('overflow-wrap:anywhere;word-break:break-word;'));
 });

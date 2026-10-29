@@ -31,7 +31,7 @@ const createName = ref('');
 const createFolderOpen = ref(false);
 const uploadInput = ref(null);
 const shareItem = ref(null);
-const shareRecipient = ref('');
+const shareRecipients = ref([]);
 const shareRole = ref('reader');
 const grants = ref([]);
 const shareLoading = ref(false);
@@ -42,6 +42,9 @@ const recipientNames = computed(() => new Map(directoryOptions.value
   .map(option => [Number(option.value), option.label])));
 const recipientName = id => recipientNames.value.get(Number(id)) || 'Сотрудник #' + id;
 const grantLabel = role => role === 'editor' ? 'Редактирование и загрузка' : 'Просмотр и скачивание';
+function removeRecipient(id) {
+  shareRecipients.value = shareRecipients.value.filter(selectedId => Number(selectedId) !== Number(id));
+}
 function syncShareBadge(item) {
   const count = grants.value.length;
   entries.value = entries.value.map(entry => entry.id === item.id ? { ...entry, shared_count: count } : entry);
@@ -385,7 +388,7 @@ async function loadDirectory() {
   } catch (err) { throw err; }
 }
 async function openSharing(item) {
-  shareItem.value = item; grants.value = []; shareRecipient.value = '';
+  shareItem.value = item; grants.value = []; shareRecipients.value = [];
   shareRole.value = 'reader'; shareError.value = ''; shareFeedback.value = '';
   shareLoading.value = true;
   try {
@@ -480,19 +483,42 @@ async function loadGrants(item) {
   syncShareBadge(item);
 }
 async function grant() {
-  if (!shareItem.value || !shareRecipient.value || busy.value) return;
+  if (!shareItem.value || !shareRecipients.value.length || busy.value) return;
+  const item = shareItem.value;
+  const targetIds = [...new Set(shareRecipients.value.map(Number))]
+    .filter(id => Number.isSafeInteger(id) && id > 0);
+  if (!targetIds.length) return;
   busy.value = true; shareError.value = ''; shareFeedback.value = '';
+  const failures = [];
+  let succeeded = 0;
+  // A separate authorized, audited request for each recipient preserves the
+  // existing V1 ACL contract. Failed recipients remain selected for retry.
+  for (const employeeId of targetIds) {
+    try {
+      await request('/objects/' + encodeURIComponent(item.id) + '/grants', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employee_id: employeeId, role: shareRole.value }),
+      });
+      succeeded++;
+    } catch (err) {
+      failures.push({ id: employeeId, message: err.message });
+    }
+  }
+  shareRecipients.value = failures.map(entry => entry.id);
   try {
-    await request('/objects/' + encodeURIComponent(shareItem.value.id) + '/grants', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ employee_id: Number(shareRecipient.value), role: shareRole.value }),
-    });
-    await loadGrants(shareItem.value);
-    shareRecipient.value = '';
-    shareFeedback.value = 'Доступ предоставлен. Получатель отображается в списке ниже.';
-    notice.value = 'Доступ предоставлен';
-  } catch (err) { shareError.value = err.message; }
-  finally { busy.value = false; }
+    await loadGrants(item);
+  } catch (err) {
+    shareError.value = 'Не удалось обновить список доступов: ' + err.message;
+  }
+  if (succeeded) {
+    shareFeedback.value = 'Доступ предоставлен: ' + succeeded + ' из ' + targetIds.length + '.';
+    notice.value = 'Доступ предоставлен: ' + succeeded;
+  }
+  if (failures.length) {
+    shareError.value = 'Не удалось предоставить доступ: '
+      + failures.map(entry => recipientName(entry.id) + ' — ' + entry.message).join('; ');
+  }
+  busy.value = false;
 }
 async function revoke(employeeId) {
   if (!shareItem.value || busy.value) return;
@@ -626,20 +652,24 @@ onMounted(() => refresh());
             <UiActionMenu :items="actionsFor(item)"
               :aria-label="'Действия: ' + item.name" @select="mutate(item, $event)" />
           </div>
-          <button type="button" class="storage-tile-open" @click="open(item)">
-            <span class="storage-tile-icon">
-              <img v-if="isImage(item) && mode !== 'trash'" class="storage-thumbnail"
-                :src="thumbnailUrl(item)" alt="" loading="lazy" decoding="async" />
-              <span v-else class="storage-type-large" :class="'storage-type--' + typeOf(item)" aria-hidden="true">
-                <span v-if="item.kind === 'folder'">📁</span>
-                <template v-else><UiIcon name="file-text" /><small>{{ typeLabel(item) }}</small></template>
+          <button type="button" class="storage-tile-open" :title="item.name" @click="open(item)">
+            <span class="storage-tile-media">
+              <span class="storage-tile-icon">
+                <img v-if="isImage(item) && mode !== 'trash'" class="storage-thumbnail"
+                  :src="thumbnailUrl(item)" alt="" loading="lazy" decoding="async" />
+                <span v-else class="storage-type-large" :class="'storage-type--' + typeOf(item)" aria-hidden="true">
+                  <span v-if="item.kind === 'folder'">📁</span>
+                  <template v-else><UiIcon name="file-text" /><small>{{ typeLabel(item) }}</small></template>
+                </span>
               </span>
             </span>
-            <strong :title="item.name">{{ item.name }}</strong>
-            <small>{{ displayedSize(item) }}</small>
-            <span v-if="canManage(item) && item.shared_count > 0" class="storage-shared-indicator"
-              :title="'Доступ предоставлен: ' + item.shared_count"><UiIcon name="users" />
-              Доступ: {{ item.shared_count }}</span>
+            <strong class="storage-tile-title">{{ item.name }}</strong>
+            <small class="storage-tile-size">{{ displayedSize(item) }}</small>
+            <span class="storage-tile-sharing">
+              <span v-if="canManage(item) && item.shared_count > 0" class="storage-shared-indicator"
+                :title="'Доступ предоставлен: ' + item.shared_count"><UiIcon name="users" />
+                Доступ: {{ item.shared_count }}</span>
+            </span>
           </button>
         </div>
       </div>
@@ -752,10 +782,19 @@ onMounted(() => refresh());
         <div v-if="shareError" class="storage-share-error" role="alert">{{ shareError }}</div>
         <div v-if="shareFeedback" class="storage-share-feedback" role="status">{{ shareFeedback }}</div>
         <div class="storage-share-form">
-          <label>Сотрудник
-            <UiSearchSelect v-model="shareRecipient" :options="directoryOptions"
-              placeholder="Выберите сотрудника" aria-label="Получатель доступа"
-              :disabled="busy || shareLoading" :teleport="true" />
+          <label>Сотрудники
+            <UiSearchSelect v-model="shareRecipients" :options="directoryOptions"
+              placeholder="Выберите сотрудников" aria-label="Получатели доступа"
+              :multiple="true" :disabled="busy || shareLoading" :teleport="true" />
+            <div v-if="shareRecipients.length" class="storage-recipient-chips" aria-label="Выбранные сотрудники">
+              <button v-for="employeeId in shareRecipients" :key="employeeId" type="button"
+                :disabled="busy" class="storage-recipient-chip"
+                :aria-label="'Убрать из выбора: ' + recipientName(employeeId)"
+                @click.stop="removeRecipient(employeeId)">
+                <span>{{ recipientName(employeeId) }}</span><span aria-hidden="true">×</span>
+              </button>
+            </div>
+            <small class="storage-share-hint">Можно выбрать нескольких сотрудников. Всем будет назначено указанное ниже право.</small>
           </label>
           <label>Уровень доступа
             <select v-model="shareRole" :disabled="busy || shareLoading">
@@ -764,8 +803,8 @@ onMounted(() => refresh());
             </select>
           </label>
           <div class="storage-share-submit">
-            <UiButton type="button" :disabled="busy || shareLoading || !shareRecipient"
-              @click="grant">Предоставить доступ</UiButton>
+            <UiButton type="button" :disabled="busy || shareLoading || !shareRecipients.length"
+              @click="grant">Предоставить доступ<span v-if="shareRecipients.length"> ({{ shareRecipients.length }})</span></UiButton>
           </div>
         </div>
         <div class="storage-share-list">
