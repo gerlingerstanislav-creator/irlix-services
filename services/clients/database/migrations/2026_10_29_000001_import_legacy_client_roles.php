@@ -37,6 +37,15 @@ return new class extends Migration {
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+                $saved = DB::table('client_contour_permissions')
+                    ->where('role', $roleKeys[$row->role])
+                    ->where('permission', $row->permission)
+                    ->first(['allowed','scope','denied']);
+                if (!$saved || (bool) $saved->allowed !== (bool) $row->allowed
+                    || (bool) $saved->denied !== (bool) $row->denied
+                    || (string) $saved->scope !== (string) $row->scope) {
+                    throw new RuntimeException('Existing V2 Clients policy conflicts with legacy matrix');
+                }
             }
         });
     }
