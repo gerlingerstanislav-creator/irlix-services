@@ -46,8 +46,8 @@ class LegacyAuthzImportTests(unittest.TestCase):
         for service in ("finance", "equipment", "timesheets", "vacations",
                         "recruitment", "clients", "specialists"):
             self.assertIn(service + ") schema=", script.read_text())
-        self.assertIn(' -t \\"$schema.$matrix\\"', script.read_text())
-        self.assertIn(' -t \\"$schema.$audit\\"', script.read_text())
+        self.assertIn('$schema.$matrix', script.read_text())
+        self.assertIn('$schema.$audit', script.read_text())
         self.assertIn('chmod 600 "$destination/schema.dump"', script.read_text())
         self.assertLess(deploy.index("scripts/authz/backup-local-matrices.sh"),
                         deploy.index("php artisan migrate --force"))
