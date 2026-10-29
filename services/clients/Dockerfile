@@ -8,7 +8,9 @@ COPY routes /app/routes
 COPY bootstrap/app.php /app/bootstrap/app.php
 COPY database/migrations /app/database/migrations
 COPY tests /app/tests
-RUN php /app/tests/permissions_routes_smoke.php \
+COPY bin /app/bin
+RUN php /app/tests/legacy_head_role_bridge.php \
+    && php /app/tests/permissions_routes_smoke.php \
     && php /app/tests/workflow_smoke.php \
     && php /app/tests/attempt_funnel_smoke.php \
     && php /app/tests/timesheet_assignments_smoke.php \
@@ -28,7 +30,7 @@ RUN php /app/tests/permissions_routes_smoke.php \
     && php /app/tests/lead_lifecycle_eloquent_smoke.php \
     && php /app/tests/eloquent_architecture_slices.php \
     && php /app/tests/employee_purge_smoke.php
-RUN find /app/app /app/routes /app/bootstrap /app/database/migrations -name '*.php' -print0 | xargs -0 -n1 php -l
+RUN find /app/app /app/routes /app/bootstrap /app/database/migrations /app/bin -name '*.php' -print0 | xargs -0 -n1 php -l
 
 FROM php:8.4-cli-alpine
 RUN apk add --no-cache postgresql-dev oniguruma-dev openssl \

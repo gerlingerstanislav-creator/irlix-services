@@ -41,4 +41,25 @@ $check(!Authz::currentIdentityMatches([...$v2Signed,'platform-admin'],$live),
 $live['roles']=['personnel-officer','platform-admin'];
 $check(Authz::currentIdentityMatches([...$v2Signed,'platform-admin'],$live),
     'Current administrator was incorrectly rejected');
+
+// Legacy Employees permission rules remain the upper bound after importing
+// the old accountant/head defaults. A manual deny can never be resurrected
+// by a broad org:accounting V2 allow.
+$legacy = ['services'=>['finance'=>true], 'permissions'=>[
+    'finance.view'=>true, 'finance.salary.view'=>false,
+    'finance.invoices.manage'=>true,
+]];
+$clamped = Authz::intersectLegacy([
+    'finance.view'=>true, 'finance.salary.view'=>true,
+    'finance.invoices.manage'=>true, 'finance.cash.confirm'=>true,
+], $legacy);
+$check($clamped['finance.view'] && $clamped['finance.invoices.manage'],
+    'Existing allowed Finance capabilities lost during migration');
+$check(!$clamped['finance.salary.view'] && !$clamped['finance.cash.confirm'],
+    'Missing or explicitly denied Finance capabilities were restored');
+$legacy['services']['finance'] = false;
+$check(!array_filter(Authz::intersectLegacy(['finance.view'=>true,
+    'finance.salary.view'=>true], $legacy)),
+    'Employees service-level denial was bypassed by V2 matrix');
+
 echo "Finance V2 local authorization: PASS\n";

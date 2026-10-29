@@ -148,6 +148,17 @@ class ClientContourAccess
         return array_keys($out);
     }
 
+    public static function verifiedLegacyManagerMatrixRole(array $roles, bool $manages): array
+    {
+        if (!$manages) return [];
+        foreach ($roles as $role) {
+            if (is_string($role) && preg_match('/^head:[a-z0-9]+(?:-[a-z0-9]+)*$/D', $role) === 1) {
+                return ['department-manager'];
+            }
+        }
+        return [];
+    }
+
     public function resolve(Request $request): array
     {
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
@@ -428,8 +439,14 @@ class ClientContourAccess
             // functional projections remain available for object relationships
             // but never grant permissions implicitly in this mode.
             $matrixRoles = $localRoleMode
-                ? self::currentIdentityLabels($jwtLabels, (int) ($employee['id'] ?? 0),
-                    $departments->all(), $directoryEmployees->all())
+                ? array_merge(
+                    self::currentIdentityLabels($jwtLabels, (int) ($employee['id'] ?? 0),
+                        $departments->all(), $directoryEmployees->all()),
+                    self::verifiedLegacyManagerMatrixRole(
+                        self::currentIdentityLabels($jwtLabels, (int) ($employee['id'] ?? 0),
+                            $departments->all(), $directoryEmployees->all()),
+                        $managedRoots !== [])
+                )
                 : (in_array('manager', $specialRoles, true) ? [...$roles, 'department-manager'] : $roles);
             $explicitDenies = [];
             foreach (ClientContourPermission::query()->whereIn('role', $matrixRoles)->get() as $row) {

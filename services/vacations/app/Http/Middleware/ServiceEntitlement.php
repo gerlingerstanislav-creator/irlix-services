@@ -47,6 +47,9 @@ final class ServiceEntitlement
             )) {
                 return response()->json(['message' => 'Vacations roles changed; refresh authentication'], 403);
             }
+            if ($fresh->json('data.services.vacations') !== true) {
+                return response()->json(['message' => 'Existing Vacations admission denied'], 403);
+            }
             if ($path === 'api/permissions') {
                 // The service administrator manages its OWN matrix.
                 // Legacy service:vacations is not an extra prerequisite;

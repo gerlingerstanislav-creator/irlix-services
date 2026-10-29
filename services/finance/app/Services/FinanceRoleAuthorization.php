@@ -29,6 +29,18 @@ final class FinanceRoleAuthorization
         return true;
     }
 
+    public static function intersectLegacy(array $new, array $legacy): array
+    {
+        if (($legacy['services']['finance'] ?? false) !== true) {
+            return array_fill_keys(array_keys($new), false);
+        }
+        foreach ($new as $permission => $allowed) {
+            $new[$permission] = $allowed === true
+                && ($legacy['permissions'][$permission] ?? false) === true;
+        }
+        return $new;
+    }
+
     public const PERMISSIONS = [
         'finance.view',
         'finance.salary.view',
