@@ -234,7 +234,10 @@ test('V1 operations support immutable versions, scoped search, bulk actions, and
   assert.ok(!server.includes('".html": "text/html"'));
   assert.ok(v1.includes('async function openPreview(item)'));
   assert.ok(v1.includes('URL.revokeObjectURL(previewUrl.value)'));
-  assert.ok(v1.includes('sandbox=""'));
+  // Chrome's built-in PDF viewer is blocked by an empty iframe sandbox.
+  // The backend checks actor ACL, PDF magic bytes and sends nosniff.
+  assert.ok(v1.includes('previewMime === \'pdf\''));
+  assert.doesNotMatch(v1, /<iframe[^>]*sandbox=/);
   assert.ok(compose.includes('STORAGE_V1_QUOTA_BYTES:'));
   assert.ok(versions.includes('storage.file_versions'));
   assert.ok(versions.includes('storage.reject_version_mutation'));
