@@ -6,6 +6,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY services/storage-api/app ./app
 COPY services/storage-api/tests ./tests
 RUN python -m unittest discover -s tests -v
+# The Docker volume copies these ownership bits on first creation.
+RUN mkdir -p /app/data && chown 65532:65532 /app/data
 USER 65532:65532
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]

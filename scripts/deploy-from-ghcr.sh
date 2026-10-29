@@ -53,6 +53,20 @@ migration_container_key() {
     | head -n1
 }
 
+# One-time restricted Storage V1 debug activation (owner-authorized).
+# Marker prevents re-enabling a manually disabled V1 on later releases.
+storage_debug_target=false
+if [ "$FULL" = true ]; then storage_debug_target=true; fi
+for deployed in $DEPLOY_SERVICES; do
+  [ "$deployed" = "storage-api" ] && storage_debug_target=true
+done
+if [ "$storage_debug_target" = true ] && ! $SUDO grep -q '^STORAGE_V1_SQLITE_DEBUG_BOOTSTRAPPED=1$' .env; then
+  upsert_env STORAGE_V1_ENABLED 1
+  upsert_env STORAGE_V1_ACCESS_ENABLED 1
+  upsert_env STORAGE_V1_SQLITE_DEBUG_BOOTSTRAPPED 1
+  echo "Restricted Storage V1 SQLite debug activated (platform-admin/top-management only)."
+fi
+
 IRLIX_PUBLIC_URL="${IRLIX_CANONICAL_ORIGIN:-http://services.lan}"
 upsert_env IRLIX_PUBLIC_URL "$IRLIX_PUBLIC_URL"
 upsert_env KEYCLOAK_PUBLIC_URL "${IRLIX_PUBLIC_URL}/keycloak/auth"

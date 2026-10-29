@@ -1,4 +1,4 @@
-"""Storage-owned PostgreSQL metadata repository.
+"""Storage-owned metadata repository (PostgreSQL or single-node SQLite debug).
 
 Never reads Employees' tables. Caller supplies verified actor and active
 recipient checker from the Employees API. All mutation methods share the same
@@ -11,14 +11,19 @@ from fastapi import HTTPException
 import psycopg
 
 from .access_policy import FileGrant, FileObject, GrantRole
+from .sqlite_metadata import sqlite_metadata_connection
 
 
 def metadata_connection():
-    dsn = os.environ.get("STORAGE_V1_DB_DSN")
-    if os.environ.get("STORAGE_V1_ENABLED") != "1" or not dsn:
+    if os.environ.get("STORAGE_V1_ENABLED") != "1":
         raise HTTPException(503, "Новое хранилище пока не подключено")
+    backend = os.environ.get("STORAGE_V1_METADATA_BACKEND", "postgres")
+    if backend == "sqlite":
+        return sqlite_metadata_connection()
+    if backend != "postgres" or not os.environ.get("STORAGE_V1_DB_DSN"):
+        raise HTTPException(503, "Метаданные хранилища не настроены")
     try:
-        return psycopg.connect(dsn, connect_timeout=3)
+        return psycopg.connect(os.environ["STORAGE_V1_DB_DSN"], connect_timeout=3)
     except psycopg.Error:
         raise HTTPException(503, "Метаданные хранилища недоступны")
 
@@ -29,6 +34,9 @@ class MetadataRepository:
         self.employee_active = employee_active
 
     def lock(self):
+        if getattr(self.conn, "is_sqlite", False):
+            self.conn.lock()
+            return
         self.conn.execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
         self.conn.execute("SELECT pg_advisory_xact_lock(hashtext('irlix-storage-v1-metadata'))")
 
@@ -56,10 +64,18 @@ class MetadataRepository:
         if not objects:
             return []
         keys = list(objects)
-        rows = self.conn.execute(
-            "SELECT object_id::text, employee_id, role FROM storage.grants "
-            "WHERE object_id = ANY(%s::uuid[]) AND revoked_at IS NULL", (keys,)
-        ).fetchall()
+        if getattr(self.conn, "is_sqlite", False):
+            marks = ",".join("?" for _ in keys)
+            rows = self.conn.execute(
+                "SELECT object_id, employee_id, role FROM storage.grants "
+                "WHERE object_id IN (" + marks + ") AND revoked_at IS NULL",
+                keys,
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT object_id::text, employee_id, role FROM storage.grants "
+                "WHERE object_id = ANY(%s::uuid[]) AND revoked_at IS NULL", (keys,)
+            ).fetchall()
         return [FileGrant(obj, employee, GrantRole(role)) for obj, employee, role in rows]
 
     def employee_is_active(self, employee_id):
