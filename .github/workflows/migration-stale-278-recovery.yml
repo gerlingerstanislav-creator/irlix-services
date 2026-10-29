@@ -1,17 +1,20 @@
 name: One-time safe Timesheets 278 recovery
 
+# One-time production repair must never run automatically on a code push.
 on:
-  push:
-    branches: [main]
-    paths:
-      - scripts/ci/reconcile_stale_timesheets_278.py
-      - .github/workflows/migration-stale-278-recovery.yml
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type RECOVER_STALE_278 to allow the one-time recovery'
+        type: string
+        required: true
 
 permissions:
   contents: read
 
 jobs:
   reconcile:
+    if: ${{ inputs.confirmation == 'RECOVER_STALE_278' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:

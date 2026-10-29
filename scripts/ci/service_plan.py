@@ -244,7 +244,7 @@ def previous_success():
 
 def outputs(plan):
     matrix = {"include": plan["images"] or [{"id": "not-required", "skip": True}]}
-    values = {"matrix": json.dumps(matrix, separators=(",", ":")), "deploy": str(plan["deploy"]).lower(), "auth": str(plan["auth"]).lower()}
+    values = {"matrix": json.dumps(matrix, separators=(",", ":")), "has_images": str(bool(plan["images"])).lower(), "deploy": str(plan["deploy"]).lower(), "auth": str(plan["auth"]).lower()}
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:
             for key, value in values.items():

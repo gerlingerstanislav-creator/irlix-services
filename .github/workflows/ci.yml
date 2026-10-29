@@ -50,6 +50,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.detect.outputs.matrix }}
+      has_images: ${{ steps.detect.outputs.has_images }}
       deploy: ${{ steps.detect.outputs.deploy }}
       auth: ${{ steps.detect.outputs.auth }}
     steps:
@@ -86,6 +87,14 @@ jobs:
         run: |
           args=()
           if [ "$FULL_BUILD" = true ]; then args+=(--full); fi
+          # The event base SHA can be stale if development moves while the
+          # PR's synthetic merge ref is generated. Its first parent is the
+          # EXACT development commit used by the checkout under test.
+          if [ "${GITHUB_EVENT_NAME}" = pull_request ]; then
+            read -r merge_commit base_sha pr_head extra <<< "$(git rev-list --parents -n 1 HEAD)"
+            test -n "$pr_head" && test -z "$extra"
+            args+=(--base "$base_sha")
+          fi
           python3 scripts/ci/service_plan.py plan "${args[@]}"
       - uses: actions/upload-artifact@v4
         with:
@@ -96,6 +105,7 @@ jobs:
 
   build:
     name: Build or reuse / ${{ matrix.id }}
+    if: ${{ needs.changes.outputs.has_images == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     needs: changes
@@ -136,18 +146,35 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Resolve actual QA diff base
+        env:
+          PUSH_BASE: ${{ github.event.before }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = pull_request ]; then
+            read -r merge_commit base_sha pr_head extra <<< "$(git rev-list --parents -n 1 HEAD)"
+            test -n "$pr_head" && test -z "$extra"
+            echo "QA_BASE=$base_sha" >> "$GITHUB_ENV"
+          else
+            echo "QA_BASE=$PUSH_BASE" >> "$GITHUB_ENV"
+          fi
       - name: Validate AI orchestration syntax
         run: node --check scripts/agents/handoff.mjs && node --check scripts/agents/route.mjs
       - name: Run scoped QA contract checks
-        env:
-          QA_BASE: ${{ github.event.before }}
         run: node scripts/qa/run.mjs --scope changed
       - name: Lint changed backend PHP files
-        env:
-          QA_BASE: ${{ github.event.before }}
         run: node scripts/qa/php-lint.mjs --scope changed
       - name: Authorization V2 read-only parity guard tests
         run: php scripts/tests/authz_parity.php
+      - name: Offline migration and infrastructure regressions
+        run: |
+          python3 -m unittest discover -s scripts/tests -p 'test_migration_control.py' -v
+          python3 -m unittest discover -s scripts/tests -p 'test_migration_retention.py' -v
+          python3 -m unittest discover -s scripts/tests -p 'test_keycloak_authz_rollout.py' -v
+          python3 -m unittest discover -s scripts/ci/tests -p 'test_app_key_provisioning.py' -v
+          python3 -m unittest discover -s scripts/ci/tests -p 'test_resource_host_disk.py' -v
+          PYTHONPATH=services/resource-monitor python3 -m unittest discover -s services/resource-monitor -p 'tests.py' -v
+          python3 -m unittest discover -s scripts/ci -p 'test_prune_docker_images.py' -v
+          sh -n scripts/server-storage-maintenance.sh
       - name: Store QA report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -169,9 +196,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run local synthetic Playwright scenarios
+      - name: Resolve actual QA diff base
         env:
-          QA_BASE: ${{ github.event.before }}
+          PUSH_BASE: ${{ github.event.before }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = pull_request ]; then
+            read -r merge_commit base_sha pr_head extra <<< "$(git rev-list --parents -n 1 HEAD)"
+            test -n "$pr_head" && test -z "$extra"
+            echo "QA_BASE=$base_sha" >> "$GITHUB_ENV"
+          else
+            echo "QA_BASE=$PUSH_BASE" >> "$GITHUB_ENV"
+          fi
+      - name: Run local synthetic Playwright scenarios
         run: node scripts/qa/browser.mjs --scope changed
       - name: Save browser evidence
         if: ${{ !cancelled() }}
@@ -193,11 +229,12 @@ jobs:
       - env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           BUILD_RESULT: ${{ needs.build.result }}
+          HAS_IMAGES: ${{ needs.changes.outputs.has_images }}
           PROVENANCE_RESULT: ${{ needs.provenance.result }}
           SNAPSHOT_RESULT: ${{ needs.snapshot-runtime.result }}
           QA_RESULT: ${{ needs.qa.result }}
           QA_BROWSER_RESULT: ${{ needs.qa-browser.result }}
-        run: test "$CHANGES_RESULT" = success && test "$BUILD_RESULT" = success && test "$PROVENANCE_RESULT" = success && test "$QA_RESULT" = success && test "$QA_BROWSER_RESULT" = success && { test "$SNAPSHOT_RESULT" = success || test "$SNAPSHOT_RESULT" = skipped; }
+        run: test "$CHANGES_RESULT" = success && { test "$BUILD_RESULT" = success || { test "$BUILD_RESULT" = skipped && test "$HAS_IMAGES" = false; }; } && test "$PROVENANCE_RESULT" = success && test "$QA_RESULT" = success && test "$QA_BROWSER_RESULT" = success && { test "$SNAPSHOT_RESULT" = success || test "$SNAPSHOT_RESULT" = skipped; }
 
   deploy:
     name: Pull and deploy affected components

@@ -36,7 +36,9 @@ class WorkflowLiveness(unittest.TestCase):
         workflow = WORKFLOW.read_text()
         self.assertNotIn('always()', workflow)
         self.assertGreaterEqual(workflow.count('!cancelled()'), 2)
-        self.assertIn('test "$CHANGES_RESULT" = success && test "$BUILD_RESULT" = success', workflow)
+        self.assertIn('test "$CHANGES_RESULT" = success && { test "$BUILD_RESULT" = success || { test "$BUILD_RESULT" = skipped && test "$HAS_IMAGES" = false; }; }', workflow)
+        self.assertIn("if: ${{ needs.changes.outputs.has_images == 'true' }}", workflow)
+        self.assertIn("HAS_IMAGES: ${{ needs.changes.outputs.has_images }}", workflow)
         self.assertNotIn('continue-on-error:', workflow)
 
     def test_long_running_release_steps_are_bounded(self):

@@ -1,10 +1,11 @@
 name: Keycloak authorization integration
 on:
-  push:
-    branches:
-      - 'feature/department-alias-authorization-*'
   pull_request:
+    branches: [development]
     paths:
+      - 'services/platform-core/**'
+      - 'services/migration/**'
+      - 'infra/keycloak/**'
       - 'services/employees/**'
       - 'services/finance/**'
       - 'services/clients/**'
@@ -12,18 +13,48 @@ on:
       - '.github/workflows/keycloak-authz.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: keycloak-authz-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  scope:
+    name: Select affected authorization images
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      enabled: ${{ steps.select.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: select
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = pull_request ]; then
+            python3 scripts/ci/workflow_scope.py keycloak-authz --pr
+          else
+            python3 scripts/ci/workflow_scope.py keycloak-authz
+          fi
+
   admin-auth-images:
+    needs: scope
+    if: ${{ needs.scope.outputs.enabled == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     strategy:
       fail-fast: false
-      matrix:
-        service: [platform-core, migration, employees, finance]
+      matrix: ${{ fromJSON(needs.scope.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
-      - name: Build and execute service authorization smoke in Docker
-        run: docker build -t "irlix-auth-ci-${{ matrix.service }}" "services/${{ matrix.service }}"
+      - name: Build affected authorization backend (shared cache)
+        uses: ./.github/actions/build-test-image
+        with:
+          service: ${{ matrix.service }}
+          context: services/${{ matrix.service }}
+          tag: irlix-auth-ci-${{ matrix.service }}
   keycloak-real-jwt:
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -39,7 +70,11 @@ jobs:
             quay.io/keycloak/keycloak:26.7.0 \
             start-dev --import-realm --http-relative-path=/keycloak/auth
       - name: Build Clients for end-to-end signed JWT middleware checks
-        run: docker build -t irlix-auth-ci-clients services/clients
+        uses: ./.github/actions/build-test-image
+        with:
+          service: clients
+          context: services/clients
+          tag: irlix-auth-ci-clients
       - name: Check actual Keycloak roles in newly issued JWT
         env:
           KEYCLOAK_ADMIN_USERNAME: ci-admin
