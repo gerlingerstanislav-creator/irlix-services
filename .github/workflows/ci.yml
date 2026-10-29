@@ -306,6 +306,17 @@ jobs:
         if: needs.changes.outputs.auth != 'true'
         run: echo "Keycloak bootstrap not required"
       - uses: actions/checkout@v4
+      # A script-only release has no image builds and no deploy, but authorized
+      # diagnostic updates still need fresh production evidence. Stream the
+      # reviewed Python source from this exact main SHA, never write to host.
+      # Opt-in avoids a new SSH job for unrelated documentation/UI changes.
+      - name: Read-only production AuthZ diagnostics for script-only release
+        if: needs.deploy.result == 'skipped' && contains(github.event.head_commit.message, '[authz-probe]')
+        timeout-minutes: 5
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            'cd /opt/irlix-services && if docker compose version >/dev/null 2>&1; then set -- docker compose; else set -- docker-compose; fi; if [ "$(id -u)" -eq 0 ]; then python3 - "$@"; else sudo -n python3 - "$@"; fi' \
+            < scripts/authz/inspect_runtime.py
       - name: Activate verified Keycloak authorization after bootstrap
         timeout-minutes: 12
         if: needs.deploy.result == 'success'
