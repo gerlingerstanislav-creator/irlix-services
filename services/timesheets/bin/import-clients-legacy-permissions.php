@@ -6,6 +6,8 @@ require __DIR__.'/../vendor/autoload.php';
 $app = require __DIR__.'/../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
+try {
+
 $source = json_decode((string) stream_get_contents(STDIN), true, 512, JSON_THROW_ON_ERROR);
 if (($source['version'] ?? null) !== 1 || !is_array($source['rows'] ?? null)) {
     throw new RuntimeException('Invalid Clients policy input');
@@ -87,3 +89,8 @@ foreach ($rows as $record) {
     }
 }
 fwrite(STDERR, "Timesheets legacy policy import completed (no role records logged).\n");
+
+} catch (\Throwable) {
+    fwrite(STDERR, "Timesheets legacy policy import rejected (details withheld).\n");
+    exit(1);
+}
