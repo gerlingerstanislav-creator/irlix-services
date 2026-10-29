@@ -30,6 +30,22 @@ $rows = [
     ['role'=>'org:hr','permission'=>'vacations.documents.view','allowed'=>false,'scope'=>'none'],
     ['role'=>'special:personnel-officer','permission'=>'vacations.documents.view','allowed'=>true,'scope'=>'all'],
 ];
+$managerTemplate = [
+    ['role'=>'head:*','permission'=>'vacations.department.view','allowed'=>true,'scope'=>'team'],
+    ['role'=>'head:*','permission'=>'vacations.documents.manage','allowed'=>true,'scope'=>'team'],
+];
+$managerPolicy = Authz::evaluate(['head:backend'], $managerTemplate);
+$test($managerPolicy['vacations.department.view']['scope']==='team',
+    'Signed current manager lost existing team view');
+$test(!$managerPolicy['vacations.documents.view']['allowed'],
+    'Manager received confidential document download access');
+$test(!Authz::evaluate(['org:backend'], $managerTemplate)['vacations.department.view']['allowed'],
+    'Ordinary employee inherited management scope');
+$managerTemplate[]=['role'=>'head:backend','permission'=>'vacations.department.view',
+    'allowed'=>false,'scope'=>'none'];
+$test(!Authz::evaluate(['head:backend'], $managerTemplate)['vacations.department.view']['allowed'],
+    'Explicit manager deny failed to override inherited template');
+
 $roles=['org:irlix','org:hr','head:accounting','special:personnel-officer'];
 $effective=Authz::evaluate($roles,$rows);
 $test($effective['vacations.mine.view']['scope']==='own','Base scope must be own');
