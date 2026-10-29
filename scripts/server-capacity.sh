@@ -53,7 +53,7 @@ fi
 if [ "${STORAGE_UPLOAD_DIAGNOSTICS:-0}" = "1" ] && command -v docker >/dev/null 2>&1; then
   section "Storage V1 HTTP 500 diagnostic (sanitized)"
   storage_container=irlix-services_storage-api_1
-  $SUDO docker logs --since 8h --tail 4000 "$storage_container" 2>/dev/null | awk '
+  $SUDO docker logs --since 8h --tail 4000 "$storage_container" 2>&1 | awk '
     /POST \/v1\/files/ && / 500([[:space:]]|$)/ { http500++ }
     /Exception in ASGI application/ { asgi++ }
     /File "\/app\/app\// && /, line [0-9]+, in / {
