@@ -68,6 +68,13 @@ class LegacyAuthzImportTests(unittest.TestCase):
                 gate = (ROOT / "services" / service / "app/Http/Middleware/ServiceEntitlement.php").read_text()
                 self.assertIn("data.services." + service, gate)
 
+    def test_specialists_catalog_mutations_remain_admin_only(self):
+        seed = (ROOT / "services/specialists/database/migrations/"
+                "2026_10_29_000001_import_legacy_manager_grants.php").read_text()
+        self.assertNotIn("'specialists.catalog.manage'=>'all'", seed)
+        route = (ROOT / "services/specialists/routes/api.php").read_text()
+        self.assertIn("in_array('platform-admin', $roles, true)", route)
+
     def test_no_local_activation_in_import(self):
         for path in [
             ROOT / "services/finance/database/migrations/2026_10_29_000001_import_legacy_finance_grants.php",
