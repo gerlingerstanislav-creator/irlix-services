@@ -185,7 +185,7 @@ namespace {
     check(isset($salesAccess['permissions']['positions.manage']) && isset($salesAccess['permissions']['attempts.manage']), 'Configured Sales child workflow permissions are ignored');
     $accessRoles = ['platform-admin'];
     $permissionData = (new \App\Http\Controllers\ClientContourPermissionsController())->index(workflowRequest(), $resolver)->getData(true)['data'];
-    check(($permissionData['matrix']['platform-admin']['requests.view']['locked'] ?? false) === true, 'Platform admin permission became editable');
+    check(($permissionData['matrix']['special:platform-admin']['requests.view']['locked'] ?? false) === true, 'Canonical platform admin permission became editable');
     check(!isset($permissionData['matrix']['sales-manager']['requests.view']['locked']), 'Sales request permission remains locked');
     $actorId = 101;
     $accessRoles = ['manager', 'department-manager'];
