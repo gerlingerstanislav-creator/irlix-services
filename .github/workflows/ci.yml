@@ -170,6 +170,7 @@ jobs:
           python3 -m unittest discover -s scripts/tests -p 'test_migration_control.py' -v
           python3 -m unittest discover -s scripts/tests -p 'test_migration_retention.py' -v
           python3 -m unittest discover -s scripts/tests -p 'test_keycloak_authz_rollout.py' -v
+          python3 -m unittest discover -s scripts/ci/tests -p 'test_authz_production_preflight.py' -v
           python3 -m unittest discover -s scripts/ci/tests -p 'test_app_key_provisioning.py' -v
           python3 -m unittest discover -s scripts/ci/tests -p 'test_resource_host_disk.py' -v
           PYTHONPATH=services/resource-monitor python3 -m unittest discover -s services/resource-monitor -p 'tests.py' -v
@@ -377,6 +378,15 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --prefix /tmp/irlix-browser-check --no-audit --no-fund playwright@1.56.1
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" -o ExitOnForwardFailure=yes -fN -L 18080:127.0.0.1:80 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
           PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$chrome_bin" NODE_PATH=/tmp/irlix-browser-check/node_modules node scripts/ci/check_employees_navigation.cjs
+      - name: Protected AuthZ V2 snapshot and isolated restore preflight
+        # Opt-in only: this is safe for an unchanged production image, and
+        # leaves V2 flags disabled. Never invoked for routine releases.
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.deploy.result == 'success' || needs.deploy.result == 'skipped') && contains(github.event.head_commit.message, '[authz-preflight]') }}
+        timeout-minutes: 30
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            'cd /opt/irlix-services && if [ "$(id -u)" -eq 0 ]; then python3 -; else sudo -n python3 -; fi' \
+            < scripts/authz/production_preflight.py
       - name: Snapshot Employees before test migration
         timeout-minutes: 60
         if: needs.deploy.result == 'success' && contains(github.event.head_commit.message, '[migration-test-snapshot]')
