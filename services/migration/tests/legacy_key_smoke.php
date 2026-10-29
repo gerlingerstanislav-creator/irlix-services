@@ -50,6 +50,7 @@ try {
         try { \App\Migration\Core\LegacyClientsCipher::decryptAmount($payload,'rates.rate'); throw new LogicException('Wrong key accepted'); }
         catch (\App\Migration\Core\SourceRowConflict $e) { ensureKey(!str_contains($e->getMessage(),$payload),'Failure hides ciphertext'); }
     }
+    $stored=\Illuminate\Support\Facades\DB::table('migration_connections')->where('service','clients')->first();
     try { $profiles->save('clients',array_replace($input,['legacy_app_key'=>'invalid'])); throw new LogicException('Invalid key accepted'); }
     catch (InvalidArgumentException $e) {}
     ensureKey(\Illuminate\Support\Facades\DB::table('migration_connections')->where('service','clients')->value('legacy_app_key_encrypted')===$stored->legacy_app_key_encrypted,'Invalid save does not replace secret');
