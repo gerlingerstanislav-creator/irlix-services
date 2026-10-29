@@ -75,6 +75,11 @@ abstract class SchemaMigration implements ServiceMigration
 
     public function inspect(int $runId): array
     {
+        // Clients' control inspect must never materialize every source row. In
+        // particular, activity_log, attachments and attempts can exceed worker RAM.
+        if ($this->key() === 'clients') {
+            return $this->inspectClientsSummary($runId);
+        }
         $rows = $this->extract();
         $enums = [];
         foreach (['vacations' => ['type','status'], 'leads' => ['status'], 'positions' => ['status','grade'], 'results' => ['title'], 'attempts' => ['status']] as $table => $fields) {
@@ -92,6 +97,64 @@ abstract class SchemaMigration implements ServiceMigration
                 'info', ['table' => 'attempts', 'field' => $field] + $counts);
         }
         return ['service' => $this->key(), 'counts' => array_replace(array_map('count', $rows), $this->sourceTotals), 'legacy_values' => $enums, 'legacy_fields' => ['attempts' => array_keys($rows['attempts'][0] ?? [])],
+            'notes' => ['Unknown enums, missing relations and invalid amounts are conflicts. Attachments and unsupported history remain in private migration metadata, never fetched from legacy URLs.']];
+    }
+
+    /**
+     * Read-only, bounded-memory Clients inspection. Counts and enumerations are
+     * derived in PostgreSQL rather than SELECT * / PHP array materialization.
+     * The subsequent control inventory still catalogues every discovered column.
+     */
+    private function inspectClientsSummary(int $runId): array
+    {
+        $reader = new LegacyReader('clients');
+        $reader->assertSafe();
+        $counts = [];
+        foreach (config('migration.legacy.clients.required_tables') as $table) {
+            if (!is_string($table) || !preg_match('/^[a-z_]+$/D', $table)) {
+                throw new RuntimeException('Invalid source table');
+            }
+            $this->store->progress($runId, 'inspect', 'Чтение источника Clients: считаем '.$table.'.');
+            $counts[$table] = (int) ($reader->selectOne('SELECT count(*) AS count FROM public.'.$table)?->count ?? 0);
+        }
+
+        $enums = [];
+        foreach (['leads' => ['status'], 'positions' => ['status', 'grade'],
+                  'results' => ['title'], 'attempts' => ['status']] as $table => $fields) {
+            foreach ($fields as $field) {
+                $values = $reader->select(
+                    'SELECT DISTINCT "'.$field.'"::text AS value FROM public.'.$table, [], false
+                );
+                $enums[$table.'.'.$field] = array_column(array_map(fn ($row) => (array) $row, $values), 'value');
+            }
+        }
+
+        $columns = $reader->select(
+            'SELECT column_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position',
+            ['public', 'attempts'], false
+        );
+        $fieldNames = array_map(fn ($column) => (string) $column->column_name, $columns);
+        foreach (array_chunk($fieldNames, 12) as $batch) {
+            $expressions = [];
+            foreach ($batch as $index => $name) {
+                // Identifiers originate from the source catalog, not user input.
+                $field = '"'.str_replace('"', '""', $name).'"';
+                $expressions[] = 'count(*) FILTER (WHERE '.$field.' IS NOT NULL AND '.$field."::text <> '') AS filled_".$index;
+            }
+            $this->store->progress($runId, 'inspect', 'Чтение источника Clients: проверяем поля attempts.');
+            $statistics = $reader->select(
+                'SELECT '.implode(', ', $expressions).' FROM public.attempts', [], false
+            )[0] ?? null;
+            foreach ($batch as $index => $field) {
+                $filled = (int) ($statistics?->{'filled_'.$index} ?? 0);
+                $this->store->event($runId, 'attempt-field',
+                    'Поле attempts.'.$field.': заполнено '.$filled.' из '.$counts['attempts'].'; поле присутствует в '.$counts['attempts'].' строках.',
+                    'info', ['table' => 'attempts', 'field' => $field,
+                        'present' => $counts['attempts'], 'filled' => $filled]);
+            }
+        }
+        return ['service' => 'clients', 'counts' => $counts, 'legacy_values' => $enums,
+            'legacy_fields' => ['attempts' => $fieldNames],
             'notes' => ['Unknown enums, missing relations and invalid amounts are conflicts. Attachments and unsupported history remain in private migration metadata, never fetched from legacy URLs.']];
     }
 
