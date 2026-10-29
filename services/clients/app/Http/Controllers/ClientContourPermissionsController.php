@@ -11,7 +11,14 @@ class ClientContourPermissionsController extends Controller
 {
     public function me(Request $request, ClientContourAccess $resolver)
     {
-        return response()->json(['data' => $request->attributes->get('client_contour_access') ?? $resolver->resolve($request)]);
+        $access = $request->attributes->get('client_contour_access') ?? $resolver->resolve($request);
+        if ($request->attributes->get('clients_timesheets_only') === true) {
+            $permissions = array_filter((array) ($access['permissions'] ?? []),
+                static fn($name) => str_starts_with((string) $name, 'timesheets.'),
+                ARRAY_FILTER_USE_KEY);
+            return response()->json(['data'=>['permissions'=>$permissions]]);
+        }
+        return response()->json(['data'=>$access]);
     }
 
     public function index(Request $request, ClientContourAccess $resolver)
