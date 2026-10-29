@@ -30,7 +30,7 @@ assert.match(employees, /const initialPageLoading = ref\(true\)/);
 assert.match(employees, /finally \{ loading\.value = false; initialPageLoading\.value = false; \}/);
 assert.match(employees, /UiLoader v-if="initialPageLoading" page/);
 assert.doesNotMatch(employees, /UiLoader v-if="loading" page/);
-assert.match(clients, /UiLoader v-if="loading" overlay/);
+assert.match(clients, /UiLoader v-if="loading && startupPhase==='ready'" overlay/);
 assert.match(clients, /UiLoader v-if="startupPhase==='loading'" page/);
 assert.match(clients, /UiErrorState v-else-if="startupPhase==='error'" :status="503"/);
 assert.match(clients, /UiErrorState v-else-if="!titles\[view\]"/);
