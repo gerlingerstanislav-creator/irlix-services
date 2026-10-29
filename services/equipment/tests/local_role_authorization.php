@@ -20,4 +20,12 @@ $check(Authz::evaluate(['platform-admin'],[])['equipment.operate'],'Platform adm
 $check(!Authz::evaluate(['org:accounting'],[
     ['role'=>'org:accounting','permission'=>'equipment.view','allowed'=>true,'scope'=>'team']
 ])['equipment.view'],'Unsupported team scope was not denied');
+
+$check(Authz::legacyAdmission(['services'=>['equipment'=>true]]),
+    'Existing Equipment service admission was lost');
+$check(!Authz::legacyAdmission(['services'=>['equipment'=>false]]),
+    'Equipment V2 bypassed an existing Employees service deny');
+$check(!Authz::legacyAdmission(['services'=>[]]),
+    'Missing Employees admission unexpectedly granted Equipment access');
+
 echo "Equipment independent local authorization: PASS\n";
