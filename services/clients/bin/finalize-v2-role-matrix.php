@@ -13,7 +13,19 @@ try {
     }
     app(\App\Services\FinalizeLegacyClientPermissions::class)->run($input['production_aliases']);
     echo "Clients V2 legacy matrix finalized; only canonical business roles remain.\n";
-} catch (\Throwable) {
-    fwrite(STDERR,"Clients V2 finalization stopped; no legacy roles removed on error.\n");
+} catch (\Throwable $error) {
+    // Static, audited error categories only: no client names, user IDs,
+    // role labels, confidential source data, SQL or raw stack traces.
+    $categories = [
+        'Unrecognized active legacy Clients role',
+        'Unrecognized active Clients permission',
+        'Missing V2 role permission after import',
+        'Unreconciled Clients policy difference',
+        'No production head roles for existing manager grants',
+        'Invalid production organization alias',
+    ];
+    $category = in_array($error->getMessage(), $categories, true)
+        ? $error->getMessage() : 'Validation or runtime error';
+    fwrite(STDERR, "Clients V2 finalization rejected: {$category}; source policy preserved.\n");
     exit(1);
 }

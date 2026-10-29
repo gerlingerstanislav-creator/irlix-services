@@ -122,4 +122,33 @@ $check($refused, 'Unmapped active historical role was silently deleted');
 $check(DB::table('client_contour_permissions')->where('role','unknown-old-role')->exists(),
     'Rejected cleanup was not atomic');
 DB::table('client_contour_permissions')->where('role','unknown-old-role')->delete();
+// A real historical Account Manager role is KNOWN; its rule must have
+// arrived in V2 before the finalizer can delete its source row.
+$put('account-manager','leads.manage',true,'own');
+$refused = false;
+try {
+    app(\App\Services\FinalizeLegacyClientPermissions::class)->run(['backend','qa']);
+} catch (\RuntimeException) {
+    $refused = true;
+}
+$check($refused && DB::table('client_contour_permissions')
+    ->where('role','account-manager')->where('permission','leads.manage')->exists(),
+    'Known old permission was deleted without reaching V2');
+$put('org:account-management','leads.manage',true,'own');
+app(\App\Services\FinalizeLegacyClientPermissions::class)->run(['backend','qa']);
+$check(!DB::table('client_contour_permissions')->where('role','account-manager')->exists(),
+    'Known migrated Account Manager role was incorrectly treated as unknown');
+$check(DB::table('client_contour_permissions')->where('role','org:account-management')
+    ->where('permission','leads.manage')->value('scope')==='own',
+    'Transferred Account Manager grant changed');
+$put('sales-manager','leads.manage',true,'team');
+$put('org:sales','leads.manage',false,'none');
+$refused = false;
+try {
+    app(\App\Services\FinalizeLegacyClientPermissions::class)->run(['backend','qa']);
+} catch (\RuntimeException) {
+    $refused = true;
+}
+$check($refused && DB::table('client_contour_permissions')->where('role','sales-manager')->exists(),
+    'Incompatible old/new policies were silently discarded');
 echo "Clients canonical matrix data migration and API: PASS\n";
