@@ -46,11 +46,27 @@ jobs:
       APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
     steps:
       - uses: actions/checkout@v4
-      - name: Build real Laravel images and run synthetic migration tests
-        run: |
-          docker build --pull -t irlix-clients-rehearsal services/clients
-          docker build --pull -t irlix-timesheets-rehearsal services/timesheets
-          docker build --pull -t irlix-migration-rehearsal services/migration
+      - name: Build Clients Laravel image with shared cache
+        uses: ./.github/actions/build-test-image
+        with:
+          service: clients
+          context: services/clients
+          tag: irlix-clients-rehearsal
+          pull: 'true'
+      - name: Build Timesheets Laravel image with shared cache
+        uses: ./.github/actions/build-test-image
+        with:
+          service: timesheets
+          context: services/timesheets
+          tag: irlix-timesheets-rehearsal
+          pull: 'true'
+      - name: Build Migration Laravel image with shared cache
+        uses: ./.github/actions/build-test-image
+        with:
+          service: migration
+          context: services/migration
+          tag: irlix-migration-rehearsal
+          pull: 'true'
       - name: Stress 64k synthetic ClientMember facts and idempotent retry
         run: |
           docker run --rm --network none --memory 1g \
