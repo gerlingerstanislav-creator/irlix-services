@@ -48,6 +48,36 @@ try {
 """
 
 
+# This is a coverage diagnostic, NOT a substitute for effective grants or E2E.
+# These actions are the minimum existing service-entry workflows.
+CRITICAL_PERMISSIONS = {
+    "clients": ("clients.view",),
+    "timesheets": ("timesheets.mine.view", "timesheets.mine.manage"),
+    "vacations": ("vacations.mine.view", "vacations.mine.manage"),
+    "specialists": ("specialists.profiles.view",),
+    "recruitment": ("recruitment.workspace.view",),
+    "equipment": ("equipment.view",),
+    "finance": ("finance.view",),
+}
+
+CRITICAL_COVERAGE_PHP = r"""
+require "/app/vendor/autoload.php";
+$app = require "/app/bootstrap/app.php";
+$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+try {
+    $class="App\\Models\\".$argv[1];
+    $answer=[];
+    foreach (explode(",", $argv[2]) as $permission) {
+        $answer[$permission]=$class::query()
+            ->where("permission", $permission)->where("allowed", true)->count();
+    }
+    echo json_encode(["status"=>"ok","counts"=>$answer], JSON_THROW_ON_ERROR);
+} catch (\Throwable $e) {
+    echo '{"status":"unavailable"}';
+}
+"""
+
+
 def invoke(argv, timeout=18):
     try:
         return subprocess.run(argv, capture_output=True, text=True, cwd=ROOT,
@@ -114,6 +144,24 @@ def matrix_counts(sudo, compose, service, model):
     return {"status": "ok", **{key: result[key] for key in keys}}
 
 
+def critical_coverage(sudo, compose, service, model):
+    required = CRITICAL_PERMISSIONS.get(service, ())
+    if not required:
+        return {"status": "unverified"}
+    result = safely_parse_json(invoke([
+        *sudo, *compose, "exec", "-T", service, "php", "-r",
+        CRITICAL_COVERAGE_PHP, model, ",".join(required),
+    ], timeout=25))
+    if not isinstance(result, dict) or result.get("status") != "ok":
+        return {"status": "unverified"}
+    counts = result.get("counts")
+    if not isinstance(counts, dict) or set(counts) != set(required):
+        return {"status": "unverified"}
+    if any(type(counts[p]) is not int or counts[p] < 0 for p in required):
+        return {"status": "unverified"}
+    return {"status": "ok", "missing_grants": [p for p in required if counts[p] == 0]}
+
+
 def role_sync(sudo, compose):
     raw = invoke([*sudo, *compose, "exec", "-T", "employees", "php",
                   "bin/authz-status.php"], timeout=25)
@@ -141,6 +189,8 @@ def collect(compose, sudo):
                 "flag": flag(env, name),
                 "matrix": matrix_counts(sudo, compose, service, model) if cid and env
                     else {"status": "unverified"},
+                "critical_coverage": critical_coverage(sudo, compose, service, model)
+                    if cid and env else {"status": "unverified"},
             }
     local_values = [x["flag"] for x in local.values()]
     jwt_values = list(global_flags.values())
@@ -156,6 +206,12 @@ def collect(compose, sudo):
         "signed_role_object_e2e": "NOT TESTED",
         "protected_matrix_backups": "NOT TESTED",
         "per_service_rollback": "NOT TESTED",
+        "missing_critical_grants": {
+            service: status["critical_coverage"]["missing_grants"]
+            for service, status in local.items()
+            if status["critical_coverage"].get("status") == "ok"
+            and status["critical_coverage"]["missing_grants"]
+        },
         "cutover_accepted": False,
     }
 
