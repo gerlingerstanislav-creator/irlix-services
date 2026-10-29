@@ -465,10 +465,14 @@ async function revoke(employeeId) {
   } catch (err) { error.value = err.message; }
   finally { busy.value = false; }
 }
-watch([parentId, mode], () => {
+watch(mode, () => {
   searchActive.value = false;
   searchQuery.value = '';
   clearTimeout(searchTimer);
+  clearSelection();
+  refresh();
+});
+watch(parentId, () => {
   clearSelection();
   refresh();
 });
