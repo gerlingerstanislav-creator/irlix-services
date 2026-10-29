@@ -129,7 +129,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build Clients backend and run isolated Laravel smoke tests
-        run: docker build --pull -t irlix-clients-ci ./services/clients
+        uses: ./.github/actions/build-test-image
+        with:
+          service: clients
+          context: services/clients
+          tag: irlix-clients-ci
+          pull: 'true'
       - name: Create dedicated PostgreSQL Clients schema
         run: |
           sudo apt-get update -qq
@@ -164,7 +169,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build Finance backend image
-        run: docker build --pull -t irlix-finance-ci ./services/finance
+        uses: ./.github/actions/build-test-image
+        with:
+          service: finance
+          context: services/finance
+          tag: irlix-finance-ci
+          pull: 'true'
       - name: Prepare isolated test database schema
         run: |
           sudo apt-get update -qq
