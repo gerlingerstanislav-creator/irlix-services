@@ -264,4 +264,4 @@ role check has not resolved. During initial authorization, show the shared
 This is a presentation-state contract only; backend permission/scope checks remain
 mandatory and unchanged. The loading gate must apply to deep links into role
 administration pages as well as default service routes. Regression coverage lives
-in `tests/authz-loading-ui.test.mjs`.
+in `packages/ui/tests/preloader-contract.test.mjs`.
