@@ -1,3 +1,20 @@
+## Miniatures in Storage V1 tile view
+
+The tile view of “Мои файлы” and “Доступные мне” loads true, resized
+320×240 JPEG thumbnails of PNG/JPEG/GIF/WebP from the private
+`/api/storage/v1/thumbnail/{object_id}` route. It does not download
+full-resolution originals just to shrink them in CSS. The original
+authenticated `/api/storage/v1/preview/{object_id}` route remains
+used only when opening the full image viewer.
+
+The thumbnail route reuses the same owner/grant READ authorization,
+file-state, content-signature and 10 MiB bound as the full preview.
+No permanent publicly accessible thumbnail link, S3 key, or disk cache
+is created. The browser uses lazy loading, and the response is
+`private, no-store` so permission revocations cannot be bypassed via
+a persistent thumbnail cache. Large pixel dimensions and malformed
+image formats are rejected rather than decoded indefinitely.
+
 ## Просмотр изображений в интерфейсе Storage V1
 
 В разделах «Мои файлы» и «Доступные мне» можно просматривать PNG, JPEG, GIF и WebP
