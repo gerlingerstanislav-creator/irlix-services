@@ -83,6 +83,18 @@ if [ "$storage_debug_target" = true ] && ! $SUDO grep -q '^STORAGE_V1_SQLITE_DEB
   echo "Restricted Storage V1 SQLite debug activated (platform-admin/top-management only)."
 fi
 
+# One-time owner-approved manual purge in restricted test-only Storage V1.
+# Do not re-enable if the operator has manually disabled it since bootstrap.
+if [ "$storage_debug_target" = true ] &&
+   $SUDO grep -q '^STORAGE_V1_SQLITE_DEBUG_BOOTSTRAPPED=1$' .env &&
+   $SUDO grep -q '^STORAGE_V1_ENABLED=1$' .env &&
+   $SUDO grep -q '^STORAGE_V1_ACCESS_ENABLED=1$' .env &&
+   ! $SUDO grep -q '^STORAGE_V1_TEST_PURGE_BOOTSTRAPPED=1$' .env; then
+  upsert_env STORAGE_V1_PERMANENT_DELETE_ENABLED 1
+  upsert_env STORAGE_V1_TEST_PURGE_BOOTSTRAPPED 1
+  echo "Manual permanent delete enabled for restricted Storage V1 test mode."
+fi
+
 IRLIX_PUBLIC_URL="${IRLIX_CANONICAL_ORIGIN:-http://services.lan}"
 upsert_env IRLIX_PUBLIC_URL "$IRLIX_PUBLIC_URL"
 upsert_env KEYCLOAK_PUBLIC_URL "${IRLIX_PUBLIC_URL}/keycloak/auth"

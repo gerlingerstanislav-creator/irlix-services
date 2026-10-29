@@ -45,6 +45,9 @@ services:
       STORAGE_PUBLIC_ORIGIN: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}
       # SQLite is for restricted debugging only. Production-scale DB migration later.
       STORAGE_V1_ENABLED: ${STORAGE_V1_ENABLED:-0}
+      # Pilot-only manual purge. OFF unless explicitly activated by restricted
+      # Storage V1 debug bootstrap (see deploy-from-ghcr.sh). Never auto-purge.
+      STORAGE_V1_PERMANENT_DELETE_ENABLED: ${STORAGE_V1_PERMANENT_DELETE_ENABLED:-0}
       STORAGE_V1_METADATA_BACKEND: sqlite
       STORAGE_V1_SQLITE_PATH: /app/data/storage-v1.sqlite3
       STORAGE_V1_DB_DSN: ${STORAGE_V1_DB_DSN:-}

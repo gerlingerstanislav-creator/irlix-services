@@ -187,11 +187,23 @@ No background automatic purge is introduced. S3 native versioning must be
 disabled, or the request fails closed without deleting bytes; all existing
 application version keys are individually removed.
 
-The feature is **disabled by default** with
-`STORAGE_V1_PERMANENT_DELETE_ENABLED=0` (or unset). Only the operator
-can enable it after successful backup + restore rehearsal, retention/legal
-hold review, confirmed S3 versioning configuration and production readiness.
-The UI does not display the destructive action while disabled.
+The feature is **disabled by default** outside the restricted
+test deployment: `STORAGE_V1_PERMANENT_DELETE_ENABLED=0` (or unset).
+For the currently authorized **Storage V1 SQLite debug pilot only**, the
+deploy script enables the flag once when `STORAGE_V1_ENABLED=1` and
+`STORAGE_V1_ACCESS_ENABLED=1`, recording
+`STORAGE_V1_TEST_PURGE_BOOTSTRAPPED=1`. A later operator override
+to disable the feature is preserved across subsequent deploys.
+The UI displays `Удалить навсегда` inside the Trash only while the
+backend returns `permanent_delete_enabled=true`.
+
+**TEST MODE DATA LOSS:** working files and their app-level history cannot
+be recovered without external backups; the owner explicitly accepts this
+limitation for the restricted test service. There is no automatic purge.
+Server-side ownership/admin checks, exact filename confirmation, S3 native
+versioning refusal and pending-delete retry protection remain mandatory.
+For any future production-ready Storage rollout, disable this test flag
+and require verified backup/restore and the approved retention policy.
 
 Only live working-copy bytes are deleted. Backups and replicas are not
 modified; their expiration depends on separately configured retention
