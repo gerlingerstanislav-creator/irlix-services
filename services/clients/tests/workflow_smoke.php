@@ -185,7 +185,7 @@ namespace {
     check(isset($salesAccess['permissions']['positions.manage']) && isset($salesAccess['permissions']['attempts.manage']), 'Configured Sales child workflow permissions are ignored');
     $accessRoles = ['platform-admin'];
     $permissionData = (new \App\Http\Controllers\ClientContourPermissionsController())->index(workflowRequest(), $resolver)->getData(true)['data'];
-    check(($permissionData['matrix']['platform-admin']['requests.view']['locked'] ?? false) === true, 'Platform admin permission became editable');
+    check(($permissionData['matrix']['special:platform-admin']['requests.view']['locked'] ?? false) === true, 'Canonical platform admin permission became editable');
     check(!isset($permissionData['matrix']['sales-manager']['requests.view']['locked']), 'Sales request permission remains locked');
     $actorId = 101;
     $accessRoles = ['manager', 'department-manager'];
@@ -219,7 +219,7 @@ namespace {
     $departmentChain = [];
     $generic = $resolver->resolve(workflowRequest());
     check(!in_array('department-manager', $generic['roles'], true) && !isset($generic['permissions']['attempts.manage']), 'Nonproduction manager gains Clients role');
-    check(isset($generic['permissions']['timesheets.management.view']), 'Generic manager lost existing Timesheets grants');
+    check(!isset($generic['permissions']['timesheets.management.view']), 'Clients still grants Timesheets rights after their move to the Timesheets service');
     seed([]);
     $create = workflowRequest(['specialist_id' => 201, 'specialist_name' => 'Synthetic specialist'], ['department-manager']);
     $create->attributes->set('client_contour_access', $access);

@@ -12,18 +12,6 @@ class ClientContourPermissionsController extends Controller
     public function me(Request $request, ClientContourAccess $resolver)
     {
         $access = $request->attributes->get('client_contour_access') ?? $resolver->resolve($request);
-        if ($request->attributes->get('clients_timesheets_only') === true) {
-            $permissions = array_filter((array) ($access['permissions'] ?? []),
-                static fn($name) => str_starts_with((string) $name, 'timesheets.'),
-                ARRAY_FILTER_USE_KEY);
-            return response()->json(['data'=>[
-                'permissions'=>$permissions,
-                // Signed Timesheets consumer independently verifies Employees
-                // service entry and can only preserve historical OWN access.
-                'legacy_timesheets_implicit_mine_view' =>
-                    ($access['legacy_timesheets_implicit_mine_view'] ?? false) === true,
-            ]]);
-        }
         return response()->json(['data'=>$access]);
     }
 
@@ -32,14 +20,15 @@ class ClientContourPermissionsController extends Controller
         $access = $resolver->resolve($request);
         abort_unless($access['platform_admin'] || ($resolver->allows($access, 'permissions.view') && $resolver->scope($access, 'permissions.view') === 'all'), 403, 'Недостаточно прав на просмотр матрицы разрешений.');
         $matrix = app(ClientContourPermissionService::class)->matrix();
-        $labels = ClientContourAccess::ROLE_LABELS;
+        // The table is a view of existing canonical V2 matrix roles.
+        // Never show old aliases or silently create a new Keycloak role.
+        $labels = [];
         foreach (array_keys($matrix) as $role) {
-            if (preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $role)
-                && $role !== 'special:platform-admin') $labels[$role] = $role;
+            $labels[$role] = $role;
         }
         return response()->json(['data' => [
             'can_manage' => $access['platform_admin'] || ($resolver->allows($access, 'permissions.manage') && $resolver->scope($access, 'permissions.manage') === 'all'),
-            'roles' => collect($labels)->map(fn ($label, $key) => ['key' => $key, 'label' => $label, 'locked' => $key === 'platform-admin'])->values(),
+            'roles' => collect($labels)->map(fn ($label, $key) => ['key' => $key, 'label' => $label, 'locked' => $key === 'special:platform-admin'])->values(),
             'permissions' => collect(ClientContourAccess::PERMISSION_LABELS)->map(fn ($label, $key) => ['key' => $key, 'label' => $label])->values(),
             'matrix' => $matrix,
             'scopes' => [['key' => 'none', 'label' => 'Не назначено'], ['key' => 'own', 'label' => 'Только свои'], ['key' => 'team', 'label' => 'Своё направление'], ['key' => 'all', 'label' => 'Все']],
@@ -52,10 +41,8 @@ class ClientContourPermissionsController extends Controller
         abort_unless($access['platform_admin'] || ($resolver->allows($access, 'permissions.manage') && $resolver->scope($access, 'permissions.manage') === 'all'), 403, 'Недостаточно прав на изменение матрицы разрешений.');
         $data = $request->validate([
             'role' => ['required', 'string', 'max:120', static function ($attribute, $value, $fail): void {
-                if (is_string($value) && $value !== 'platform-admin' && $value !== 'special:platform-admin'
-                    && (array_key_exists($value, ClientContourAccess::ROLE_LABELS)
-                        || preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $value))) return;
-                $fail('Недопустимый идентификатор роли.');
+                if (is_string($value) && app(ClientContourPermissionService::class)->isEditableRole($value)) return;
+                $fail('Роль отсутствует в действующей матрице Clients или заблокирована.');
             }],
             'permission' => ['required', 'string', Rule::in(array_keys(ClientContourAccess::PERMISSION_LABELS))],
             'allowed' => ['required', 'boolean'],

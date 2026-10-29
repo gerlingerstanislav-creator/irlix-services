@@ -220,7 +220,7 @@ namespace {
     $nestedAccount = $resolver->resolve($request('api/permissions/me'));
     $check(in_array('account-manager', $nestedAccount['roles'], true), 'Nested account employee lost Account Manager role');
     $check(($nestedAccount['permissions']['clients.view']['scope'] ?? 'none') === 'all', 'Account Manager matrix permission missing');
-    $check(($nestedAccount['permissions']['timesheets.management.view']['allowed'] ?? false) === true, 'Account Manager Timesheets right missing');
+    $check(!isset($nestedAccount['permissions']['timesheets.management.view']), 'Clients still exposes a Timesheets grant');
     // Legacy disabled cells are not hard denials; only an explicitly marked
     // deny may override another organizational role's positive grant.
     $db->where('role','client-service')->where('permission','clients.view')->update(['denied'=>true]);
@@ -253,7 +253,7 @@ namespace {
     $check(in_array('account-manager', $positionAccount['roles'], true),
         'Verified Account Manager position did not yield functional client role');
     foreach (['reports.view', 'cashflow.view', 'requests.view', 'positions.view',
-              'attempts.view', 'timesheets.management.view', 'timesheets.management.manage'] as $permission) {
+              'attempts.view'] as $permission) {
         $check(($positionAccount['permissions'][$permission]['allowed'] ?? false) === true,
             'Account Manager denied '. $permission);
     }
@@ -324,7 +324,7 @@ namespace {
     $jwtRequest->attributes->set('identity', ['realm_roles'=>['employee-id:501','service:clients']]);
     $jwtAccount = $resolver->resolve($jwtRequest);
     $check(in_array('account-manager', $jwtAccount['roles'], true), 'JWT descendant Account Manager lost role');
-    $check(($jwtAccount['permissions']['timesheets.management.view']['allowed'] ?? false) === true, 'JWT descendant Timesheets permission missing');
+    $check(!isset($jwtAccount['permissions']['timesheets.management.view']), 'Clients JWT exposes obsolete Timesheets rights');
     $jwtFunctionalRequest = $request('api/permissions/me');
     $jwtFunctionalRequest->attributes->set('identity', ['realm_roles'=>[
         'employee-id:505', 'account-manager', 'service:clients', 'service:timesheets',
@@ -332,7 +332,7 @@ namespace {
     $jwtFunctionalAccount = $resolver->resolve($jwtFunctionalRequest);
     $check(in_array('account-manager', $jwtFunctionalAccount['roles'], true), 'Signed functional account-manager role was ignored');
     $check(($jwtFunctionalAccount['permissions']['clients.view']['allowed'] ?? false) === true, 'Signed functional account-manager lost Clients access');
-    $check(($jwtFunctionalAccount['permissions']['timesheets.management.view']['allowed'] ?? false) === true, 'Signed functional account-manager lost Timesheets access');
+    $check(!isset($jwtFunctionalAccount['permissions']['timesheets.management.view']), 'Clients retained Timesheets fine permissions');
     $check(in_array('client-service', $jwtFunctionalAccount['roles'], true), 'Functional account-manager lost base client-service matrix role');
     $check(!in_array('client-service-head', $jwtFunctionalAccount['roles'], true), 'Functional account-manager inherited manager role');
     $jwtOperationsRequest = $request('api/permissions/me');
@@ -353,7 +353,7 @@ namespace {
     $check(in_array('account-manager', $jwtTitle['roles'], true),
         'JWT verified position lost Account Manager rights pending Keycloak reconciliation');
     foreach (['reports.view','cashflow.view','requests.view','positions.view',
-              'attempts.view','timesheets.management.view'] as $permission) {
+              'attempts.view'] as $permission) {
         $check(($jwtTitle['permissions'][$permission]['allowed'] ?? false) === true,
             'JWT verified position denied '. $permission);
     }
