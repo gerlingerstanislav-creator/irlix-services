@@ -50,6 +50,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.detect.outputs.matrix }}
+      has_images: ${{ steps.detect.outputs.has_images }}
       deploy: ${{ steps.detect.outputs.deploy }}
       auth: ${{ steps.detect.outputs.auth }}
     steps:
@@ -103,6 +104,7 @@ jobs:
 
   build:
     name: Build or reuse / ${{ matrix.id }}
+    if: ${{ needs.changes.outputs.has_images == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     needs: changes
@@ -208,11 +210,12 @@ jobs:
       - env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           BUILD_RESULT: ${{ needs.build.result }}
+          HAS_IMAGES: ${{ needs.changes.outputs.has_images }}
           PROVENANCE_RESULT: ${{ needs.provenance.result }}
           SNAPSHOT_RESULT: ${{ needs.snapshot-runtime.result }}
           QA_RESULT: ${{ needs.qa.result }}
           QA_BROWSER_RESULT: ${{ needs.qa-browser.result }}
-        run: test "$CHANGES_RESULT" = success && test "$BUILD_RESULT" = success && test "$PROVENANCE_RESULT" = success && test "$QA_RESULT" = success && test "$QA_BROWSER_RESULT" = success && { test "$SNAPSHOT_RESULT" = success || test "$SNAPSHOT_RESULT" = skipped; }
+        run: test "$CHANGES_RESULT" = success && { test "$BUILD_RESULT" = success || { test "$BUILD_RESULT" = skipped && test "$HAS_IMAGES" = false; }; } && test "$PROVENANCE_RESULT" = success && test "$QA_RESULT" = success && test "$QA_BROWSER_RESULT" = success && { test "$SNAPSHOT_RESULT" = success || test "$SNAPSHOT_RESULT" = skipped; }
 
   deploy:
     name: Pull and deploy affected components
