@@ -75,4 +75,15 @@ foreach ($source['rows'] as $record) {
         ]);
     }
 });
+// Detect incompatible pre-existing V2 administrator rows rather than
+// silently claiming the old matrix was copied correctly.
+foreach ($rows as $record) {
+    $saved = \Illuminate\Support\Facades\DB::table('timesheets_role_permissions')
+        ->where('role', $record['role'])->where('permission', $record['permission'])
+        ->first(['allowed','scope']);
+    if (!$saved || (bool) $saved->allowed !== (bool) $record['allowed']
+        || (string) $saved->scope !== $record['scope']) {
+        throw new RuntimeException('Existing V2 rule conflicts with source legacy policy');
+    }
+}
 fwrite(STDERR, "Timesheets legacy policy import completed (no role records logged).\n");
