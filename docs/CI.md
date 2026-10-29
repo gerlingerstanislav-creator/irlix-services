@@ -31,6 +31,17 @@ than silently skipping tests. The selector is regression-tested by
 - Client history runs contract tests, but skips unrelated frontend builds and
   PHP lint for backend-unrelated changes.
 
+Specialized Laravel/Docker integrations (Finance, Keycloak, ClientMember and
+manual Migration QA) use `.github/actions/build-test-image`: local test images
+are loaded into their isolated jobs and reuse the same per-service BuildKit
+GitHub Actions cache scope as `.github/actions/build-service`. These jobs
+do **not** publish integration images; cache hits reduce repeated layer
+compilation but do not waive integration tests or depend on job ordering.
+
+A zero-image plan now skips the placeholder Docker runner entirely. The
+mandatory `CI verified` check allows a skipped build **only** when the
+validated plan explicitly returns `has_images=false`.
+
 All specialized PR workflows cancel superseded runs for the same PR. Previous
 temporary feature-branch `push` triggers are removed to prevent duplicate
 push-plus-PR execution. `workflow_dispatch` explicitly runs their full coverage
