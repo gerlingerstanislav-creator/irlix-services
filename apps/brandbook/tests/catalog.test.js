@@ -11,8 +11,8 @@ import { brandPlatform,brandAttributes,audiences } from '../src/brandPlatform.js
 import { typographyLevels,brandSurfaceExamples,brandGraphicExamples,colorPairAllowed,contrastRatio } from '../src/visualExamples.js';
 import { serviceGroups, getVisibleServiceGroups } from '../../../packages/ui/src/serviceCatalog.js';
 
-test('all nine sections have unique stable routes',()=>{
- assert.equal(sections.length,9);
+test('all ten sections have unique stable routes',()=>{
+ assert.equal(sections.length,10);
  assert.equal(new Set(sections.map(section=>section.id)).size,sections.length);
  for(const section of sections)assert.equal(sectionForPath(canonicalPath(section.id)),section.id);
  assert.equal(sectionForPath('/brandbook/'),'identity');

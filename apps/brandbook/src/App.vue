@@ -19,6 +19,7 @@ import { brandVoice, aiEngineeringPillars, aiTrustPrinciples } from './marketing
 import { toneExamples, carrierExamples } from './brandSamples.js';
 import { brandPlatform, brandAttributes, audiences } from './brandPlatform.js';
 import { typographyLevels, brandSurfaceExamples, brandGraphicExamples, contrastRatio } from './visualExamples.js';
+import WebsiteConcept from './WebsiteConcept.vue';
 
 // Only project-approved, non-client-specific digital tokens are published here.
 const brandColors = Object.freeze([
@@ -81,6 +82,7 @@ function copyArticle(article) {
     @update:section="navigate" @logout="emit('logout')">
     <main id="brandbook-main" class="brandbook-page" tabindex="-1">
       <UiErrorState v-if="current==='not-found'" :status="404" back-href="/brandbook/identity/" back-label="К брендбуку" />
+      <WebsiteConcept v-else-if="current === 'website'" />
       <template v-else>
       <div class="brandbook-heading">
         <div>
