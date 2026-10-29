@@ -25,6 +25,9 @@ from .lifecycle import list_markers, read_marker, write_marker
 
 app = FastAPI(title="IRLIX Storage Pilot", docs_url=None, redoc_url=None, openapi_url=None)
 
+from .storage_errors import install_storage_error_handlers
+install_storage_error_handlers(app)
+
 ROOT = "pilot-ui/"
 META_ROOT = "pilot-ui-meta/"  # API-private display labels; S3 objects and their keys stay unchanged.
 IMAGE_MIMES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
