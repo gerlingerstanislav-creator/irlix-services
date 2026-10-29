@@ -310,3 +310,60 @@ test('V1 PDF uses native Chrome PDF viewer without restrictive iframe sandbox', 
   assert.ok(backend.includes('"Content-Disposition": "inline"'));
   assert.ok(backend.includes('"X-Content-Type-Options": "nosniff"'));
 });
+
+
+test('V1 toolbar follows compact shared layout without nested top padding', () => {
+  const vue = text('../src/StorageV1.vue');
+  const css = text('../src/storage.css');
+  assert.ok(vue.includes('class="storage-toolbar storage-v1-toolbar"'));
+  assert.ok(vue.includes('class="storage-sort"'));
+  assert.ok(css.includes('.storage-v1 .storage-v1-toolbar{'));
+  assert.ok(css.includes('margin:0;padding:12px 20px'));
+  assert.ok(css.includes('.storage-v1 .storage-switch{height:36px'));
+});
+
+test('V1 uses distinctive file type icons in both list and grid, and marks shared files', () => {
+  const vue = text('../src/StorageV1.vue');
+  const css = text('../src/storage.css');
+  for (const type of ['pdf', 'image', 'sheet', 'document', 'archive', 'video', 'audio', 'code']) {
+    assert.ok(vue.includes("'" + type + "'") || vue.includes(type + ":"));
+    assert.ok(css.includes('.storage-v1 .storage-type--' + type));
+  }
+  assert.ok(vue.includes('class="storage-file-icon" :class="\'storage-type--\' + typeOf(item)"'));
+  assert.ok(vue.includes('class="storage-type-large"'));
+  assert.ok(vue.includes('item.shared_count > 0'));
+  assert.ok(vue.includes('class="storage-shared-badge"'));
+  assert.ok(vue.includes('class="storage-shared-indicator"'));
+  assert.ok(vue.includes('@click.stop="openSharing(item)"'));
+});
+
+test('V1 sharing dialog loads and shows named grants, supports revocation and scoped errors', () => {
+  const vue = text('../src/StorageV1.vue');
+  const css = text('../src/storage.css');
+  const server = text('../../../services/storage-api/app/v1_api.py');
+  assert.ok(vue.includes('recipientName(grantRow.employee_id)'));
+  assert.ok(vue.includes('grantLabel(grantRow.role)'));
+  assert.ok(vue.includes('v-for="grantRow in grants"'));
+  assert.ok(vue.includes('@click="revoke(grantRow.employee_id)"'));
+  assert.ok(vue.includes("await Promise.all([loadDirectory(), loadGrants(item)])"));
+  assert.ok(vue.includes('await loadGrants(shareItem.value)'));
+  assert.ok(vue.includes('shareError.value = err.message'));
+  assert.ok(vue.includes('shareLoading.value = true'));
+  assert.ok(vue.includes('role="alert">{{ shareError }}'));
+  assert.ok(css.includes('.storage-v1 .storage-v1-share{'));
+  assert.ok(css.includes('.storage-v1 .storage-grant-person'));
+  assert.ok(server.includes('"shared_count": int(shared_count)'));
+  assert.ok(server.includes('"WHERE g.object_id=o.id AND g.revoked_at IS NULL) "'));
+  assert.ok(server.includes('@router.delete("/objects/{object_id}/grants/{employee_id}")'));
+});
+
+test('V1 preview and all modals inherit compact design system typography', () => {
+  const vue = text('../src/StorageV1.vue');
+  const css = text('../src/storage.css');
+  assert.ok(vue.includes('class="storage-preview-download"'));
+  assert.ok(vue.includes('id="storage-share-title"'));
+  assert.ok(css.includes('.storage-v1 .storage-modal-head h2{'));
+  assert.ok(css.includes('font-size:14px'));
+  assert.ok(css.includes('.storage-v1 .storage-preview-modal{'));
+  assert.ok(css.includes('padding:10px'));
+});
