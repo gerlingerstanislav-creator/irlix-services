@@ -90,6 +90,11 @@ class EmployeesAuthorization
             return response()->json(['message'=>'Перевод доступен только кадровику'],403);
         }
 
+        if ($method === 'PUT' && preg_match('#^api/employees/\d+/assignment-history/\d+$#', $path)
+            && !in_array('platform-admin', (array) ($access['roles'] ?? []), true)) {
+            return response()->json(['message' => 'Редактирование истории доступно только администратору платформы.'], 403);
+        }
+
         $isSalaryMutation = preg_match('#^api/employees/\d+/salary-history(?:/\d+)?$#', $path) && $method !== 'GET';
         if ($isSalaryMutation && !($access['permissions']['employees.salary.manage'] ?? false)) {
             return response()->json(['message' => 'Salary management permission required'], 403);
