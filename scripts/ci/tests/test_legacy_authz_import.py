@@ -43,7 +43,7 @@ class LegacyAuthzImportTests(unittest.TestCase):
         script = ROOT / "scripts/authz/backup-local-matrices.sh"
         deploy = (ROOT / "scripts/deploy-from-ghcr.sh").read_text()
         self.assertEqual(subprocess.run(["sh", "-n", str(script)], check=False).returncode, 0)
-        self.assertIn('finance|equipment|timesheets|vacations|recruitment)', script.read_text())
+        self.assertIn('finance|equipment|timesheets|vacations|recruitment|clients)', script.read_text())
         self.assertIn('chmod 600 "$destination/schema.dump"', script.read_text())
         self.assertLess(deploy.index("scripts/authz/backup-local-matrices.sh"),
                         deploy.index("php artisan migrate --force"))
