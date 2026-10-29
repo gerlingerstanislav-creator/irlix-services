@@ -78,6 +78,74 @@ try {
 """
 
 
+
+# Compare only AGGREGATES of the already-effective legacy Clients matrix.
+# This is diagnostic, not a permission seeder: absent/explicitly denied rules
+# must NEVER be replaced with automatic org:irlix grants.
+LEGACY_TIMESHEETS_PHP = r"""
+require "/app/vendor/autoload.php";
+$app = require "/app/bootstrap/app.php";
+$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+try {
+    $class=\App\Models\ClientContourPermission::class;
+    $permissions=[
+        "timesheets.mine.view", "timesheets.management.view",
+        "timesheets.management.manage", "timesheets.analytics.view",
+        "timesheets.audit.view",
+    ];
+    $counts=[];
+    foreach ($permissions as $permission) {
+        $base=$class::query()->where("permission",$permission)
+            ->where("role","not like","%:%");
+        $counts[$permission]=[
+            "allowed_rows"=>(clone $base)->where("allowed",true)
+                ->where("denied",false)->whereIn("scope",["own","team","all"])->count(),
+            "explicit_deny_rows"=>(clone $base)->where("denied",true)->count(),
+        ];
+    }
+    $employee=$class::query()->where("role","employee")
+        ->where("permission","timesheets.mine.view")->first();
+    $mine=($employee && (bool)$employee->allowed
+        && !(bool)$employee->denied && $employee->scope==="own");
+    echo json_encode(["status"=>"ok","permissions"=>$counts,
+        "employee_mine_view_own"=>$mine],JSON_THROW_ON_ERROR);
+} catch (\Throwable $e) {
+    echo '{"status":"unavailable"}';
+}
+"""
+
+
+def legacy_timesheets_coverage(sudo, compose):
+    result = safely_parse_json(invoke([
+        *sudo, *compose, "exec", "-T", "clients", "php", "-r",
+        LEGACY_TIMESHEETS_PHP,
+    ], timeout=22))
+    permissions = result.get("permissions") if isinstance(result, dict) else None
+    if not isinstance(permissions, dict) or result.get("status") != "ok":
+        return {"status": "unverified"}
+    keys = ("timesheets.mine.view", "timesheets.management.view",
+            "timesheets.management.manage", "timesheets.analytics.view",
+            "timesheets.audit.view")
+    if set(permissions) != set(keys) or type(result.get("employee_mine_view_own")) is not bool:
+        return {"status": "unverified"}
+    for item in permissions.values():
+        if not isinstance(item, dict) or any(
+            type(item.get(key)) is not int or item[key] < 0
+            for key in ("allowed_rows", "explicit_deny_rows")
+        ):
+            return {"status": "unverified"}
+    return {
+        "status": "ok",
+        "source_allowed_role_counts": {
+            name: permissions[name]["allowed_rows"] for name in keys
+        },
+        "source_explicit_deny_counts": {
+            name: permissions[name]["explicit_deny_rows"] for name in keys
+        },
+        "employee_personal_view_own_in_legacy": result["employee_mine_view_own"],
+    }
+
+
 def invoke(argv, timeout=18):
     try:
         return subprocess.run(argv, capture_output=True, text=True, cwd=ROOT,
@@ -199,6 +267,7 @@ def collect(compose, sudo):
         "scope": "read_only_container_state_and_aggregate_policy_counts",
         "jwt_gate_by_service": global_flags,
         "keycloak_role_sync": role_sync(sudo, compose),
+        "legacy_timesheets_coverage": legacy_timesheets_coverage(sudo, compose),
         "local_v2": local,
         "all_local_flags_disabled": all(x == "disabled" for x in local_values),
         "all_local_flags_enabled": all(x == "enabled" for x in local_values),
