@@ -60,15 +60,19 @@ def select(mode, paths=None):
                 or any(p.startswith("services/clients/") for p in changed)}
     if mode == "finance-validation":
         common = full or workflow in changed
-        frontend = common or any(
-            p.startswith("apps/finance/") or p.startswith("apps/clients/")
-            or shared_ui_source(p) for p in changed
-        )
+        ui_source = any(map(shared_ui_source, changed))
+        finance_frontend = common or ui_source or any(
+            p.startswith("apps/finance/") for p in changed)
+        clients_frontend = common or ui_source or any(
+            p.startswith("apps/clients/") for p in changed)
+        frontend = finance_frontend or clients_frontend
         backend_sources = any(p.startswith((
             "services/finance/", "services/clients/",
             "services/timesheets/", "services/employees/")) for p in changed)
         compose = "docker-compose.finance.yml" in changed
-        return {"frontend": frontend, "backend": common or backend_sources or compose,
+        return {"frontend": frontend, "finance_frontend": finance_frontend,
+                "clients_frontend": clients_frontend,
+                "backend": common or backend_sources or compose,
                 "clients_container": common or any(p.startswith((
                     "services/clients/", "services/timesheets/")) for p in changed),
                 "finance_container": common or backend_sources or compose}
