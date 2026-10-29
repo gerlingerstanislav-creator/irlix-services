@@ -22,6 +22,14 @@ class LegacyAuthzImportTests(unittest.TestCase):
                 self.assertNotIn("platform-admin','permission'", text)
                 self.assertIn("DB::transaction(", text)
 
+    def test_clients_existing_policy_rows_are_not_overwritten(self):
+        migration = (ROOT / "services/clients/database/migrations/"
+                     "2026_10_29_000001_import_legacy_client_roles.php").read_text()
+        self.assertIn("insertOrIgnore(", migration)
+        self.assertIn("Existing V2 Clients policy conflicts with legacy matrix", migration)
+        self.assertIn("saved->denied", migration)
+        self.assertNotIn("updateOrCreate(", migration)
+
     def test_finance_preserves_existing_manual_denials(self):
         role = (ROOT / "services/finance/app/Services/FinanceRoleAuthorization.php").read_text()
         gate = (ROOT / "services/finance/app/Http/Middleware/KeycloakBearer.php").read_text()
