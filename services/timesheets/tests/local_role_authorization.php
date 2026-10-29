@@ -113,4 +113,38 @@ $deniedPersonal = Authz::restrictToLegacy(
 );
 $check(!$deniedPersonal['timesheets.mine.view']['allowed'],
     'Old personal-view denial bypassed by new org:irlix role');
+// Personal workspace admission was historically governed by Employees
+// service entry rather than a Clients matrix row. An owner-attested absent
+// legacy cell preserves only OWN scope, not wider Timesheets access.
+$implicitView = Authz::restrictToLegacy(
+    ['timesheets.mine.view'=>['allowed'=>true,'scope'=>'all'],
+     'timesheets.management.view'=>['allowed'=>true,'scope'=>'team']],
+    [], true
+);
+$check($implicitView['timesheets.mine.view'] === ['allowed'=>true,'scope'=>'own'],
+    'Implicit historical personal workspace access was not preserved as own');
+$check(!$implicitView['timesheets.management.view']['allowed'],
+    'Implicit personal workspace marker widened management access');
+$notAttested = Authz::restrictToLegacy(
+    ['timesheets.mine.view'=>['allowed'=>true,'scope'=>'own']], []
+);
+$check(!$notAttested['timesheets.mine.view']['allowed'],
+    'Missing attestation unexpectedly restored personal view');
+$explicitlyUnassigned = Authz::restrictToLegacy(
+    ['timesheets.mine.view'=>['allowed'=>true,'scope'=>'own']],
+    ['timesheets.mine.view'=>['allowed'=>false,'scope'=>'none']], true
+);
+$check(!$explicitlyUnassigned['timesheets.mine.view']['allowed'],
+    'Implicit fallback overrode explicit historical unassigned/deny');
+$withLegacyAllow = Authz::restrictToLegacy(
+    ['timesheets.mine.view'=>['allowed'=>true,'scope'=>'all']],
+    ['timesheets.mine.view'=>['allowed'=>true,'scope'=>'team']], true
+);
+$check($withLegacyAllow['timesheets.mine.view']['scope']==='team',
+    'Implicit fallback widened a specific legacy scope');
+$missingV2Grant = Authz::restrictToLegacy(
+    [], [], true
+);
+$check(!($missingV2Grant['timesheets.mine.view']['allowed'] ?? false),
+    'Implicit fallback manufactured a missing V2 grant');
 echo "Timesheets V2 local authorization: PASS\n";
