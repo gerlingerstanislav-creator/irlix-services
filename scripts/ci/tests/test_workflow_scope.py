@@ -32,6 +32,27 @@ class SpecializedWorkflowSelectionTests(unittest.TestCase):
     def test_keycloak_clients_change_skips_unaffected_admin_images(self):
         self.assertEqual(self.services(["services/clients/app/Http/Controllers/ClientsController.php"]), set())
 
+    def test_keycloak_timesheets_v2_only_builds_its_own_signed_jwt_fixture(self):
+        result = scope.select("keycloak-authz", {
+            "services/timesheets/app/Services/TimesheetsRoleAuthorization.php"
+        })
+        self.assertTrue(result["timesheets"])
+        self.assertFalse(result["enabled"])
+        self.assertEqual(result["matrix"]["include"], [])
+
+    def test_keycloak_unrelated_timesheets_work_skips_signed_jwt_image(self):
+        result = scope.select("keycloak-authz", {
+            "services/timesheets/app/Services/TimeEntriesService.php"
+        })
+        self.assertFalse(result["timesheets"])
+        self.assertFalse(result["enabled"])
+
+    def test_keycloak_client_change_does_not_build_timesheets(self):
+        result = scope.select("keycloak-authz", {
+            "services/clients/app/Support/ClientContourAccess.php"
+        })
+        self.assertFalse(result["timesheets"])
+
     def test_keycloak_employee_change_builds_only_employees(self):
         self.assertEqual(self.services(["services/employees/app/Models/Employee.php"]), {"employees"})
 
