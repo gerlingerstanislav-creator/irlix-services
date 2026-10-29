@@ -90,6 +90,7 @@ jobs:
           service: timesheets
           context: services/timesheets
           tag: irlix-auth-ci-timesheets
+          target: app
       - name: Check actual Keycloak roles in newly issued JWT
         env:
           KEYCLOAK_ADMIN_USERNAME: ci-admin
