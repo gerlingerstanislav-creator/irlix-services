@@ -50,7 +50,7 @@ class LegacyAuthzImportTests(unittest.TestCase):
             self.assertIn('"' + service + '": (', helper)
         self.assertIn("pg_restore", helper)
         self.assertIn("pg_dump", helper)
-        self.assertIn("get euid", helper.replace("geteuid", "get euid"))
+        self.assertIn("os.geteuid()", helper)
         self.assertIn("path.chmod(0o600)", helper)
         self.assertLess(deploy.index("scripts/authz/backup-local-matrices.sh"),
                         deploy.index("php artisan migrate --force"))
@@ -77,6 +77,25 @@ class LegacyAuthzImportTests(unittest.TestCase):
         self.assertNotIn("'specialists.catalog.manage'=>'all'", seed)
         route = (ROOT / "services/specialists/routes/api.php").read_text()
         self.assertIn("in_array('platform-admin', $roles, true)", route)
+
+    def test_private_clients_timesheets_policy_transfer_is_owner_isolated(self):
+        src = (ROOT / "services/clients/bin/export-timesheets-legacy-policy.php").read_text()
+        dest = (ROOT / "services/timesheets/bin/import-clients-legacy-permissions.php").read_text()
+        orchestration = (ROOT / "scripts/authz/transfer_clients_timesheets.py").read_text()
+        deploy = (ROOT / "scripts/deploy-from-ghcr.sh").read_text()
+        self.assertIn("ClientContourPermission::query()", src)
+        self.assertIn("->where('permission','like','timesheets.%')", src)
+        self.assertIn("insertOrIgnore(", dest)
+        self.assertNotIn("updateOrCreate(", dest)
+        self.assertIn("if (!$record['allowed'] && !$record['denied']) continue", dest)
+        self.assertIn("'department-manager'=>'head:*'", dest)
+        self.assertIn("subprocess.run(", orchestration)
+        self.assertIn("capture_output=True", orchestration)
+        self.assertNotIn("print(source.stdout)", orchestration)
+        self.assertLess(deploy.index("php artisan migrate --force"),
+                        deploy.index("scripts/authz/transfer_clients_timesheets.py"))
+        self.assertIn("COPY bin /app/bin", (ROOT / "services/clients/Dockerfile").read_text())
+        self.assertIn("COPY bin /app/bin", (ROOT / "services/timesheets/Dockerfile").read_text())
 
     def test_no_local_activation_in_import(self):
         for path in [
