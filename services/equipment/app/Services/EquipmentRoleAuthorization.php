@@ -22,6 +22,11 @@ final class EquipmentRoleAuthorization
         return true;
     }
 
+    public static function legacyAdmission(array $current): bool
+    {
+        return ($current['services']['equipment'] ?? false) === true;
+    }
+
     public const PERMISSIONS = [
         'equipment.view','equipment.manage','equipment.operate',
     ];

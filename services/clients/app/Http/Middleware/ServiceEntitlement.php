@@ -25,6 +25,21 @@ final class ServiceEntitlement
         // zero dependency on Employees at request time.
         if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
             if (filter_var(env('IRLIX_CLIENTS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+                // Retain Employees' effective service-entry decisions,
+                // including manual overrides, during the legacy policy import.
+                $employeesBase = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
+                try {
+                    $liveAdmission = Http::withToken((string) $token)->acceptJson()
+                        ->timeout(5)->get($employeesBase.'/access/me');
+                } catch (\Throwable) {
+                    return response()->json(['message'=>'Clients admission unavailable'],503);
+                }
+                if (!$liveAdmission->successful() || !is_array($liveAdmission->json('data'))) {
+                    return response()->json(['message'=>'Clients admission unavailable'],503);
+                }
+                if ($liveAdmission->json('data.services.clients') !== true) {
+                    return response()->json(['message'=>'Clients admission denied'],403);
+                }
                 try {
                     $access = app(\App\Support\ClientContourAccess::class)->resolve($request);
                 } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $error) {

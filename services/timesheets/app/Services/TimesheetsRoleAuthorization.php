@@ -57,6 +57,11 @@ final class TimesheetsRoleAuthorization
 
         $names = array_fill_keys(array_values(array_filter($verifiedRoles, static fn ($role) =>
             is_string($role) && preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D', $role) === 1)), true);
+        // Existing Clients generic department-manager rows apply only to a
+        // currently verified head. Live Clients effective access further
+        // narrows these template grants before any operation proceeds.
+        if (array_filter(array_keys($names), static fn($name) =>
+            str_starts_with($name, 'head:'))) $names['head:*'] = true;
         $rank = ['none'=>0, 'own'=>1, 'team'=>2, 'all'=>3];
         $grants = [];
         $denied = [];
@@ -80,6 +85,39 @@ final class TimesheetsRoleAuthorization
         return $permissions;
     }
 
+    /**
+     * The old live Clients matrix still owns the authorization exceptions
+     * for Timesheets management, analytics and audit during the migration.
+     * A V2 role grant can only be equal to or narrower than its effective
+     * old permission/scope for this signed employee.
+     */
+    public static function restrictToLegacy(array $v2, array $legacy): array
+    {
+        $rank = ['none'=>0,'own'=>1,'team'=>2,'all'=>3];
+        $sources = [
+            'timesheets.management.view'=>'timesheets.management.view',
+            'timesheets.management.manage'=>'timesheets.management.manage',
+            'timesheets.analytics.view'=>'timesheets.analytics.view',
+            'timesheets.audit.view'=>'timesheets.audit.view',
+            'timesheets.partner-hours.view'=>'timesheets.management.view',
+            'timesheets.partner-hours.manage'=>'timesheets.management.manage',
+            'timesheets.partner-hours.approve'=>'timesheets.management.manage',
+        ];
+        foreach ($sources as $permission => $legacyPermission) {
+            $new = (array) ($v2[$permission] ?? []);
+            $old = (array) ($legacy[$legacyPermission] ?? []);
+            $newScope = (string) ($new['scope'] ?? 'none');
+            $oldScope = (string) ($old['scope'] ?? 'none');
+            $newRank = $rank[$newScope] ?? 0;
+            $oldRank = $rank[$oldScope] ?? 0;
+            $allowed = ($new['allowed'] ?? false) === true
+                && ($old['allowed'] ?? false) === true && $newRank > 0 && $oldRank > 0;
+            $scope = $allowed ? ($newRank <= $oldRank ? $newScope : $oldScope) : 'none';
+            $v2[$permission] = ['allowed'=>$allowed,'scope'=>$scope];
+        }
+        return $v2;
+    }
+
     public function forVerifiedRoles(array $roles): array
     {
         $filtered = array_values(array_filter($roles, static fn ($role) =>
@@ -87,6 +125,9 @@ final class TimesheetsRoleAuthorization
         if (in_array('platform-admin', $roles, true)
             || in_array('special:platform-admin', $roles, true)) {
             return self::evaluate($roles, []);
+        }
+        if (array_filter($filtered, static fn($name)=>str_starts_with($name,'head:'))) {
+            $filtered[]='head:*';
         }
         return self::evaluate($roles,
             TimesheetsRolePermission::query()->whereIn('role', $filtered)->get()->map(static fn ($row) => [
