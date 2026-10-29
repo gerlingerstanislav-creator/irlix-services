@@ -309,6 +309,18 @@ for service in $MIGRATE_SERVICES; do
   $SUDO sh -c "$COMPOSE exec -T $service php artisan migrate --force < /dev/null"
 done
 
+# Clients owns the existing Timesheets manager matrix. Transfer policy rows
+# through each service's own application process, never across DB schemas.
+# Run only when either owner is updated. This is idempotent, preserves manually
+# edited V2 rows, and transfers no individual employee/customer records.
+timesheets_policy_import=false
+for service in $MIGRATE_SERVICES; do
+  case "$service" in clients|timesheets) timesheets_policy_import=true ;; esac
+done
+if [ "$timesheets_policy_import" = true ]; then
+  $SUDO python3 scripts/authz/transfer_clients_timesheets.py
+fi
+
 # Financial records must not become available through the portal before the
 # backend can read its migrated, isolated PostgreSQL schema. Check the actual
 # Finance API rather than trusting a running container or static 200 status.
