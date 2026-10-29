@@ -439,8 +439,14 @@ class ClientContourAccess
             // functional projections remain available for object relationships
             // but never grant permissions implicitly in this mode.
             $matrixRoles = $localRoleMode
-                ? self::currentIdentityLabels($jwtLabels, (int) ($employee['id'] ?? 0),
-                    $departments->all(), $directoryEmployees->all())
+                ? array_merge(
+                    self::currentIdentityLabels($jwtLabels, (int) ($employee['id'] ?? 0),
+                        $departments->all(), $directoryEmployees->all()),
+                    self::verifiedLegacyManagerMatrixRole(
+                        self::currentIdentityLabels($jwtLabels, (int) ($employee['id'] ?? 0),
+                            $departments->all(), $directoryEmployees->all()),
+                        $managedRoots !== [])
+                )
                 : (in_array('manager', $specialRoles, true) ? [...$roles, 'department-manager'] : $roles);
             $explicitDenies = [];
             foreach (ClientContourPermission::query()->whereIn('role', $matrixRoles)->get() as $row) {
