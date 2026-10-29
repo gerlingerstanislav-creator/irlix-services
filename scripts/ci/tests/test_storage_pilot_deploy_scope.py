@@ -42,7 +42,7 @@ class StoragePilotDeploymentGuardTests(unittest.TestCase):
                          "portal", "employees-web", "storage-drive", "storage-web", ""):
             with self.subTest(affected=affected):
                 self.assertNotIn("PILOT_PREFLIGHT_RAN", self.evaluate(False, affected))
-        for storage in ("storage-api", "storage-drive", "storage-s3"):
+        for storage in ("storage-api", "storage-s3"):
             with self.subTest(storage=storage):
                 self.assertIn("PILOT_PREFLIGHT_RAN", self.evaluate(False, storage))
         self.assertIn("PILOT_PREFLIGHT_RAN", self.evaluate(True, "clients"))
