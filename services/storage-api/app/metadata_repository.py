@@ -2,7 +2,7 @@
 
 Never reads Employees' tables. Caller supplies verified actor and active
 recipient checker from the Employees API. All mutation methods share the same
-SERIALIZABLE transaction; no physical S3 deletion is possible here.
+SERIALIZABLE transaction; byte deletion is exclusively managed by the V1 purge workflow.
 """
 import json
 import os
@@ -46,7 +46,8 @@ class MetadataRepository:
         for _ in range(32):
             row = self.conn.execute(
                 "SELECT id::text, owner_employee_id, parent_id::text, state "
-                "FROM storage.objects WHERE id=%s", (current,)
+                "FROM storage.objects o WHERE o.id=%s "
+                "AND NOT EXISTS (SELECT 1 FROM storage.purge_requests pr WHERE pr.object_id=o.id)", (current,)
             ).fetchone()
             if not row:
                 break
