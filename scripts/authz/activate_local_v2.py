@@ -44,10 +44,15 @@ def set_flag(key, enabled):
     name = (key + "=").encode("ascii")
     rows = data.splitlines(keepends=True)
     matches = [i for i, row in enumerate(rows) if row.startswith(name)]
-    if len(matches) != 1:
-        raise RuntimeError("Existing flag requires a unique server setting")
+    if len(matches) > 1:
+        raise RuntimeError("Duplicate feature flag in server configuration")
     new_line = name + (b"true" if enabled else b"false") + b"\n"
-    rows[matches[0]] = new_line
+    if matches:
+        rows[matches[0]] = new_line
+    else:
+        if rows and not rows[-1].endswith(b"\n"):
+            rows.append(b"\n")
+        rows.append(new_line)
     fd, name_temp = tempfile.mkstemp(dir=ROOT, prefix=".authz-env-", suffix=".tmp")
     try:
         os.fchmod(fd, ENV_FILE.stat().st_mode & 0o777)
