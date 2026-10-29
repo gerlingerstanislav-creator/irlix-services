@@ -414,3 +414,48 @@ test('Storage V1 tile isolates thumbnail and long title in separate bounded rows
   assert.ok(css.includes('-webkit-line-clamp:2'));
   assert.ok(css.includes('overflow-wrap:anywhere;word-break:break-word;'));
 });
+
+
+test('V1 drag-drop uploads to current directory and to folder rows or tiles', () => {
+  const screen = text('../src/StorageV1.vue');
+  const css = text('../src/storage.css');
+  assert.ok(screen.includes('class="storage-content storage-v1-drop-area"'));
+  assert.ok(screen.includes('@dragover="onAreaDragOver" @dragleave="onAreaDragLeave" @drop="onAreaDrop"'));
+  assert.ok(screen.includes('const destination = parentId.value;'));
+  assert.ok(screen.includes('void uploadFiles(files, destination);'));
+  assert.ok(screen.includes('void uploadFiles(files, item.id);'));
+  assert.ok(screen.includes('async function uploadFiles(chosen, destinationId = parentId.value)'));
+  assert.ok(screen.includes("data.append('parent_id', destinationId)"));
+  assert.ok(screen.includes('const canDropIntoCurrent = computed(() => canCreate.value'));
+  assert.ok(screen.includes("item.kind === 'folder' && mode.value !== 'trash'"));
+  assert.ok(screen.includes('&& !busy.value && !loading.value && canEdit(item)'));
+  assert.ok(screen.includes("const isFileDrag = event => Array.from(event.dataTransfer?.types || []).includes('Files')"));
+  assert.ok(screen.includes('event.dataTransfer.dropEffect = canDropIntoCurrent.value'));
+  assert.ok(screen.includes("event.dataTransfer.dropEffect = 'none'"));
+  assert.ok(screen.includes('event.preventDefault(); // Avoid the browser opening the file in this tab.'));
+  assert.equal((screen.match(/@dragover="onFolderDragOver\(\$event, item\)"/g) || []).length, 2,
+    'Both list rows and tiles must target writable folders');
+  assert.equal((screen.match(/@drop="onFolderDrop\(\$event, item\)"/g) || []).length, 2);
+  assert.ok(screen.includes('onAreaDrop(event);'), 'dropping on a file must upload to its containing folder');
+  assert.ok(screen.includes('clearDropState();'));
+  assert.ok(css.includes('.storage-v1 .storage-v1-drop-hint'));
+  assert.ok(css.includes('pointer-events:none;'));
+  assert.ok(css.includes('.storage-v1 .storage-v1-table tr.storage-v1-folder-drop-target'));
+  assert.ok(css.includes('.storage-v1 .storage-grid .storage-v1-folder-drop-target'));
+});
+
+test('V1 drag-drop batch failures are reported without retrying successful files', () => {
+  const screen = text('../src/StorageV1.vue');
+  const upload = screen.slice(screen.indexOf('async function uploadFiles('), screen.indexOf('async function mutate('));
+  const api = text('../../../services/storage-api/app/v1_api.py');
+  assert.ok(upload.includes('for (const file of files)'));
+  assert.ok(upload.includes('failed.push(file.name +'));
+  assert.ok(upload.includes("notice.value = 'Загружено файлов: ' + uploaded"));
+  assert.ok(upload.includes("error.value = 'Не удалось загрузить: ' + failed.join('; ')"));
+  assert.ok(upload.includes('if (uploaded)'));
+  assert.ok(screen.includes("item.webkitGetAsEntry?.()?.isDirectory"));
+  assert.ok(screen.includes("mode.value !== 'trash'"));
+  assert.ok(api.includes('parent, owner = _parent_for_create('));
+  assert.ok(api.includes('_require_capacity(repo, owner, len(data))'));
+  assert.ok(api.includes('raise HTTPException(413, "Файл больше 10 МБ")'));
+});
