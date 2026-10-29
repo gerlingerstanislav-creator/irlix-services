@@ -148,6 +148,17 @@ class ClientContourAccess
         return array_keys($out);
     }
 
+    public static function verifiedLegacyManagerMatrixRole(array $roles, bool $manages): array
+    {
+        if (!$manages) return [];
+        foreach ($roles as $role) {
+            if (is_string($role) && preg_match('/^head:[a-z0-9]+(?:-[a-z0-9]+)*$/D', $role) === 1) {
+                return ['department-manager'];
+            }
+        }
+        return [];
+    }
+
     public function resolve(Request $request): array
     {
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
