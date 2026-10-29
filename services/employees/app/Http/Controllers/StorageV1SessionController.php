@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Employee;
 use App\Support\BrandbookGate;
+use App\Support\SpecialRoles;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -21,7 +22,11 @@ final class StorageV1SessionController extends Controller
         $identity = (array) $request->attributes->get('identity', []);
         $id = (int) ($access['employee_id'] ?? 0);
         $subject = (string) ($identity['sub'] ?? '');
-        if ($id <= 0 || $subject === '' || ($access['services']['storage'] ?? false) !== true) {
+        $roles = (array) ($access['roles'] ?? []);
+        $admitted = in_array(SpecialRoles::PlatformAdmin, $roles, true)
+            || (in_array(SpecialRoles::TopManagement, $roles, true)
+                && getenv('STORAGE_V1_ACCESS_ENABLED') === '1');
+        if (!$admitted || $id <= 0 || $subject === '' || ($access['services']['storage'] ?? false) !== true) {
             return response()->json(['message' => 'Storage access denied'], 403);
         }
         $employee = Employee::query()->whereKey($id)
