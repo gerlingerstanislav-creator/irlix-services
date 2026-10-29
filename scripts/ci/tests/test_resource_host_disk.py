@@ -62,5 +62,65 @@ class HostDiskTest(unittest.TestCase):
             s[2].is_relative_to(s2[2])))
 
 
+
+    def test_physical_bucket_classification_is_disjoint(self):
+        examples = {
+            ('var', 'lib', 'docker', 'overlay2', 'layer'): 'docker-overlay',
+            ('var', 'lib', 'docker', 'volumes', 'postgres'): 'docker-volumes',
+            ('var', 'lib', 'docker', 'containers', 'id'): 'docker-containers',
+            ('var', 'lib', 'docker', 'buildkit'): 'docker-buildkit',
+            ('var', 'lib', 'docker', 'image'): 'docker-other',
+            ('opt', 'irlix-services', '.ci', 'migration-test-snapshots', 'console'): 'migration-snapshots',
+            ('opt', 'irlix-services', '.ci', 'output'): 'ci',
+            ('opt', 'irlix-services', 'apps'): 'deployment',
+            ('var', 'log', 'journal'): 'system-logs',
+            ('var', 'cache', 'apt'): 'system-cache',
+            ('tmp', 'file'): 'system-temp',
+            ('var', 'lib', 'systemd'): 'system-data',
+            ('usr', 'lib'): 'os-packages',
+            ('etc', 'hosts'): 'os-config',
+            ('home', 'user'): 'user-files',
+            ('lost+found',): 'other',
+        }
+        for path, expected in examples.items():
+            self.assertEqual(HOST.physical_category(path), expected)
+        self.assertEqual(set(examples.values()), set(HOST.PHYSICAL_IDS))
+
+    def test_physical_inventory_counts_hardlinks_once_and_reconciles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            volumes = root/'var'/'lib'/'docker'/'volumes'
+            volumes.mkdir(parents=True)
+            (root/'etc').mkdir()
+            blob = volumes/'data.bin'
+            blob.write_bytes(b'x' * 8192)
+            (root/'etc'/'hardlink').hardlink_to(blob)
+            (root/'etc'/'symlink').symlink_to(blob)
+            result = HOST.physical_inventory(root, HOST.Budget())
+            physical = result['filesystem']
+            sizes = {row['id']: row['bytes'] for row in result['physical_sections']}
+            self.assertFalse(physical['partial'])
+            self.assertEqual(sum(sizes.values()), physical['classified_bytes'])
+            self.assertEqual(physical['used_bytes'] + physical['available_bytes'] +
+                             physical['reserved_bytes'], physical['total_bytes'])
+            self.assertEqual(physical['classified_bytes'] + physical['unclassified_bytes'] -
+                             physical['overlap_bytes'], physical['used_bytes'])
+            # The same allocated 8 KiB inode appears in precisely one bucket.
+            self.assertLessEqual(sizes['docker-volumes'] + sizes['os-config'],
+                                 physical['classified_bytes'])
+            self.assertGreaterEqual(sizes['docker-volumes'] + sizes['os-config'], blob.stat().st_blocks * 512)
+
+    def test_physical_scan_budget_exhaustion_is_explicit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for n in range(10):
+                (root/str(n)).write_bytes(b'123')
+            result = HOST.physical_inventory(root, HOST.Budget(max_entries=2))
+            self.assertTrue(result['filesystem']['partial'])
+            self.assertEqual(sum(x['bytes'] for x in result['physical_sections']),
+                             result['filesystem']['classified_bytes'])
+            self.assertGreater(result['filesystem']['unclassified_bytes'], 0)
+
+
 if __name__ == '__main__':
     unittest.main()

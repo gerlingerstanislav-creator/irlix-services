@@ -5,7 +5,7 @@ import { serviceGroups } from '../../../packages/ui/src/serviceCatalog.js';
 import { canViewResources, dashboardSection } from '../src/resourceAccess.js';
 import { resourceAllocation, resourceColor } from '../src/resourceAllocation.js';
 import { resourceRemainder } from '../src/resourceRemainder.js';
-import { diskServiceBytes, diskServicePartial, diskTasks, diskTaskLabels } from '../src/diskInventory.js';
+import { diskServiceBytes, diskServicePartial, diskTasks, diskTaskLabels, physicalDiskLabels, physicalDiskAllocation, physicalDiskRows } from '../src/diskInventory.js';
 import { contours, domainContours, nodes, links, serviceDescriptions, canViewServiceMap } from '../src/serviceMapData.js';
 
 test('resource monitor requires platform-admin role',()=>{
@@ -184,4 +184,25 @@ test('disk task inventory only displays fixed safe categories and stays non-addi
   assert.equal(resourceRemainder(snapshot).disk.other,440);
   assert.equal(diskServiceBytes({disk_bytes:5}),5);
   assert.deepEqual(diskTasks({}),[]);
+});
+
+
+test('physical disk accounting is exclusive and includes reserved blocks exactly once',()=>{
+  const ids=Object.keys(physicalDiskLabels).filter(id=>!id.startsWith('__'));
+  const sections=ids.map((id,i)=>({id,bytes:i===0?400:i===1?180:0}));
+  const inv={stale:false,error:false,physical_sections:sections,
+    filesystem:{total_bytes:1000,used_bytes:620,available_bytes:280,
+      reserved_bytes:100,classified_bytes:580,unclassified_bytes:40,
+      overlap_bytes:0,partial:false}};
+  const r=physicalDiskAllocation(inv);
+  assert.equal(r.unavailable,false);
+  assert.equal(r.used,620);
+  assert.equal(r.total,1000);
+  assert.equal(r.segments.reduce((sum,row)=>sum+row.size,0),1000);
+  assert.equal(r.segments.find(row=>row.id==='__reserved__').value,100);
+  assert.equal(r.segments.find(row=>row.id==='__unclassified__').value,40);
+  assert.equal(physicalDiskRows(inv).length,16);
+  assert.equal(physicalDiskAllocation({...inv,stale:true}).unavailable,true);
+  assert.equal(physicalDiskAllocation({...inv,filesystem:{...inv.filesystem,overlap_bytes:5}}).unavailable,true);
+  assert.equal(physicalDiskAllocation({}).unavailable,true);
 });

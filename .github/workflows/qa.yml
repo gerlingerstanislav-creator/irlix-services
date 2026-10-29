@@ -58,6 +58,10 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests -p 'test_keycloak_authz_rollout.py' -v
       - name: Verify server-managed Laravel APP_KEY migration (offline)
         run: python3 -m unittest discover -s scripts/ci/tests -p 'test_app_key_provisioning.py' -v
+      - name: Verify host disk inventory and Resource Monitor collector (offline)
+        run: |
+          python3 -m unittest discover -s scripts/ci/tests -p 'test_resource_host_disk.py' -v
+          PYTHONPATH=services/resource-monitor python3 -m unittest discover -s services/resource-monitor -p 'tests.py' -v
       - name: Save QA evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -219,7 +219,9 @@
         "apps/migration/src/",
         "packages/ui/",
         "packages/auth/",
-        "apps/portal/src/diskInventory.js"
+        "apps/portal/src/diskInventory.js",
+        "apps/portal/src/DiskUsage.vue",
+        "apps/portal/src/resources.css"
       ],
       "page_path": "/system/"
     },

@@ -55,3 +55,27 @@
 .resource-disk-tasks-head p{margin-top:5px!important;line-height:1.5}
 .resource-tasks-table td:last-child,.resource-tasks-table th:last-child{text-align:right;font-variant-numeric:tabular-nums}
 .resource-disk-source td{font-size:var(--irlix-font-size-caption);color:var(--irlix-color-text-muted)}
+
+
+/* Physical disk audit: one additive accounting model, independently scrollable. */
+.resource-disk-audit{padding:16px;display:flex;flex-direction:column;gap:12px}
+.resource-disk-audit-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.resource-disk-audit-head p{margin-top:6px!important;line-height:1.5}
+.resource-disk-capacity{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.resource-disk-capacity>div{border:1px solid var(--irlix-color-border);border-radius:var(--irlix-radius-sm);padding:12px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.resource-disk-capacity span{color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption)}
+.resource-disk-capacity strong{font-weight:600;font-size:var(--irlix-font-size-body);font-variant-numeric:tabular-nums}
+.resource-disk-table-scroll{max-height:500px;overflow:auto}
+.resource-physical-table{width:100%;font-variant-numeric:tabular-nums}
+.resource-physical-table thead th{position:sticky;top:0;background:var(--irlix-color-surface);z-index:1}
+.resource-physical-table td:last-child,.resource-physical-table th:last-child{text-align:right}
+.resource-physical-table td:first-child{min-width:260px}
+.resource-physical-meter{min-width:190px;width:34%}
+.resource-physical-meter>span{display:inline-block;min-width:55px;text-align:right}
+.resource-meter-track{display:inline-block;vertical-align:middle;width:calc(100% - 66px);height:8px;border-radius:4px;background:var(--irlix-color-bg);overflow:hidden}
+.resource-meter-track>span{display:block;height:100%;max-width:100%;background:var(--irlix-color-text-muted)}
+.resource-disk-check{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;font-size:var(--irlix-font-size-caption);padding:12px 0;border-top:1px solid var(--irlix-color-border);border-bottom:1px solid var(--irlix-color-border)}
+.resource-disk-check span:last-child{font-weight:600;font-variant-numeric:tabular-nums}
+.resource-disk-extra summary{cursor:pointer;color:var(--irlix-color-primary-text);font-size:var(--irlix-font-size-caption);padding:4px 0}
+.resource-disk-extra summary:focus-visible{outline:2px solid var(--irlix-color-primary)}
+@media(max-width:800px){.resource-disk-capacity{grid-template-columns:repeat(2,minmax(0,1fr))}.resource-disk-audit{padding:12px}}

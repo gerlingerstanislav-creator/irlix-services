@@ -99,6 +99,106 @@ def inventory(sections=SECTIONS, filesystem=Path('/'), budget=None):
             'sections': output, 'partial': partial}
 
 
+
+# Physical allocation is measured independently of Docker /system/df estimates.
+# Exactly one bucket is chosen per inode on the root filesystem.
+PHYSICAL_IDS = (
+    'docker-overlay', 'docker-volumes', 'docker-containers', 'docker-buildkit',
+    'docker-other', 'migration-snapshots', 'ci', 'deployment', 'system-logs',
+    'system-cache', 'system-temp', 'system-data', 'os-packages', 'os-config',
+    'user-files', 'other',
+)
+
+
+def physical_category(parts):
+    def below(*prefix):
+        return tuple(parts[:len(prefix)]) == prefix
+    if below('var', 'lib', 'docker'):
+        return {'overlay2': 'docker-overlay', 'volumes': 'docker-volumes',
+                'containers': 'docker-containers', 'buildkit': 'docker-buildkit'}.get(
+                    parts[3] if len(parts) > 3 else '', 'docker-other')
+    if below('opt', 'irlix-services', '.ci', 'migration-test-snapshots'):
+        return 'migration-snapshots'
+    if below('opt', 'irlix-services', '.ci'):
+        return 'ci'
+    if below('opt', 'irlix-services'):
+        return 'deployment'
+    if below('var', 'log'):
+        return 'system-logs'
+    if below('var', 'cache'):
+        return 'system-cache'
+    if below('tmp') or below('var', 'tmp'):
+        return 'system-temp'
+    if below('var', 'lib') or below('var', 'spool'):
+        return 'system-data'
+    if parts and parts[0] in ('usr', 'bin', 'sbin', 'lib', 'lib64', 'opt'):
+        return 'os-packages'
+    if parts and parts[0] in ('etc', 'boot'):
+        return 'os-config'
+    if parts and parts[0] in ('home', 'root'):
+        return 'user-files'
+    return 'other'
+
+
+def physical_inventory(filesystem, budget):
+    """Scan the entire root filesystem without opening file contents.
+
+    Track allocated inode blocks once, never follow symlinks or other mounts.
+    The df residual is explicitly *unidentified*, not attributed to a service.
+    """
+    started = time.monotonic()
+    device = filesystem.stat().st_dev
+    sizes = dict.fromkeys(PHYSICAL_IDS, 0)
+    seen = set()
+    stack = [(filesystem, ())]
+    partial = False
+    visited = 0
+    while stack:
+        path, parts = stack.pop()
+        try:
+            budget.check()
+            meta = path.lstat()
+            if meta.st_dev != device:
+                continue
+            identity = (meta.st_dev, meta.st_ino)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            visited += 1
+            sizes[physical_category(parts)] += meta.st_blocks * 512
+            if stat.S_ISDIR(meta.st_mode):
+                with os.scandir(path) as children:
+                    for child in children:
+                        stack.append((Path(child.path), parts + (child.name,)))
+        except (OSError, TimeoutError):
+            partial = True
+            if budget.remaining <= 0 or time.monotonic() >= budget.deadline:
+                break
+
+    # Take the disk counter after the scan to reduce skew from live writes.
+    disk = os.statvfs(filesystem)
+    block = disk.f_frsize
+    total = disk.f_blocks * block
+    free = disk.f_bfree * block
+    available = disk.f_bavail * block
+    used = total - free
+    allocated = sum(sizes.values())
+    return {
+        'filesystem': {
+            'total_bytes': total, 'used_bytes': used, 'available_bytes': available,
+            'reserved_bytes': free - available,
+            'classified_bytes': allocated,
+            'unclassified_bytes': max(0, used - allocated),
+            'overlap_bytes': max(0, allocated - used),
+            'partial': partial, 'scanned_entries': visited,
+            'elapsed_seconds': round(time.monotonic() - started, 2),
+        },
+        'physical_sections': [
+            {'id': key, 'bytes': value} for key, value in sizes.items()
+        ],
+    }
+
+
 def main():
     # Same existing volume as the read-only resource monitor collector.
     mount = subprocess.check_output(
@@ -107,7 +207,10 @@ def main():
     directory = Path(mount)
     if not directory.is_absolute() or directory.is_symlink() or not directory.is_dir():
         raise ValueError('Invalid resource monitor volume')
-    result = inventory()
+    physical = physical_inventory(Path('/'), Budget(max_entries=1200000, max_seconds=82))
+    # Legacy task inventory stays independent and is not part of the physical sum.
+    result = inventory(budget=Budget(max_entries=300000, max_seconds=8))
+    result.update(physical)
     temporary = directory/'host-disk.tmp'
     with temporary.open('w') as target:
         json.dump(result, target, separators=(',', ':'))
