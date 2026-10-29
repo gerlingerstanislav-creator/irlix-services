@@ -173,6 +173,17 @@ def main():
             run_compose(compose, service)
             verify_service(probe, compose, service, True)
             print(f"[authz-v2-cutover] {service}: independent local V2 enabled; health and anonymous deny PASS", flush=True)
+        # Full established production smoke AFTER all local V2 switches.
+        # A failing smoke triggers rollback of only the flags changed here.
+        for check in (["sh", "scripts/verify-stand.sh"],
+                      ["sh", "scripts/verify-timesheets.sh"],
+                      [sys.executable, "scripts/ci/verify_plan.py"]):
+            result = subprocess.run(
+                check, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=480, check=False,
+            )
+            if result.returncode != 0:
+                raise RuntimeError("Post-cutover stand smoke failed")
     except Exception:
         for service in reversed(switched):
             key, _ = probe.MATRICES[service]
