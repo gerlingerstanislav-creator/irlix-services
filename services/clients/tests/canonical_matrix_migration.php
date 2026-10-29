@@ -51,6 +51,7 @@ $put('department-manager','timesheets.management.view',true,'team');
 $put('department-manager','positions.view',true,'team');
 $put('department-manager','attempts.manage',true,'team');
 $put('head:backend','attempts.manage',false,'none',true);
+$put('head:backend','positions.view',true,'own');
 $put('org:backend','timesheets.mine.view',true,'own');
 $put('platform-admin','clients.manage',true,'all');
 $put('platform-tester','clients.view',false,'none');
@@ -90,7 +91,7 @@ $check(DB::table('client_contour_permissions')->where('role','head:qa')
     'Production manager permissions not transferred to current production heads');
 $check(DB::table('client_contour_permissions')->where('role','head:backend')
     ->where('permission','positions.view')->value('scope')==='team',
-    'Production manager grant missing for additional head');
+    'Old manager team scope did not widen unedited head own scope');
 $check((bool)DB::table('client_contour_permissions')->where('role','head:backend')
     ->where('permission','attempts.manage')->value('denied')===true,
     'Existing canonical head deny was overwritten by generic manager grant');
