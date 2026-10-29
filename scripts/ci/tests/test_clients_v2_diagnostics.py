@@ -43,6 +43,24 @@ class ClientsV2FinalizerDiagnosticsTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Employees production department aliases unavailable or invalid"):
                 mod.run()
 
+    def test_active_head_alias_export_error_is_classified_without_private_payload(self):
+        with patch.object(mod.subprocess, "check_output", return_value="docker compose"), patch.object(
+            mod.subprocess, "run", return_value=subprocess.CompletedProcess([], 1,
+                stdout=b'PRIVATE-ROLE', stderr=b'PRIVATE EMPLOYEE ID\\n[clients-head-export] missing-managed-alias\\n')
+        ):
+            with self.assertRaisesRegex(RuntimeError, "Production department with an assigned manager needs a canonical alias") as caught:
+                mod.run()
+            self.assertNotIn("PRIVATE", str(caught.exception))
+
+    def test_employees_only_release_resumes_one_time_clients_cleanup(self):
+        deploy = (ROOT / "scripts/deploy-from-ghcr.sh").read_text()
+        self.assertIn('clients|employees) clients_v2_finalize=true', deploy)
+        self.assertIn('IRLIX_CLIENTS_V2_ROLE_CLEANUP_DONE', deploy)
+        self.assertLess(deploy.index('transfer_clients_timesheets.py'),
+                        deploy.index('transfer_production_heads_clients.py'))
+        self.assertLess(deploy.index('transfer_production_heads_clients.py'),
+                        deploy.index('upsert_env IRLIX_CLIENTS_V2_ROLE_CLEANUP_DONE true'))
+
 
 if __name__ == "__main__":
     unittest.main()
