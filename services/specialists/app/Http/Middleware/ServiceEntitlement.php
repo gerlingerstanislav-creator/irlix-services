@@ -43,6 +43,9 @@ final class ServiceEntitlement
                     $roles,(array)$live->json('data'))) {
                     return response()->json(['message'=>'Specialists role assignments changed'],403);
                 }
+                if ($live->json('data.services.specialists') !== true) {
+                    return response()->json(['message'=>'Existing Specialists admission denied'],403);
+                }
                 try {
                     $permissions=app(\App\Services\SpecialistsRoleAuthorization::class)->forVerifiedRoles($roles);
                 } catch (\Throwable) {
