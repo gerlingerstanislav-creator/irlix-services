@@ -23,6 +23,7 @@ const selected = ref(new Set());
 const bulkMoving = ref(false);
 const bulkTarget = ref('');
 const loading = ref(false);
+let refreshSerial = 0;
 const busy = ref(false);
 const error = ref('');
 const notice = ref('');
@@ -128,7 +129,7 @@ async function request(path, options = {}) {
   return response.json();
 }
 async function refresh() {
-  if (loading.value) return;
+  const serial = ++refreshSerial;
   loading.value = true; error.value = '';
   try {
     const url = searchActive.value ? '/search?q=' + encodeURIComponent(searchQuery.value.trim())
@@ -137,11 +138,13 @@ async function refresh() {
       : '/items' + (parentId.value ? '?parent_id=' + encodeURIComponent(parentId.value)
                                      : '?scope=mine');
     const result = await request(url);
+    if (serial !== refreshSerial) return;
     entries.value = Array.isArray(result.entries) ? result.entries : [];
     clearSelection();
-    try { stats.value = await request('/stats'); } catch { stats.value = null; }
-  } catch (err) { entries.value = []; error.value = err.message; }
-  finally { loading.value = false; }
+    try { const data = await request('/stats'); if (serial === refreshSerial) stats.value = data; }
+    catch { if (serial === refreshSerial) stats.value = null; }
+  } catch (err) { if (serial === refreshSerial) { entries.value = []; error.value = err.message; } }
+  finally { if (serial === refreshSerial) loading.value = false; }
 }
 async function bulkAction(action) {
   const chosen = selectedItems.value.filter(item => action === 'restore' || canManage(item));
@@ -465,6 +468,7 @@ async function revoke(employeeId) {
 watch([parentId, mode], () => {
   searchActive.value = false;
   searchQuery.value = '';
+  clearTimeout(searchTimer);
   clearSelection();
   refresh();
 });
