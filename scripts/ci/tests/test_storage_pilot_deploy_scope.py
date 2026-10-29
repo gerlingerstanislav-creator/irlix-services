@@ -39,7 +39,7 @@ class StoragePilotDeploymentGuardTests(unittest.TestCase):
 
     def test_storage_capacity_guard_is_selective(self):
         for affected in ("clients timesheets finance equipment vacations recruitment specialists",
-                         "portal", "employees-web", "storage-web", ""):
+                         "portal", "employees-web", "storage-drive", "storage-web", ""):
             with self.subTest(affected=affected):
                 self.assertNotIn("PILOT_PREFLIGHT_RAN", self.evaluate(False, affected))
         for storage in ("storage-api", "storage-drive", "storage-s3"):
