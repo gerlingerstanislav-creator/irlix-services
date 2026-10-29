@@ -35,4 +35,18 @@ assert.match(clients, /UiLoader v-if="startupPhase==='loading'" page/);
 assert.match(clients, /UiErrorState v-else-if="startupPhase==='error'" :status="503"/);
 assert.match(clients, /UiErrorState v-else-if="!titles\[view\]"/);
 assert.match(clientsCss, /\.content\{position:relative;min-height:/);
-console.log('Employees refresh stability and Clients container overlay: PASS');
+const finance = read('../../../apps/finance/src/App.vue');
+const equipment = read('../../../apps/equipment/src/App.vue');
+const specialists = read('../../../apps/specialists/src/App.vue');
+assert.match(finance, /const accessPhase = ref\('loading'\)/);
+assert.match(finance, /<UiLoader v-if="accessPhase==='loading'" page/);
+assert.match(finance, /<UiErrorState v-else-if="accessPhase==='error'" :status="503"/);
+assert.match(finance, /accessPhase==='forbidden' \|\| \(accessPhase==='allowed'/);
+for (const app of [equipment, specialists]) {
+  assert.match(app, /const roleAccessPhase=ref\('loading'\)/);
+  assert.match(app, /roleAccessPhase\.value=e\.status===403\?'forbidden':'error'/);
+  assert.match(app, /roleAccessPhase==='loading'/);
+  assert.match(app, /roleAccessPhase==='error'.*:status="503"/);
+  assert.match(app, /roleAccessPhase==='forbidden'.*:status="403"/);
+}
+console.log('Employees and service authorization preloader contracts: PASS');
