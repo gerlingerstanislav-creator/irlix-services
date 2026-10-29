@@ -29,6 +29,7 @@ $roleMap = [
 $recognized = array_fill_keys(\App\Services\TimesheetsRoleAuthorization::PERMISSIONS, true);
 $allowedScopes = ['own'=>true,'team'=>true,'all'=>true];
 $rows = [];
+$legacyEmployeeViewRulePresent = false;
 foreach ($source['rows'] as $record) {
     if (!is_array($record)) throw new RuntimeException('Invalid policy record');
     $role = $roleMap[$record['role'] ?? ''] ?? null;
@@ -39,6 +40,11 @@ foreach ($source['rows'] as $record) {
     if ($role === null || !is_bool($record['allowed'] ?? null)
         || !is_bool($record['denied'] ?? null)) {
         throw new RuntimeException('Invalid legacy role or grant');
+    }
+    if ($record['role'] === 'employee'
+        && $permission === 'timesheets.mine.view') {
+        // An explicit/unassigned legacy employee row must NEVER be replaced.
+        $legacyEmployeeViewRulePresent = true;
     }
     $scope = $record['scope'] ?? null;
     if (!is_string($scope) || !in_array($scope, ['none','own','team','all'], true)) {
@@ -68,6 +74,20 @@ foreach ($source['rows'] as $record) {
             'scope'=>$denied ? 'none' : $scope,
         ];
     }
+}
+
+// Proven legacy behavior (29.10 production probe): GET /api/workspace was
+// admitted for every active Employees-authorized Timesheets employee and read
+// ONLY that employee's records. That backend route did not check the Clients
+// employee timesheets.mine.view matrix. If the historical Clients employee
+// row is truly absent (NOT explicitly false/denied), preserve that effective
+// workspace right in the local V2 matrix. Existing Employees service-entry
+// denials and authenticated employee ownership remain mandatory.
+if (!$legacyEmployeeViewRulePresent) {
+    $rows['org:irlix|timesheets.mine.view'] = [
+        'role'=>'org:irlix', 'permission'=>'timesheets.mine.view',
+        'allowed'=>true, 'scope'=>'own',
+    ];
 }
 
 \Illuminate\Support\Facades\DB::transaction(static function () use ($rows): void {
