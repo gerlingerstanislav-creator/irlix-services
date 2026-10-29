@@ -172,10 +172,20 @@ $test($execute($token, '/api/workspace')[0] === 403,
 // Isolated request-level rollback rehearsal, not a production container
 // restart: with V2 failing closed, switching only this service's flag back
 // to false must restore its original signed service:timesheets admission.
-putenv('IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED=false');
-$test($execute($token, '/api/workspace')[0] === 200,
-    'Disabling only Timesheets V2 did not restore legacy signed admission');
-putenv('IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED=true');
+$setFlag = static function (bool $enabled): void {
+    $value = $enabled ? 'true' : 'false';
+    // Laravel's immutable Dotenv repository can read $_ENV/$_SERVER ahead of
+    // getenv(); changing putenv() alone does not emulate a recreated process.
+    putenv('IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED='.$value);
+    $_ENV['IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED'] = $value;
+    $_SERVER['IRLIX_TIMESHEETS_LOCAL_AUTHZ_ENABLED'] = $value;
+};
+$setFlag(false);
+[$rollbackStatus, $rollbackBody] = $execute($token, '/api/workspace');
+$test($rollbackStatus === 200,
+    'Disabling only Timesheets V2 did not restore legacy signed admission'
+    .' (HTTP '.$rollbackStatus.', reason '.(string)($rollbackBody['message'] ?? 'none').')');
+$setFlag(true);
 $test($execute($token, '/api/workspace')[0] === 403,
     'Re-enabled Timesheets V2 did not reinstate default deny');
 
