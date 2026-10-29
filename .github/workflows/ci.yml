@@ -83,9 +83,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           FULL_BUILD: ${{ inputs.full || false }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           args=()
           if [ "$FULL_BUILD" = true ]; then args+=(--full); fi
+          # PR plans must compare to their actual target, never the previous
+          # successful development push (which includes unrelated commits).
+          if [ "${GITHUB_EVENT_NAME}" = pull_request ]; then
+            test -n "$PR_BASE_SHA"
+            args+=(--base "$PR_BASE_SHA")
+          fi
           python3 scripts/ci/service_plan.py plan "${args[@]}"
       - uses: actions/upload-artifact@v4
         with:
@@ -140,14 +147,22 @@ jobs:
         run: node --check scripts/agents/handoff.mjs && node --check scripts/agents/route.mjs
       - name: Run scoped QA contract checks
         env:
-          QA_BASE: ${{ github.event.before }}
+          QA_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: node scripts/qa/run.mjs --scope changed
       - name: Lint changed backend PHP files
         env:
-          QA_BASE: ${{ github.event.before }}
+          QA_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: node scripts/qa/php-lint.mjs --scope changed
       - name: Authorization V2 read-only parity guard tests
         run: php scripts/tests/authz_parity.php
+      - name: Offline migration and infrastructure regressions
+        run: |
+          python3 -m unittest discover -s scripts/tests -p 'test_migration_control.py' -v
+          python3 -m unittest discover -s scripts/tests -p 'test_migration_retention.py' -v
+          python3 -m unittest discover -s scripts/tests -p 'test_keycloak_authz_rollout.py' -v
+          python3 -m unittest discover -s scripts/ci/tests -p 'test_app_key_provisioning.py' -v
+          python3 -m unittest discover -s scripts/ci/tests -p 'test_resource_host_disk.py' -v
+          PYTHONPATH=services/resource-monitor python3 -m unittest discover -s services/resource-monitor -p 'tests.py' -v
       - name: Store QA report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -171,7 +186,7 @@ jobs:
           node-version: '22'
       - name: Run local synthetic Playwright scenarios
         env:
-          QA_BASE: ${{ github.event.before }}
+          QA_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: node scripts/qa/browser.mjs --scope changed
       - name: Save browser evidence
         if: ${{ !cancelled() }}
