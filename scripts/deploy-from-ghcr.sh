@@ -369,10 +369,14 @@ fi
 # Employees owns the production directory and Timesheets owns its import.
 clients_v2_finalize=false
 for service in $MIGRATE_SERVICES; do
-  [ "$service" = clients ] && clients_v2_finalize=true
+  # An Employees-only correction must be able to resume a previous
+  # fail-closed Clients finalization. Never force an unrelated rebuild.
+  case "$service" in clients|employees) clients_v2_finalize=true ;; esac
 done
-if [ "$clients_v2_finalize" = true ]; then
+clients_v2_done=$($SUDO sh -c "grep '^IRLIX_CLIENTS_V2_ROLE_CLEANUP_DONE=' .env 2>/dev/null | tail -n1 | cut -d= -f2-" || true)
+if [ "$clients_v2_finalize" = true ] && [ "$clients_v2_done" != true ]; then
   $SUDO python3 scripts/authz/transfer_production_heads_clients.py
+  upsert_env IRLIX_CLIENTS_V2_ROLE_CLEANUP_DONE true
 fi
 
 

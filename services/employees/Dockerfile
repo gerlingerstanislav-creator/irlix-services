@@ -17,6 +17,7 @@ COPY app/Support/EmployeesAccess.php /app/app/Support/EmployeesAccess.php
 COPY app/Support/RoleLabels.php /app/app/Support/RoleLabels.php
 COPY app/Support/KeycloakAuthorizationSync.php /app/app/Support/KeycloakAuthorizationSync.php
 COPY app/Support/SpecialRoles.php /app/app/Support/SpecialRoles.php
+COPY app/Support/ClientsProductionHeadAliases.php /app/app/Support/ClientsProductionHeadAliases.php
 COPY app/Support/BrandbookGate.php /app/app/Support/BrandbookGate.php
 COPY app/Support/StoragePilotGate.php /app/app/Support/StoragePilotGate.php
 COPY app/Support/EmployeeOnboardingService.php /app/app/Support/EmployeeOnboardingService.php
@@ -43,6 +44,7 @@ COPY bin/export-clients-production-head-aliases.php /app/bin/export-clients-prod
 COPY bin/authz-requeue-transient.php /app/bin/authz-requeue-transient.php
 COPY database/migrations /app/database/migrations
 COPY tests/role_labels.php /app/tests/role_labels.php
+COPY tests/clients_production_head_aliases.php /app/tests/clients_production_head_aliases.php
 COPY tests/inherited_permission_rules.php /app/tests/inherited_permission_rules.php
 COPY tests/position_catalog.php /app/tests/position_catalog.php
 COPY tests/position_lifecycle.php /app/tests/position_lifecycle.php
@@ -54,7 +56,7 @@ COPY tests/eloquent_architecture.php /app/tests/eloquent_architecture.php
 COPY tests/eloquent_services.php /app/tests/eloquent_services.php
 COPY tests/layered_workflows.php /app/tests/layered_workflows.php
 COPY tests/staff_positions_import.php /app/tests/staff_positions_import.php
-RUN php /app/tests/role_labels.php && php /app/tests/inherited_permission_rules.php && php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php && php /app/tests/vacations_historical_directory.php && php /app/tests/platform_roles.php && php /app/tests/eloquent_architecture.php && php /app/tests/eloquent_services.php && php /app/tests/layered_workflows.php && php /app/tests/staff_positions_import.php
+RUN php /app/tests/clients_production_head_aliases.php && php /app/tests/role_labels.php && php /app/tests/inherited_permission_rules.php && php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php && php /app/tests/vacations_historical_directory.php && php /app/tests/platform_roles.php && php /app/tests/eloquent_architecture.php && php /app/tests/eloquent_services.php && php /app/tests/layered_workflows.php && php /app/tests/staff_positions_import.php
 RUN find /app/app/Models /app/app/Services /app/app/Http/Controllers -name '*.php' -exec php -l {} \; \
     && php -l /app/routes/api.php \
     && php -l /app/routes/self.php \
@@ -75,6 +77,7 @@ RUN find /app/app/Models /app/app/Services /app/app/Http/Controllers -name '*.ph
     && php -l /app/app/Support/RoleLabels.php \
     && php -l /app/app/Support/KeycloakAuthorizationSync.php \
     && php -l /app/app/Support/SpecialRoles.php \
+    && php -l /app/app/Support/ClientsProductionHeadAliases.php \
     && php -l /app/app/Support/StoragePilotGate.php \
     && php -l /app/tests/storage_pilot_session_runtime.php \
     && php -l /app/app/Support/EmployeeOnboardingService.php \
