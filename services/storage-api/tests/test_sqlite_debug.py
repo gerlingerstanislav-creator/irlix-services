@@ -6,6 +6,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from PIL import Image
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -159,6 +160,69 @@ class SQLiteDebugTests(unittest.TestCase):
                 self.assertGreaterEqual(len(history.json()["events"]), 2)
                 with metadata_connection() as conn:
                     self.assertEqual(conn.execute("SELECT COUNT(*) FROM file_versions").fetchone()[0], 1)
+        finally:
+            app.dependency_overrides.clear()
+
+
+    def test_v1_tile_thumbnail_is_small_and_acl_checked(self):
+        fake = FakeS3()
+        from app import v1_api
+
+        async def pretend_authorized(request: Request):
+            request.state.storage_actor_id = int(request.headers.get("x-test-actor", "11"))
+            request.state.storage_platform_admin = False
+
+        def caller(client, actor, method, path, **kwargs):
+            return getattr(client, method)(
+                path, headers={"x-test-actor": str(actor)}, **kwargs
+            )
+
+        source = io.BytesIO()
+        Image.effect_noise((1200, 900), 50).convert("RGB").save(source, format="PNG")
+        raw = source.getvalue()
+        app.dependency_overrides[v1_guard] = pretend_authorized
+        try:
+            with patch.object(v1_api, "_s3", return_value=fake), \
+                 patch.object(v1_api, "_employee_active", side_effect=lambda _req, employee: employee == 12), \
+                 TestClient(app) as client:
+                upload = caller(client, 11, "post", "/v1/files",
+                                files={"file": ("picture.png", raw, "image/png")})
+                self.assertEqual(upload.status_code, 200, upload.text)
+                oid = upload.json()["id"]
+                endpoint = f"/v1/thumbnail/{oid}"
+                before = caller(client, 12, "get", endpoint)
+                self.assertEqual(before.status_code, 403)
+                owner = caller(client, 11, "get", endpoint)
+                self.assertEqual(owner.status_code, 200, owner.text)
+                self.assertEqual(owner.headers["content-type"], "image/jpeg")
+                self.assertEqual(owner.headers["cache-control"], "private, no-store")
+                self.assertEqual(owner.headers["x-content-type-options"], "nosniff")
+                self.assertLess(len(owner.content), len(raw))
+                with Image.open(io.BytesIO(owner.content)) as thumb:
+                    self.assertLessEqual(thumb.width, 320)
+                    self.assertLessEqual(thumb.height, 240)
+                full = caller(client, 11, "get", f"/v1/preview/{oid}")
+                self.assertEqual(full.content, raw)  # full preview is unchanged.
+                grant = caller(client, 11, "post", f"/v1/objects/{oid}/grants",
+                               json={"employee_id": 12, "role": "reader"})
+                self.assertEqual(grant.status_code, 200, grant.text)
+                self.assertEqual(caller(client, 12, "get", endpoint).status_code, 200)
+                self.assertEqual(caller(client, 11, "delete",
+                                        f"/v1/objects/{oid}/grants/12").status_code, 200)
+                self.assertEqual(caller(client, 12, "get", endpoint).status_code, 403)
+                self.assertEqual(caller(client, 11, "post", f"/v1/objects/{oid}/trash").status_code, 200)
+                self.assertEqual(caller(client, 11, "get", endpoint).status_code, 403)
+                self.assertEqual(caller(client, 11, "post", f"/v1/objects/{oid}/restore").status_code, 200)
+                self.assertEqual(caller(client, 11, "get", endpoint).status_code, 200)
+
+                text_file = caller(client, 11, "post", "/v1/files",
+                                   files={"file": ("notes.txt", b"plain text", "text/plain")})
+                self.assertEqual(caller(client, 11, "get",
+                                        f"/v1/thumbnail/{text_file.json()['id']}").status_code, 415)
+                invalid_file = caller(client, 11, "post", "/v1/files",
+                                      files={"file": ("fake.png", b"invalid", "image/png")})
+                self.assertEqual(caller(client, 11, "get",
+                                        f"/v1/thumbnail/{invalid_file.json()['id']}").status_code, 415)
         finally:
             app.dependency_overrides.clear()
 
