@@ -18,6 +18,8 @@ final class SpecialistsRoleAuthorization
             return array_fill_keys(self::PERMISSIONS,['allowed'=>true,'scope'=>'all']);
         $roleSet=array_fill_keys(array_values(array_filter($roles,static fn($role)=>
             is_string($role)&&preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D',$role)===1)),true);
+        if (array_filter(array_keys($roleSet), static fn($role) =>
+            str_starts_with($role, 'head:'))) $roleSet['head:*'] = true;
         $grants=[];$denied=[];$rank=['none'=>0,'team'=>1,'all'=>2];
         foreach($rows as $row){
             $role=(string)($row['role']??'');$p=(string)($row['permission']??'');
