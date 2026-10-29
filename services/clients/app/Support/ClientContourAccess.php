@@ -8,20 +8,6 @@ use Illuminate\Support\Facades\Http;
 
 class ClientContourAccess
 {
-    public const ROLE_LABELS = [
-        'employee' => 'Сотрудник',
-        'client-service' => 'Сотрудник клиентской службы (базовые права)',
-        'account-manager' => 'Аккаунт-менеджер',
-        'accounting-head' => 'Руководитель направления аккаунтинга',
-        'client-service-head' => 'Руководитель клиентской службы',
-        'sales-manager' => 'Сейлз',
-        'sales-head' => 'Руководитель направления сейлз',
-        'department-manager' => 'Руководитель производственного направления',
-        'platform-admin' => 'Администратор платформы',
-        'personnel-officer' => 'Кадровик',
-        'system-admin' => 'Системный администратор',
-    ];
-
     public const PERMISSION_LABELS = [
         'clients.view' => 'Клиенты: просмотр страницы', 'clients.manage' => 'Клиенты: изменение',
         'contacts.view' => 'Контактные лица: просмотр', 'contacts.manage' => 'Контактные лица: изменение',
@@ -33,11 +19,7 @@ class ClientContourAccess
         'attempts.analytics.view' => 'Воронка попыток: просмотр',
         'leads.view' => 'Лиды: просмотр', 'leads.manage' => 'Лиды: изменение',
         'reports.view' => 'Отчётные периоды: просмотр', 'reports.manage' => 'Отчётные периоды: изменение',
-        'cashflow.view' => 'ДДС: просмотр', 'timesheets.mine.view' => 'ТШ: мои таймшиты',
-        'timesheets.management.view' => 'ТШ: управление — просмотр',
-        'timesheets.management.manage' => 'ТШ: управление — изменение',
-        'timesheets.analytics.view' => 'ТШ: коммерческая загрузка',
-        'timesheets.audit.view' => 'ТШ: история действий',
+        'cashflow.view' => 'ДДС: просмотр',
         'permissions.view' => 'Настройки разрешений: просмотр',
         'permissions.manage' => 'Настройки разрешений: изменение',
     ];
@@ -146,17 +128,6 @@ class ClientContourAccess
             if (str_starts_with($role, 'special:') || isset($valid[$role])) $out[$role] = true;
         }
         return array_keys($out);
-    }
-
-    public static function verifiedLegacyManagerMatrixRole(array $roles, bool $manages): array
-    {
-        if (!$manages) return [];
-        foreach ($roles as $role) {
-            if (is_string($role) && preg_match('/^head:[a-z0-9]+(?:-[a-z0-9]+)*$/D', $role) === 1) {
-                return ['department-manager'];
-            }
-        }
-        return [];
     }
 
     public function resolve(Request $request): array
@@ -432,22 +403,14 @@ class ClientContourAccess
             $permissions = [];
             $clientServicePermissions = [];
             $rank = ['none' => 0, 'own' => 1, 'team' => 2, 'all' => 3];
-            // Generic managers retain the configurable Timesheets grants of the
-            // department-manager matrix role, without gaining its Clients grants.
-            // During V2 cutover, only explicitly configured, signed,
-            // namespaced identity roles can yield local permissions. Legacy
-            // functional projections remain available for object relationships
-            // but never grant permissions implicitly in this mode.
+            // Only signed canonical identity labels select Clients' persisted
+            // V2 rows. Old role aliases are never used for grant selection.
             $matrixRoles = $localRoleMode
-                ? array_merge(
-                    self::currentIdentityLabels($jwtLabels, (int) ($employee['id'] ?? 0),
-                        $departments->all(), $directoryEmployees->all()),
-                    self::verifiedLegacyManagerMatrixRole(
-                        self::currentIdentityLabels($jwtLabels, (int) ($employee['id'] ?? 0),
-                            $departments->all(), $directoryEmployees->all()),
-                        $managedRoots !== [])
+                ? self::currentIdentityLabels(
+                    $jwtLabels, (int) ($employee['id'] ?? 0),
+                    $departments->all(), $directoryEmployees->all()
                 )
-                : (in_array('manager', $specialRoles, true) ? [...$roles, 'department-manager'] : $roles);
+                : $roles;
             $explicitDenies = [];
             foreach (ClientContourPermission::query()->whereIn('role', $matrixRoles)->get() as $row) {
                 // A default false row does not deny grants from another role.
@@ -457,7 +420,6 @@ class ClientContourAccess
                     continue;
                 }
                 if (!(bool) $row->allowed) continue;
-                if ($row->role === 'department-manager' && !$managedProductionRoots && !str_starts_with($row->permission, 'timesheets.')) continue;
                 $current = $permissions[$row->permission]['scope'] ?? 'none';
                 if (($rank[$row->scope] ?? 0) >= ($rank[$current] ?? 0)) $permissions[$row->permission] = ['allowed' => true, 'scope' => $row->scope];
                 {
