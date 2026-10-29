@@ -18,6 +18,22 @@ try {
     $stored=\Illuminate\Support\Facades\DB::table('migration_connections')->where('service','clients')->first();
     ensureKey($stored->legacy_app_key_encrypted !== $key && !str_contains(json_encode($public),$key),'Public profile never exposes key');
     ensureKey($public['legacy_app_key_configured'],'Presence is public');
+    // Saving only an APP_KEY must not invalidate an unchanged verified PostgreSQL profile.
+    $profiles->markVerified('clients',['database'=>'synthetic','user'=>'synthetic_ro']);
+    ensureKey($profiles->isVerified('clients'),'Read-only verification is initially recorded');
+    $profiles->save('clients',array_replace($input,['password'=>'','legacy_app_key'=>'']));
+    ensureKey($profiles->isVerified('clients'),'Unchanged DB credentials preserve verification');
+    $alternateKey='base64:'.base64_encode(str_repeat('b',32));
+    $profiles->save('clients',array_replace($input,['password'=>'','legacy_app_key'=>$alternateKey]));
+    ensureKey($profiles->isVerified('clients'),'Changing Clients APP_KEY does not invalidate read-only verification');
+    $profiles->save('clients',array_replace($input,['password'=>'','legacy_app_key'=>$key]));
+    ensureKey($profiles->isVerified('clients'),'Restoring Clients APP_KEY preserves read-only verification');
+    $profiles->save('clients',array_replace($input,['password'=>'','legacy_app_key'=>'','port'=>5433]));
+    ensureKey(!$profiles->isVerified('clients'),'Changing DB port invalidates verification');
+    $profiles->save('clients',array_replace($input,['password'=>'','legacy_app_key'=>'','port'=>5432]));
+    $profiles->markVerified('clients',['database'=>'synthetic','user'=>'synthetic_ro']);
+    $profiles->save('clients',array_replace($input,['password'=>'new-synthetic-password','legacy_app_key'=>'']));
+    ensureKey(!$profiles->isVerified('clients'),'Changing DB password invalidates verification');
     $profiles->save('clients',array_replace($input,['password'=>'','legacy_app_key'=>'']));
     $profiles->apply('clients');
     ensureKey(config('migration.clients_app_key')===$key && !config('migration.clients_defer_rate_amounts'),'Blank preserves key and worker enables rate import');
@@ -34,6 +50,7 @@ try {
         try { \App\Migration\Core\LegacyClientsCipher::decryptAmount($payload,'rates.rate'); throw new LogicException('Wrong key accepted'); }
         catch (\App\Migration\Core\SourceRowConflict $e) { ensureKey(!str_contains($e->getMessage(),$payload),'Failure hides ciphertext'); }
     }
+    $stored=\Illuminate\Support\Facades\DB::table('migration_connections')->where('service','clients')->first();
     try { $profiles->save('clients',array_replace($input,['legacy_app_key'=>'invalid'])); throw new LogicException('Invalid key accepted'); }
     catch (InvalidArgumentException $e) {}
     ensureKey(\Illuminate\Support\Facades\DB::table('migration_connections')->where('service','clients')->value('legacy_app_key_encrypted')===$stored->legacy_app_key_encrypted,'Invalid save does not replace secret');
