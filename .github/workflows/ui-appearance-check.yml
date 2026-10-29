@@ -1,15 +1,43 @@
 name: UI Appearance checks
 on:
-  push:
-    branches: [feature/platform-theme-typography]
   pull_request:
+    branches: [development]
     paths:
       - 'packages/ui/**'
       - 'apps/**/src/**'
       - 'apps/**/package.json'
       - '.github/workflows/ui-appearance-check.yml'
+      - 'scripts/ci/workflow_scope.py'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-appearance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  scope:
+    name: Select affected frontend apps
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      enabled: ${{ steps.select.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: select
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            python3 scripts/ci/workflow_scope.py ui-appearance-check --base "$PR_BASE"
+          else
+            python3 scripts/ci/workflow_scope.py ui-appearance-check
+          fi
+
   theme-tests:
     runs-on: ubuntu-latest
     steps:
@@ -18,6 +46,7 @@ jobs:
         with:
           node-version: '22'
       - run: node --test packages/ui/tests/theme.test.mjs packages/ui/tests/palette.test.mjs
+
   color-inventory:
     runs-on: ubuntu-latest
     steps:
@@ -28,6 +57,7 @@ jobs:
         with:
           name: color-inventory
           path: color-inventory.json
+
   appearance-audit:
     runs-on: ubuntu-latest
     steps:
@@ -38,12 +68,14 @@ jobs:
         with:
           name: appearance-audit
           path: appearance-audit.json
+
   frontend-build:
+    needs: scope
+    if: ${{ needs.scope.outputs.enabled == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        app: [web, clients, vacations, timesheets, specialists, recruitment, cv, portal, migration, design-system, equipment]
+      matrix: ${{ fromJSON(needs.scope.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -51,7 +83,12 @@ jobs:
           node-version: '22'
       - name: Install dependencies
         working-directory: apps/${{ matrix.app }}
-        run: npm install --no-audit --no-fund
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            npm install --no-audit --no-fund
+          fi
       - name: Build frontend
         working-directory: apps/${{ matrix.app }}
         run: npm run build
