@@ -251,3 +251,13 @@ test('mobile migration interface retains report completeness but omits table col
  assert.match(css,/\.mctrl-operation-details:not\(\[open\]\)/);
  assert.match(css,/100dvh/);
 });
+
+
+test('connection verification buttons do not accidentally submit the save form',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('../src/MigrationAdministration.vue',import.meta.url),'utf8');
+ assert.match(source,/<form class="mctrl-admin-form" @submit\.prevent="run\('save'\)">/);
+ for(const action of ['verify','reachability','inspect','dry-run','delete']) {
+  assert.match(source,new RegExp('<UiButton\\s+type="button"[^>]*@click="run\\(\\\''+action+'\\\'\\)"'),action+' must never submit connection form');
+ }
+});
