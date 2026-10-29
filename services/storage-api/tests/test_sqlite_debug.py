@@ -182,7 +182,8 @@ class SQLiteDebugTests(unittest.TestCase):
         raw = source.getvalue()
         app.dependency_overrides[v1_guard] = pretend_authorized
         try:
-            with patch.object(v1_api, "_s3", return_value=fake), \
+            with patch.dict(os.environ, {"STORAGE_V1_QUOTA_BYTES": str(10 * 1024 * 1024)}), \
+                 patch.object(v1_api, "_s3", return_value=fake), \
                  patch.object(v1_api, "_employee_active", side_effect=lambda _req, employee: employee == 12), \
                  TestClient(app) as client:
                 upload = caller(client, 11, "post", "/v1/files",
