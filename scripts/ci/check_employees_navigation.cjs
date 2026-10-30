@@ -267,8 +267,27 @@ const assert = require('node:assert/strict');
     const transferModal = page.locator('.employee-action-modal').filter({has:page.getByRole('heading',{name:'Кадровый перевод',exact:true})});
     await transferModal.getByRole('heading',{name:'Кадровый перевод',exact:true}).waitFor();
     assert.equal(await transferModal.getByLabel('Дата перевода',{exact:true}).count(),1);
-    assert.equal(await transferModal.locator('select').count(),2);
-    assert(await transferModal.locator('select').first().locator('option').count() > 1);
+    // The transfer dialog now uses design-system UiSearchSelect dropdowns,
+    // teleported to <body>, rather than two native HTML selects. Verify the
+    // actual dependent-direction selection without sending a real mutation.
+    assert.equal(await transferModal.locator('select').count(),0);
+    const transferDepartment = transferModal.getByRole('button',{name:'Выберите направление',exact:true});
+    const transferPosition = transferModal.getByRole('button',{name:'Без должности',exact:true});
+    assert.equal(await transferDepartment.count(),1);
+    assert.equal(await transferPosition.count(),1);
+    assert(await transferPosition.isDisabled());
+    await transferDepartment.click();
+    const transferDepartments = page.getByRole('listbox');
+    assert.equal(await transferDepartments.getByRole('option',{name:'Тестовая группа',exact:true}).count(),0,
+      'A transfer cannot target the current department');
+    await transferDepartments.getByRole('option',{name:'Тестовый отдел',exact:true}).click();
+    assert(await transferPosition.isEnabled());
+    await transferPosition.click();
+    const transferPositions = page.getByRole('listbox');
+    assert.equal(await transferPositions.getByRole('option',{name:'Демо-должность 01',exact:true}).count(),0,
+      'Positions from the original direction must not be offered');
+    await transferPositions.getByRole('option',{name:'Должность отдела',exact:true}).click();
+    assert.equal(await transferPosition.locator('.ui-search-select__label').textContent(),'Должность отдела');
     await transferModal.getByRole('button',{name:'Отмена',exact:true}).click();
     assert.equal(await transferModal.count(),0);
     await employeeCard.getByRole('button',{name:'Закрыть карточку',exact:true}).click();
