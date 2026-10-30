@@ -114,6 +114,10 @@ jobs:
           else
             echo "WORKER_PHP_PROCESSES=unknown_no_container"
           fi
+          # Print one boolean only: whether active worker config defers
+          # old encrypted rates. Never dump the configuration or environment.
+          $SUDO sh -c "$COMPOSE exec -T migration-worker php -r 'require \"/app/vendor/autoload.php\"; \$app=require \"/app/bootstrap/app.php\"; \$app->make(\\Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); echo \"CLIENTS_DEFER_RATE_AMOUNTS=\".(config(\"migration.clients_defer_rate_amounts\") ? \"true\" : \"false\").PHP_EOL;'"
+
           # Scoped read-only probe for the terminal Clients migrate #380.
           # Print ONLY fixed schema identifiers and enum-like categories.
           $SUDO sh -c "$COMPOSE exec -T migration-ops python3 -" <<'PY'
@@ -141,7 +145,12 @@ jobs:
                       states=sorted(set(m.upper() for m in re.findall(r'SQLSTATE\W*([A-Z0-9]{5})',raw,re.I)))[:4]
                       fields=[]
                       for field in re.findall(r'column\s+"([a-z_]+)"(?:\s+of\s+relation\s+"[a-z_]+")?\s+does\s+not\s+exist',raw,re.I):
-                          name=fixed(field)
+                          # PostgreSQL missing-column identifiers only, no SQL,
+                          # row values or connection metadata. Reject unknown shapes.
+                          if re.fullmatch(r'[a-z_]{1,48}',field,re.I) and not re.search(r'password|secret|token|key',field,re.I):
+                              name=field
+                          else:
+                              name='redacted_identifier'
                           if name not in fields: fields.append(name)
                       print('CLIENTS_380_WORKER_SAFE',json.dumps({
                           'error_present':bool(raw),'sqlstates':states,
