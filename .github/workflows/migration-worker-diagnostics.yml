@@ -114,5 +114,56 @@ jobs:
           else
             echo "WORKER_PHP_PROCESSES=unknown_no_container"
           fi
+          # Scoped read-only probe for the terminal Clients migrate #380.
+          # Print ONLY fixed schema identifiers and enum-like categories.
+          $SUDO sh -c "$COMPOSE exec -T migration-ops python3 -" <<'PY'
+          import json, re, sqlite3
+          allowed = {
+            'project_member_id','client_member_id','technology','level','hours_per_day',
+            'valid_from','valid_to','hourly_rate','created_at','updated_at',
+            'member_id','project_id','client_id','status','period_start','period_end',
+            'approval_at','approved_at','act_approval_at','act_approved_at','paid_at',
+            'rate','workload','grade','technology_id','start_date','end_date',
+            'reporting_period_id','account_employee_id','sales_employee_id',
+            'client_members','member_terms','reporting_periods','rates',
+            'leads','clients','projects','attempts','positions','reporting_period_rate'
+          }
+          def fixed(value):
+              return value if isinstance(value,str) and value in allowed else 'unrecognized'
+          try:
+              with sqlite3.connect('file:/data/migration.sqlite?mode=ro',uri=True,timeout=3) as db:
+                  db.execute('PRAGMA query_only=ON')
+                  error_row=db.execute('SELECT service, mode, status, error FROM migration_runs WHERE id=380').fetchone()
+                  if not error_row or error_row[:3] != ('clients','migrate','failed'):
+                      print('CLIENTS_380_PROBE',json.dumps({'state':'not_expected'}))
+                  else:
+                      raw=str(error_row[3] or '')
+                      states=sorted(set(m.upper() for m in re.findall(r'SQLSTATE\W*([A-Z0-9]{5})',raw,re.I)))[:4]
+                      fields=[]
+                      for field in re.findall(r'column\s+"([a-z_]+)"(?:\s+of\s+relation\s+"[a-z_]+")?\s+does\s+not\s+exist',raw,re.I):
+                          name=fixed(field)
+                          if name not in fields: fields.append(name)
+                      print('CLIENTS_380_WORKER_SAFE',json.dumps({
+                          'error_present':bool(raw),'sqlstates':states,
+                          'missing_field_candidates':fields[:5]
+                      },sort_keys=True))
+                      samples=db.execute(
+                          "SELECT context FROM migration_conflicts "
+                          "WHERE migration_run_id=380 AND code='PROTECTED_TERM_CHANGE' "
+                          "AND severity='error' LIMIT 5"
+                      ).fetchall()
+                      changes=[]
+                      for sample in samples:
+                          context=json.loads(sample[0] or '{}')
+                          differences=context.get('changed_fields',[])
+                          if not isinstance(differences,list): continue
+                          changes.append(sorted(set(fixed(field) for field in differences)))
+                      print('CLIENTS_380_PROTECTED_SAFE',json.dumps({
+                          'conflicts_checked':len(samples),
+                          'field_groups':changes
+                      },sort_keys=True))
+          except Exception as error:
+              print('CLIENTS_380_PROBE_ERROR',type(error).__name__)
+          PY
           echo "PROBE_FINISHED: no state changed"
           REMOTE
