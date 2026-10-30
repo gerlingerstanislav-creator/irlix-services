@@ -94,7 +94,7 @@ try {
         'client_legal_entities'=>'client_id name full_name inn ogrn kpp registration_date okpo oktmo address',
         'client_requests'=>'client_id lead_id title description responsible_employee_id request_date deadline lifetime_weeks status',
         'positions'=>'client_request_id technology level description direction_department_id quantity status',
-        'connection_attempts'=>'position_id specialist_id specialist_name is_external status closed_from_status failure_reasons description cv_sent_at connection_date closed_at control_date proposed_rate',
+        'connection_attempts'=>'position_id specialist_id specialist_name is_external status closed_from_status failure_reasons description cv_sent_at connection_date closed_at control_date',
         'reporting_periods'=>'client_id period_start period_end status confirmed_hours timesheets_sent_at timesheets_approved_at act_sent_at act_approved_at paid_at',
     ] as $name=>$columns) entity('clients',$name,$columns);
     entity('timesheets','timesheet_entries','client_member_id employee_id project_id work_date hours description','client_member_id,work_date');
@@ -120,12 +120,32 @@ try {
         ['id'=>42] + array_replace($rate,['member_id'=>32,'start_date'=>'2026-01-10','end_date'=>'2026-01-31']),
         ['id'=>43] + array_replace($rate,['member_id'=>33]),
     ];
+    // Product invariant: no proposed_rate in the target Attempt model, even
+    // if the source has a legacy price and MemberTerms amounts are enabled.
+    $clients->fixture['client_requests'] = [[
+        'id'=>71,'client_id'=>6,'lead_id'=>null,'date'=>'2026-01-01','expired_at'=>null,
+        'title'=>'Synthetic Request','description'=>null,'responsible_id'=>13,'closed_at'=>null,
+    ]];
+    $clients->fixture['positions'] = [[
+        'id'=>72,'client_request_id'=>71,'technology_id'=>5,'department_id'=>null,
+        'count'=>1,'grade'=>'Middle','description'=>null,'closed_at'=>null,'status'=>'open',
+    ]];
+    $clients->fixture['attempts'] = [[
+        'id'=>73,'position_id'=>72,'user_id'=>13,'user_name'=>'Synthetic Operator',
+        'result_comment'=>null,'cv_sent_at'=>null,'interviewed_at'=>null,'started_at'=>null,
+        'closed_at'=>null,'control_date'=>null,'status'=>null,'rate'=>'1500.50',
+    ]];
+
     check(runFixture($clients,true)['conflicts']===0,'Clients dry-run');
     check(target('clients')->table('client_members')->count()===0,'Clients dry-run must not write');
     check(runFixture($clients,false)['conflicts']===0,'Clients import');
     check(target('clients')->table('projects')->count()===1,'No synthetic default project');
     check(target('clients')->table('client_members')->count()===2,'Repeated employee becomes one ClientMember');
     check(target('clients')->table('member_terms')->count()===2,'Compatible overlapping employee terms coalesce');
+    check(target('clients')->table('connection_attempts')->count()===1,
+        'Imported synthetic attempt without removed proposed_rate column');
+    check($store->mapping('clients','attempts','73')!==null,
+        'Attempt target identity is retained for later idempotent retry');
     check($store->mapping('clients','members','31')===$store->mapping('clients','members','32'),'Member alias');
     check($store->mapping('clients','rates','41')===$store->mapping('clients','rates','42'),'Term alias');
     check(runFixture($clients,false)['conflicts']===0 && $clients->validate(1)['ok'],'Clients rerun and reconciliation');

@@ -530,14 +530,17 @@ class ClientsMigration extends SchemaMigration
                 'specialist_id' => $employee, 'specialist_name' => $this->need($name, 'Attempt specialist name is missing'),
                 'is_external' => $employee === null, 'status' => $status, 'closed_from_status' => $failureStage, 'failure_reasons' => $reasons, 'description' => $r['result_comment'],
                 'cv_sent_at' => $r['cv_sent_at'], 'connection_date' => $r['started_at'], 'closed_at' => $r['closed_at'],
-                'control_date' => $r['control_date']] + (config('migration.clients_defer_rate_amounts') ? [] :
-                    ['proposed_rate' => $r['rate'] === null ? null : $this->amount($r['rate'], 'attempts.rate', 9999999999.99)]), $r);
+                // ConnectionAttempt does not own a commercial rate. Never write the
+                // obsolete proposed_rate field; preserve the legacy source fact
+                // separately in private migration metadata.
+                'control_date' => $r['control_date']], $r);
             if ($closed && !$results && $this->explicitOutcome($r) === null) {
                 $this->warning('attempts', $id, 'INFERRED_ATTEMPT_OUTCOME',
                     'Исход восстановлен по согласованному правилу дат: '.$status.($failureStage ? ', этап «'.$failureStage.'».' : '.'),
                     ['status' => $status, 'closed_from_status' => $failureStage, 'attempt_fields' => self::attemptFields($r), 'result_count' => 0]);
             }
-            if (config('migration.clients_defer_rate_amounts') && $r['rate'] !== null) $this->preserve('attempts', ['id' => $id, 'rate' => $r['rate']], $id, 'Предлагаемая ставка попытки отложена до появления APP_KEY старого Clients.');
+            if ($r['rate'] !== null) $this->preserve('attempts', ['id' => $id, 'rate' => $r['rate']], $id,
+                'Историческое значение ставки попытки сохранено только в закрытой metadata. Коммерческие условия хранятся в MemberTerms.');
         });
         // Canonical rows must be available before duplicate references, regardless of source order.
         $preferred = array_map('strval', config('migration.clients_preferred_reporting_period_ids', []));
