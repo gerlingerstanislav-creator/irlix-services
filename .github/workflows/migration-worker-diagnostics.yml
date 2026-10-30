@@ -150,7 +150,8 @@ jobs:
                   print('CLIENTS_377_SAFE_ERROR',json.dumps({
                       'present':True,'status':r['status'],'phase':r['progress_phase'],
                       'error_recorded':bool(detail),'sqlstates':sqlstates,
-                      'category':category,'last_known_stage':stage
+                      'category':category,'last_known_stage':stage,
+                      'missing_known_field': next((name for name in ('leads.status','positions.status','positions.grade','results.title','attempts.status') if name.split('.')[1] in detail.lower() and name.split('.')[0] in detail.lower()), None)
                   },sort_keys=True))
               db.close()
           except Exception as e:
