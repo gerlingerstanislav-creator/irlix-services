@@ -118,6 +118,9 @@ jobs:
           # old encrypted rates. Never dump the configuration or environment.
           $SUDO sh -c "$COMPOSE exec -T migration-worker php -r 'require \"/app/vendor/autoload.php\"; \$app=require \"/app/bootstrap/app.php\"; \$app->make(\\Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); echo \"CLIENTS_DEFER_RATE_AMOUNTS=\".(config(\"migration.clients_defer_rate_amounts\") ? \"true\" : \"false\").PHP_EOL;'" < /dev/null
 
+          # Target PostgreSQL schema existence checks only. No rows/credentials.
+          $SUDO sh -c "$COMPOSE exec -T migration-worker php -r 'require \"/app/vendor/autoload.php\"; \$app=require \"/app/bootstrap/app.php\"; \$app->make(\\Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); echo \"CLIENTS_LIVE_ATTEMPT_RATE_COLUMN=\".(\\Illuminate\\Support\\Facades\\Schema::connection(\"target_clients\")->hasColumn(\"connection_attempts\",\"proposed_rate\") ? \"present\" : \"absent\").PHP_EOL;'" < /dev/null
+
           # Scoped read-only probe for the terminal Clients migrate #380.
           # Print ONLY fixed schema identifiers and enum-like categories.
           $SUDO sh -c "$COMPOSE exec -T migration-ops python3 -" <<'PY'
@@ -154,7 +157,13 @@ jobs:
                           if name not in fields: fields.append(name)
                       print('CLIENTS_380_WORKER_SAFE',json.dumps({
                           'error_present':bool(raw),'sqlstates':states,
-                          'missing_field_candidates':fields[:5]
+                          'missing_field_candidates':fields[:5],
+                          'statement_kind':next((name for name,pattern in (
+                              ('attempt_insert',r'insert into\s+["\x60]?connection_attempts'),
+                              ('attempt_select',r'from\s+["\x60]?connection_attempts'),
+                              ('legacy_attempt_read',r'from\s+public[.]attempts'),
+                              ('other_clients_insert',r'insert into\s+["\x60]?(clients|member_terms|rates)')
+                          ) if re.search(pattern,raw,re.I)),'unknown')
                       },sort_keys=True))
                       samples=db.execute(
                           "SELECT context FROM migration_conflicts "
