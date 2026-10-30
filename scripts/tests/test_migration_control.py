@@ -753,6 +753,9 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(control.classify_worker_failure(
             'private employee email and password'), 'WORKER_ERROR_UNCLASSIFIED')
         self.assertEqual(control.classify_worker_failure(''), 'WORKER_ERROR_DETAILS_MISSING')
+        self.assertEqual(control.classify_worker_failure(
+            'SQLSTATE[42703]: Undefined column: 7 ERROR: private field or SQL text'),
+            'WORKER_SCHEMA_COLUMN_MISSING')
         self.assertEqual(control.classify_worker_failure('TIMESHEETS_MEMORY_PRESSURE: processed=750 groups=0'), 'TIMESHEETS_MEMORY_PRESSURE')
         self.assertEqual(control.classify_worker_failure(
             'Legacy Timesheets differ from the completed dry-run; target writes blocked.'),

@@ -10,6 +10,7 @@ function ensureControl(bool $ok, string $message): void { if (!$ok) throw new Ru
 class ControlFixture extends \App\Migration\Core\SchemaMigration {
     public array $fixture = [];
     public function key(): string { return 'clients'; }
+    public static function clientsEnumPlanForTest(array $columns): array { return parent::clientsInspectEnumPlan($columns); }
     protected function extract(): array { return $this->fixture; }
     protected function assertCheckpoint(): void {}
     protected function import(): void {
@@ -26,6 +27,15 @@ try {
     $target->statement('CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, status TEXT, created_at TEXT, updated_at TEXT)');
     $store = app(\App\Migration\Core\MigrationStore::class);
     $module = new ControlFixture($store);
+    // The real legacy Clients source may have no attempts.status; only the
+    // optional enum probe is suppressed, not the required domain fields.
+    $missingAttemptStatus = ControlFixture::clientsEnumPlanForTest(['id', 'position_id', 'closed_at']);
+    ensureControl(!array_key_exists('attempts', $missingAttemptStatus), 'Inspect never queries absent attempts.status');
+    ensureControl(isset($missingAttemptStatus['leads'], $missingAttemptStatus['positions'], $missingAttemptStatus['results']),
+        'Required Clients enum columns remain inspected');
+    $presentAttemptStatus = ControlFixture::clientsEnumPlanForTest(['id', 'status']);
+    ensureControl(($presentAttemptStatus['attempts'] ?? []) === ['status'],
+        'Inspect preserves legacy attempts.status census when the optional field exists');
     $module->fixture = ['things'=>[['id'=>1,'name'=>'valid','status'=>'open'],['id'=>2,'name'=>'unknown','status'=>'unexpected']]];
     $strict = $store->beginRun('clients','migrate');
     try { $module->migrate($strict,false); throw new LogicException('Strict preflight accepted invalid source'); }
