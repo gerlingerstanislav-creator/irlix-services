@@ -176,7 +176,7 @@ jobs:
                               if re.search(r'\b'+rel+r'\b',raw,re.I)),
                           'plpgsql_context':bool(re.search(r'PL/pgSQL\s+function',raw,re.I)),
                           'attempt_sql_shape':next((state for state,pattern in (
-                              ('sets_obsolete_rate',r'update\s+[\w\".]+connection_attempts[\w\"]*\s+set\s+[^;]*?proposed_rate\s*='),
+                              ('sets_obsolete_rate',r'update\s+[\w\".]+connection_attempts[\w\"]*\s+set\s+[^;]*?["\\x60]?proposed_rate["\\x60]?\s*='),
                               ('updates_attempt_other_fields',r'update\s+[\w\".]+connection_attempts[\w\"]*\s+set'),
                               ('updates_other_table',r'update\s+')
                           ) if re.search(pattern,raw,re.I)), 'unknown')
