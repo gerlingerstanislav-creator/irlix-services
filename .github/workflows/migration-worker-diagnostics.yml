@@ -118,6 +118,10 @@ jobs:
           # old encrypted rates. Never dump the configuration or environment.
           $SUDO sh -c "$COMPOSE exec -T migration-worker php -r 'require \"/app/vendor/autoload.php\"; \$app=require \"/app/bootstrap/app.php\"; \$app->make(\\Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); echo \"CLIENTS_DEFER_RATE_AMOUNTS=\".(config(\"migration.clients_defer_rate_amounts\") ? \"true\" : \"false\").PHP_EOL;'" < /dev/null
 
+          # Compare running migration-worker source against the reviewed Git
+          # blob without displaying any source or environment contents.
+          $SUDO sh -c "$COMPOSE exec -T migration-worker php -r '\$paths=[\"adapter\"=>\"/app/app/Migration/Services/ClientsMigration.php\",\"config\"=>\"/app/config/migration.php\"]; foreach (\$paths as \$label=>\$path) { \$raw=file_get_contents(\$path); echo \"CLIENTS_WORKER_SOURCE_BLOB_\".strtoupper(\$label).\"=\".sha1(\"blob \".strlen(\$raw).chr(0).\$raw).PHP_EOL; }'" < /dev/null
+
           # Target PostgreSQL schema existence checks only. No rows/credentials.
           $SUDO sh -c "$COMPOSE exec -T migration-worker php -r 'require \"/app/vendor/autoload.php\"; \$app=require \"/app/bootstrap/app.php\"; \$app->make(\\Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); echo \"CLIENTS_LIVE_ATTEMPT_RATE_COLUMN=\".(\\Illuminate\\Support\\Facades\\Schema::connection(\"target_clients\")->hasColumn(\"connection_attempts\",\"proposed_rate\") ? \"present\" : \"absent\").PHP_EOL;'" < /dev/null
 
