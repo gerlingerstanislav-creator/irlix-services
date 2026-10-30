@@ -413,6 +413,7 @@ WORKER_FAILURE_PATTERNS = (
     (r'duplicate key|unique constraint', 'WORKER_UNIQUE_CONSTRAINT'),
     (r'foreign key constraint', 'WORKER_FOREIGN_KEY_CONSTRAINT'),
     (r'permission denied|access denied', 'WORKER_PERMISSION_DENIED'),
+    (r'SQLSTATE\[42703\]|undefined column', 'WORKER_SCHEMA_COLUMN_MISSING'),
     (r'no such table|undefined table|relation .* does not exist', 'WORKER_SCHEMA_MISMATCH'),
     (r'statement timeout|query canceled', 'WORKER_QUERY_TIMEOUT'),
     (r'clientmember|client.member|client member', 'WORKER_CLIENT_MEMBER_FAILURE'),
