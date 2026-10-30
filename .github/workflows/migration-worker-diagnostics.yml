@@ -163,7 +163,14 @@ jobs:
                               ('attempt_select',r'from\s+["\x60]?connection_attempts'),
                               ('legacy_attempt_read',r'from\s+public[.]attempts'),
                               ('other_clients_insert',r'insert into\s+["\x60]?(clients|member_terms|rates)')
-                          ) if re.search(pattern,raw,re.I)),'unknown')
+                          ) if re.search(pattern,raw,re.I)),'unknown'),
+                          'sql_context_present':bool(re.search(r'\bSQL\s*:',raw,re.I)),
+                          'sql_verb':next((kind for kind in ('select','insert','update','delete','with')
+                              if re.search(r'\bSQL\s*:\s*'+kind+r'\b',raw,re.I)),'unknown'),
+                          'known_relations_mentioned':sorted(rel for rel in
+                              ('connection_attempts','attempts','member_terms','reporting_periods','positions')
+                              if re.search(r'\b'+rel+r'\b',raw,re.I)),
+                          'plpgsql_context':bool(re.search(r'PL/pgSQL\s+function',raw,re.I))
                       },sort_keys=True))
                       samples=db.execute(
                           "SELECT context FROM migration_conflicts "
