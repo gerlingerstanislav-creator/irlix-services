@@ -1,0 +1,73 @@
+name: One-time safe Clients 376 inspect recovery
+
+# Never run as part of a code push or normal release.
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type RECOVER_CLIENTS_376 to confirm one-time metadata repair'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirmation == 'RECOVER_CLIENTS_376' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify isolated SQLite recovery invariants
+        run: python3 scripts/ci/test_reconcile_stale_clients_376.py
+      - name: Configure production SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keygen -y -f ~/.ssh/deploy_key >/dev/null
+          ssh-keyscan -T 10 -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts
+      - name: Confirm idle worker, back up metadata and reconcile only Clients inspect 376
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          scp -i ~/.ssh/deploy_key -P "$PORT" scripts/ci/reconcile_stale_clients_376.py \
+            "$USER@$HOST:/tmp/irlix-clients-376-recovery.py"
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /opt/irlix-services
+          worker="$(docker ps --format '{{.ID}} {{.Names}}' | awk '$2=="irlix-services_migration-worker_1" {print $1; exit}')"
+          ops="$(docker ps --format '{{.ID}} {{.Names}}' | awk '$2=="irlix-services_migration-ops_1" {print $1; exit}')"
+          test -n "$worker" && test -n "$ops"
+          chmod 600 /tmp/irlix-clients-376-recovery.py
+          trap 'rm -f /tmp/irlix-clients-376-recovery.py' EXIT
+          docker exec -i "$ops" python3 - --preflight < /tmp/irlix-clients-376-recovery.py
+          # Never terminate a live PHP migration, even if persisted metadata is old.
+          if docker top "$worker" -eo comm | grep -Eq '^php([0-9.]*)?$'; then
+            echo "RECOVERY_BLOCKED: worker still executes PHP; refuse to stop it." >&2
+            exit 2
+          fi
+          docker stop -t 30 "$worker" >/dev/null
+          trap 'docker start "$worker" >/dev/null || true; rm -f /tmp/irlix-clients-376-recovery.py' EXIT
+          # --apply repeats all state checks, backs up SQLite, and updates one row.
+          docker exec -i "$ops" python3 - --apply < /tmp/irlix-clients-376-recovery.py
+          docker start "$worker" >/dev/null
+          # Read-only final proof that the migration gate is no longer blocked.
+          docker exec -i "$ops" python3 - <<'PY'
+          import sqlite3
+          con = sqlite3.connect('file:/data/migration.sqlite?mode=ro', uri=True)
+          active = con.execute("SELECT COUNT(*) FROM migration_runs WHERE status IN ('queued','running')").fetchone()[0]
+          row = con.execute("SELECT status,mode FROM migration_runs WHERE id=376").fetchone()
+          assert active == 0 and row == ('failed','inspect'), (active, row)
+          print('RECOVERY_VERIFIED: active_runs=0; Clients inspect #376=failed')
+          PY
+          REMOTE
