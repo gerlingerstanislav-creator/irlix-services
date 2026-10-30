@@ -107,6 +107,56 @@ jobs:
             echo "PROBE_ERROR: coordinator inspection was not executed"
             exit 3
           fi
+          # Classify ONLY allowlisted metadata for Clients inspect #377.
+          # Never log the worker's stored exception or query text: it may
+          # include credentials, connection parameters or employee data.
+          $SUDO sh -c "$COMPOSE exec -T migration-ops python3 -" <<'PY'
+          import json, re, sqlite3
+          try:
+              db=sqlite3.connect('file:/data/migration.sqlite?mode=ro',uri=True,timeout=3)
+              db.execute('PRAGMA query_only=ON')
+              db.row_factory=sqlite3.Row
+              r=db.execute("SELECT id,service,mode,status,progress_phase,error,progress_message FROM migration_runs WHERE id=377").fetchone()
+              if not r:
+                  print('CLIENTS_377_SAFE_ERROR',json.dumps({'present':False}))
+              else:
+                  detail=str(r['error'] or '')
+                  # Restrict outputs to constant labels / SQLSTATE, never raw error.
+                  matches=re.findall(r'SQLSTATE[\[\s:]*([A-Z0-9]{5})',detail,re.I)
+                  sqlstates=sorted(set(c.upper() for c in matches if re.fullmatch(r'[A-Z0-9]{5}',c)))[:5]
+                  patterns={
+                      'statement_timeout':r'canceling statement due to statement timeout|statement timeout|57014',
+                      'lock_timeout':r'lock timeout|55P03',
+                      'missing_column':r'column .* does not exist|42703',
+                      'missing_relation':r'relation .* does not exist|42P01',
+                      'insufficient_privilege':r'permission denied|42501',
+                      'connection_error':r'connection refused|connection timed out|SQLSTATE\[08',
+                      'too_many_bindings':r'too many SQL variables',
+                      'memory':r'allowed memory size exhausted|out of memory',
+                      'invalid_query':r'syntax error|42601',
+                      'read_only_gate':r'read-only use|cannot read all required|forbidden table privileges',
+                  }
+                  category=next((key for key,pattern in patterns.items() if re.search(pattern,detail,re.I)),'unclassified')
+                  # Table names are application-registered, never display a raw progress message.
+                  stage='unknown'
+                  progress=str(r['progress_message'] or '')
+                  known=('users','clients','projects','members','rates','leads','contacts','client_contact','lead_contact','legal_entities','client_requests','positions','attempts','results','attempt_result','reporting_periods','reporting_period_rate','sectors','technologies','grades','grade_rates','departments','feedback','interviews','notes','reviews','subcontracts','attachments','legal_documents','activity_log','settings','client_technology','user_technology')
+                  for table in known:
+                      if progress.endswith(' '+table+'.') or progress.endswith(' '+table):
+                          stage='count:'+table
+                          break
+                  if 'attempts' in progress and 'поля' in progress:
+                      stage='attempts_statistics'
+                  print('CLIENTS_377_SAFE_ERROR',json.dumps({
+                      'present':True,'status':r['status'],'phase':r['progress_phase'],
+                      'error_recorded':bool(detail),'sqlstates':sqlstates,
+                      'category':category,'last_known_stage':stage
+                  },sort_keys=True))
+              db.close()
+          except Exception as e:
+              print('CLIENTS_377_SAFE_ERROR_PROBE_FAILED',type(e).__name__)
+          PY
+
           worker_id=$($SUDO sh -c "$COMPOSE ps -q migration-worker" 2>/dev/null || true)
           if [ -n "$worker_id" ]; then
             worker_processes=$($SUDO docker top "$worker_id" -eo comm 2>/dev/null | grep -Ec '^php([0-9.]*)?$' || true)
