@@ -101,6 +101,20 @@ abstract class SchemaMigration implements ServiceMigration
     }
 
     /**
+     * Only optional attempts.status is catalog-gated: it is absent from some
+     * supported legacy Clients schemas and not required by ClientsMigration.
+     * Other domain fields must still raise a real source schema error.
+     */
+    protected static function clientsInspectEnumPlan(array $attemptColumnNames): array
+    {
+        $plan = ['leads' => ['status'], 'positions' => ['status', 'grade'], 'results' => ['title']];
+        if (in_array('status', $attemptColumnNames, true)) {
+            $plan['attempts'] = ['status'];
+        }
+        return $plan;
+    }
+
+    /**
      * Read-only, bounded-memory Clients inspection. Counts and enumerations are
      * derived in PostgreSQL rather than SELECT * / PHP array materialization.
      * The subsequent control inventory still catalogues every discovered column.
@@ -118,9 +132,23 @@ abstract class SchemaMigration implements ServiceMigration
             $counts[$table] = (int) ($reader->selectOne('SELECT count(*) AS count FROM public.'.$table)?->count ?? 0);
         }
 
+        // The old Clients source does not always have attempts.status.
+        // Its adapter intentionally derives outcomes from result relations and
+        // lifecycle dates when no explicit status exists. Detect the optional
+        // field from the catalog before generating any DISTINCT query.
+        $columns = $reader->select(
+            'SELECT column_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position',
+            ['public', 'attempts'], false
+        );
+        $fieldNames = array_map(fn ($column) => (string) $column->column_name, $columns);
         $enums = [];
-        foreach (['leads' => ['status'], 'positions' => ['status', 'grade'],
-                  'results' => ['title'], 'attempts' => ['status']] as $table => $fields) {
+        $enumPlan = self::clientsInspectEnumPlan($fieldNames);
+        if (! in_array('status', $fieldNames, true)) {
+            $this->store->event($runId, 'optional-source-field-absent',
+                'В источнике Clients нет необязательного attempts.status; результат попытки будет определяться по доступным полям и связям.',
+                'warning', ['table' => 'attempts', 'field' => 'status', 'presence' => 'absent']);
+        }
+        foreach ($enumPlan as $table => $fields) {
             foreach ($fields as $field) {
                 $values = $reader->select(
                     'SELECT DISTINCT "'.$field.'"::text AS value FROM public.'.$table, [], false
@@ -129,11 +157,6 @@ abstract class SchemaMigration implements ServiceMigration
             }
         }
 
-        $columns = $reader->select(
-            'SELECT column_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position',
-            ['public', 'attempts'], false
-        );
-        $fieldNames = array_map(fn ($column) => (string) $column->column_name, $columns);
         foreach (array_chunk($fieldNames, 12) as $batch) {
             $expressions = [];
             foreach ($batch as $index => $name) {
