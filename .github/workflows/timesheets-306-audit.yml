@@ -1,0 +1,102 @@
+name: Timesheets 306 private safe identity audit
+on:
+  pull_request:
+    paths:
+      - scripts/diagnostics/timesheets_306_readonly.php
+      - .github/workflows/timesheets-306-audit.yml
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure production read-only SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -T 10 -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts
+      - name: Inspect run 306 without changes to data
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" "docker exec -i irlix-services_migration_1 php -d memory_limit=256M" < scripts/diagnostics/timesheets_306_readonly.php
+      - name: Classify private export failure for run 320 (safe codes only)
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" "docker exec -i irlix-services_migration-ops_1 python3 -" <<'PY'
+          import sys,json
+          sys.path.insert(0,'/opt/irlix-services/scripts')
+          import migration_control as control
+          result=control.safe_export_failure_evidence('1792887285639523','320')
+          print(json.dumps({'check':'run320_export_failure','result':result},sort_keys=True))
+          PY
+
+      - name: Inspect run 334 worker exit and deployed code (no writes)
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== ACTUAL PRODUCTION CODE VERSION ==='
+          cd /opt/irlix-services
+          if command -v git >/dev/null && [ -d .git ]; then git rev-parse HEAD; else echo 'git_sha_unavailable'; fi
+          echo '=== READ-ONLY WORKER STATE ==='
+          for container in irlix-services_migration_1 irlix-services_migration-worker_1 irlix-services_migration-ops_1; do
+            docker inspect --format '{{.Name}}|{{.State.Status}}|oom={{.State.OOMKilled}}|exit={{.State.ExitCode}}|image={{.Image}}' "$container" 2>/dev/null || echo 'container_unavailable'
+          done
+          echo '=== RUN 334 SAFE STATUS ==='
+          docker exec -i irlix-services_migration-ops_1 python3 - <<'PY'
+          import sqlite3,json
+          con=sqlite3.connect('file:/data/migration.sqlite?mode=ro',uri=True)
+          con.row_factory=sqlite3.Row
+          for row in con.execute('select id,service,mode,status,progress_phase,processed_count,heartbeat_at,started_at,finished_at from migration_runs where id = 334'):
+              d=dict(row);d.pop('heartbeat_at',None);d.pop('started_at',None);d.pop('finished_at',None)
+              print(json.dumps({'check':'run334','status':d},ensure_ascii=False))
+          try:
+              row=con.execute('select count(*) n from migration_conflicts where migration_run_id = 334').fetchone()
+              print(json.dumps({'check':'run334_conflicts','count':row['n']}))
+          except sqlite3.Error as e:print(json.dumps({'check':'conflict_query_failure','type':type(e).__name__}))
+          PY
+          REMOTE
+
+      - name: Identify run 334 exception signature safely
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          docker exec -i irlix-services_migration-ops_1 python3 - <<'PY'
+          import sqlite3,json,re
+          con=sqlite3.connect('file:/data/migration.sqlite?mode=ro',uri=True)
+          con.row_factory=sqlite3.Row
+          row=con.execute('SELECT error FROM migration_runs WHERE id=334').fetchone()
+          value=(row['error'] or '') if row else ''
+          whitelist=('TIMESHEETS_MEMORY_PRESSURE','TIMESHEETS_SPOOL_UNAVAILABLE',
+            'MIGRATION_PREFLIGHT','DEPENDENCY_BLOCKED','TARGET_TERM_GAP',
+            'SQLSTATE','OutOfMemoryError','Allowed memory size',
+            'Maximum execution time','Undefined array key','Call to undefined',
+            'RuntimeException','ErrorException','TypeError','PDOException')
+          hits=[x for x in whitelist if x.lower() in value.lower()]
+          print(json.dumps({'check':'run334_error_signature','error_present':bool(value),
+            'length':len(value),'codes':hits,'first_line_class':re.search(r'^(?:[A-Za-z_]+(?:\\\\[A-Za-z_]+)*)(?=\\s*:)',value).group(0) if re.search(r'^(?:[A-Za-z_]+(?:\\\\[A-Za-z_]+)*)(?=\\s*:)',value) else None}))
+          PY
+          REMOTE
