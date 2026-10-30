@@ -1,7 +1,11 @@
 name: One-time safe Clients 376 inspect recovery
 
-# Never run as part of a code push or normal release.
+# Production recovery is opt-in: user-authorized main merge carries the unique
+# [recover-clients-376] marker, or an operator may use explicit workflow_dispatch.
+# No other commit activates the repair; the repair itself remains fail-closed.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       confirmation:
@@ -14,7 +18,7 @@ permissions:
 
 jobs:
   reconcile:
-    if: ${{ github.ref == 'refs/heads/main' && inputs.confirmation == 'RECOVER_CLIENTS_376' }}
+    if: ${{ github.ref == 'refs/heads/main' && ((github.event_name == 'workflow_dispatch' && inputs.confirmation == 'RECOVER_CLIENTS_376') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[recover-clients-376]'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
