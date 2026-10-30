@@ -19,6 +19,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Verify isolated SQLite recovery invariants
+        run: python3 scripts/ci/test_reconcile_stale_clients_376.py
       - name: Configure production SSH
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
