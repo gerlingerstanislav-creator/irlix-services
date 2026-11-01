@@ -127,6 +127,17 @@ const assertVisibleGears=(gears,expected)=>{
  }
 };
 assertVisibleGears(await gearPaint('.mctrl-tree-service .mctrl-service-settings-trigger'),1);
+ // UiIcon is a strict lookup, not a generic icon library. Assert actual
+ // painted glyphs rather than a default-circle fallback for action icons.
+ const disk=page.getByRole('button',{name:'Точки отката: Клиенты'});
+ assert.equal(await disk.locator('svg path').count(),2,'diskette glyph has its storage outline and slot');
+ assert.equal(await disk.locator('svg circle').count(),0,'diskette must not silently render default-circle fallback');
+ const play=page.getByRole('button',{name:'Запустить перенос: Клиенты'});
+ assert.equal(await play.locator('svg path').count(),1,'play glyph is actually rendered');
+ assert.equal(await play.locator('svg circle').count(),0,'play must not fall back to a circle');
+ const stop=page.getByRole('button',{name:'Остановить перенос: Все сервисы'});
+ assert.equal(await stop.locator('svg rect').count(),1,'stop is an outlined square, not a fallback circle');
+
 assert.equal(await page.getByRole('button',{name:/^Настройки подключения:/}).count(),4,'all service connections visible even when historical operation includes only one service');
 await page.getByRole('button',{name:'Развернуть весь перенос'}).click();
 assert.equal(await page.getByRole('button',{name:/^Настройки подключения:/}).count(),4,'collapsing the operation does not hide connection settings');
