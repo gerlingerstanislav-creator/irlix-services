@@ -43,6 +43,30 @@ final class TableProgress
         });
     }
 
+    /**
+     * Record a deliberately informational source disposition.
+     *
+     * Unlike warnings, this must not inflate warning_count or success_count.
+     * Each source row contributes at most once to processed_count even when
+     * several metadata facts are preserved for the same row.
+     */
+    public static function recorded(int $run, string $service, string $entity, string|int|null $legacyId): void
+    {
+        $table = self::table($service, $entity);
+        self::ensure($run, $table);
+        DB::transaction(function () use ($run, $table, $legacyId): void {
+            $newRow = 0;
+            if ($legacyId !== null) {
+                $newRow = DB::table('migration_table_rows')->insertOrIgnore([
+                    'migration_run_id'=>$run, 'table_name'=>$table, 'legacy_id'=>(string)$legacyId,
+                ]);
+            }
+            DB::table('migration_table_progress')->where('migration_run_id', $run)->where('table_name', $table)
+                ->update(['processed_count'=>DB::raw('processed_count + '.$newRow),
+                    'state'=>'processing', 'updated_at'=>now()]);
+        });
+    }
+
     public static function extracted(string $sql, array $rows): void
     {
         if (self::$activeRun === null || ! preg_match('/\bFROM\s+public\.([a-z_]+)/i', $sql, $match)) return;
