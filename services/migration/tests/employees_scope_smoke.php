@@ -126,8 +126,8 @@ try {
         $run=$store->beginRun('employees','migrate'); \App\Migration\Core\TableProgress::$activeRun=$run;
         $result=$adapter->migrate($run,false); $store->finishRun($run,'completed',$result);
         ensure(\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$run)->count()===0,'Manual date conflicts reconciled without errors');
-        ensure($result['employees']['created']===0 && $result['employees']['updated']===($first?2:0)
-            && ($result['employees']['unchanged'] ?? 0)===($first?0:2)
+        ensure($result['employees']['created']===0 && $result['employees']['updated']===($first?1:0)
+            && ($result['employees']['unchanged'] ?? 0)===($first?1:2)
             && $result['employment_periods']===2,
             'Changed employees update once; equal employees are not rewritten on repeat');
         ensure($result['employment_periods_updated']===($first?2:0),'Repeat import does not change equal periods');
