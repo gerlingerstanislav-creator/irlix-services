@@ -148,7 +148,29 @@ try {
         'Attempt target identity is retained for later idempotent retry');
     check($store->mapping('clients','members','31')===$store->mapping('clients','members','32'),'Member alias');
     check($store->mapping('clients','rates','41')===$store->mapping('clients','rates','42'),'Term alias');
-    check(runFixture($clients,false)['conflicts']===0 && $clients->validate(1)['ok'],'Clients rerun and reconciliation');
+    // Daily reruns must NOT physically rewrite equal records/timestamps.
+    $clientId = $store->mapping('clients','clients','6');
+    $memberId = $store->mapping('clients','members','31');
+    target('clients')->table('clients')->where('id',$clientId)
+        ->update(['updated_at'=>'2001-01-01 00:00:00']);
+    target('clients')->table('client_members')->where('id',$memberId)
+        ->update(['updated_at'=>'2001-01-01 00:00:00']);
+    check(runFixture($clients,false)['conflicts']===0 && $clients->validate(1)['ok'],
+        'Idempotent Clients rerun and reconciliation');
+    check(target('clients')->table('clients')->where('id',$clientId)->value('updated_at')==='2001-01-01 00:00:00'
+        && target('clients')->table('client_members')->where('id',$memberId)->value('updated_at')==='2001-01-01 00:00:00',
+        'Equal mapped domain records must preserve their physical updated_at');
+    $clients->fixture['clients'][0]['description'] = 'Source correction';
+    check(runFixture($clients,false)['conflicts']===0
+        && target('clients')->table('clients')->where('id',$clientId)->value('description')==='Source correction',
+        'Changed legacy field must update the mapped record');
+    check(target('clients')->table('client_members')->where('id',$memberId)->value('updated_at')==='2001-01-01 00:00:00',
+        'Changed client must not rewrite unrelated ClientMember');
+    $clients->fixture['clients'][0]['description'] = null;
+    check(runFixture($clients,false)['conflicts']===0, 'Revert synthetic source correction');
+    check(\App\Migration\Core\TargetFieldComparison::matches('001', '1', 'login')===false
+        && \App\Migration\Core\TargetFieldComparison::matches('8.000', '8', 'hours_per_day'),
+        'Numeric normalization must not collapse string identities');
 
     $clients->fixture['rates'][1]['grade'] = 'Senior';
     check(runFixture($clients,true)['conflicts']>0,'Conflicting overlapping terms of one ClientMember are blocked');

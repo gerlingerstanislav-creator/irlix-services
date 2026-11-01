@@ -104,6 +104,7 @@ services:
     environment:
       MIGRATION_SNAPSHOT_BASE: /snapshots
       MIGRATION_DATA_PATH: /data
+      MIGRATION_DAILY_ENABLED: ${MIGRATION_DAILY_ENABLED:-true}
       MIGRATION_VACATIONS_FILES_PATH: /vacation-files
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

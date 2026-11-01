@@ -366,7 +366,19 @@ abstract class SchemaMigration implements ServiceMigration
                 $id = $target->transaction(function () use ($target, $table, $payload, $existing, $row, &$bodyEntered, &$bodyError): int {
                     $bodyEntered = true;
                     try {
-                        if ($existing) { $target->table($table)->where('id', $existing->id)->update($payload + ['updated_at' => $row['updated_at'] ?? now()]); return (int) $existing->id; }
+                        if ($existing) {
+                            $changed = [];
+                            foreach ($payload as $field => $value) {
+                                if (!TargetFieldComparison::matches($existing->{$field} ?? null, $value, $field)) {
+                                    $changed[$field] = $value;
+                                }
+                            }
+                            if ($changed) {
+                                $target->table($table)->where('id', $existing->id)
+                                    ->update($changed + ['updated_at' => $row['updated_at'] ?? now()]);
+                            }
+                            return (int) $existing->id;
+                        }
                         return (int) $target->table($table)->insertGetId($payload + ['created_at' => $row['created_at'] ?? now(), 'updated_at' => $row['updated_at'] ?? now()]);
                     } catch (\Throwable $e) { $bodyError = $e; throw $e; }
                 });
