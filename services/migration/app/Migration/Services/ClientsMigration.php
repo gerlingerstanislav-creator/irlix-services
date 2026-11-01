@@ -287,10 +287,25 @@ class ClientsMigration extends SchemaMigration
         foreach ($this->source['rates'] ?? [] as $rate) {
             $memberId = $this->ids['members'][(string) ($rate['member_id'] ?? '')] ?? null;
             if ($memberId === null) continue; // rows('rates') reports the missing dependency.
-            try { [$from, $to] = $this->dates($rate['start_date'], $rate['end_date']); }
-            catch (\DomainException) { continue; }
+            try {
+                [$from, $to] = $this->dates($rate['start_date'], $rate['end_date']);
+                // Comparing raw Laravel ciphertext yields false conflicts:
+                // equal business amounts can have distinct random IVs.
+                // Match the same decoded/normalized values written below.
+                $fields = [
+                    'technology_id' => $rate['technology_id'] === null ? null : (string) $rate['technology_id'],
+                    'grade' => $rate['grade'],
+                    'workload' => $this->amount($rate['workload'], 'rates.workload', 24),
+                    'rate' => config('migration.clients_defer_rate_amounts')
+                        ? $rate['rate'] : $this->amount($rate['rate'], 'rates.rate', 9999999999.99),
+                ];
+            } catch (\DomainException) {
+                // Each invalid row is reported by rows('rates') with its
+                // precise source error. It must never become an alias.
+                continue;
+            }
             $byMember[$memberId][] = ['id'=>(string)$rate['id'], 'from'=>$from, 'to'=>$to,
-                'fields'=>json_encode(array_intersect_key($rate, array_flip(['technology_id','grade','workload','rate'])), JSON_THROW_ON_ERROR)];
+                'fields'=>json_encode($fields, JSON_THROW_ON_ERROR)];
         }
         foreach ($byMember as $items) {
             usort($items, static fn ($a,$b) => [$a['from'], (int)$a['id']] <=> [$b['from'], (int)$b['id']]);
