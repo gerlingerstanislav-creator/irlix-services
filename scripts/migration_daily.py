@@ -66,7 +66,7 @@ def reserve(now, snapshot_operation):
         return None
     date = now.date().isoformat()
     state = read()
-    if state.get('date') >= date if isinstance(state.get('date'), str) else False:
+    if isinstance(state.get('date'), str) and state['date'] >= date:
         return None
     if console.active():
         return None
