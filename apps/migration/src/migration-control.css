@@ -319,7 +319,11 @@ main.mctrl .mctrl-tree-scroll{flex:1 1 auto;min-height:0;max-height:none;overscr
 .mctrl-tree-table .mctrl-tree-col-extra{width:14%}
 .mctrl-tree-table .mctrl-tree-col-action{width:18%}
 .mctrl-tree-table .mctrl-inline-icon,.mctrl-setup-table .mctrl-inline-icon{width:28px;min-width:28px;height:28px;min-height:28px;padding:4px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 28px}
-.mctrl-tree-table .mctrl-inline-icon .ui-icon,.mctrl-setup-table .mctrl-inline-icon .ui-icon{width:16px;height:16px}
+.mctrl-tree-table .mctrl-inline-icon.ui-button > svg,.mctrl-setup-table .mctrl-inline-icon.ui-button > svg{
+ display:block;flex:none;width:16px;height:16px;
+ fill:none;stroke:currentColor;stroke-width:1.8;
+ stroke-linecap:round;stroke-linejoin:round;
+}
 .mctrl-tree-table .mctrl-service-settings-trigger{flex:0 0 28px}
 .mctrl-tree-row-actions{gap:4px;align-items:center}
 .mctrl-tree-scroll{max-height:calc(100dvh - 136px)}
