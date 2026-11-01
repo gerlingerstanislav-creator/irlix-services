@@ -11,6 +11,16 @@ final class ControlReport
         $allowed = ['service','table','field','reference_table','reference_id','source_id','legacy_id','employee_id','target_id','dependency','cause','period','overlapping_period','from','to','operation_id','snapshot_id','count','counts','reason','format','sqlstate','category','reconstructed','alias_of','target_table','target_matches','source_key'];
         $out = [];
         foreach ($context as $key=>$value) {
+            if ($key === 'changed_fields' && is_array($value)) {
+                // Identifiers are application-defined, not source values.
+                // Publish only these fixed non-sensitive field names so an
+                // operator knows what disagrees with the protected term.
+                $fields = ['hourly_rate','valid_from','valid_to','client_member_id',
+                    'technology','level','hours_per_day','project_member_id'];
+                $out[$key] = array_values(array_unique(array_filter($value,
+                    static fn ($field) => is_string($field) && in_array($field, $fields, true))));
+                continue;
+            }
             if (!in_array((string) $key, $allowed, true)) continue;
             if (is_array($value)) $out[$key] = self::safeContext($value);
             elseif (is_scalar($value) || $value === null) $out[$key] = is_string($value) ? self::safeText($value) : $value;
