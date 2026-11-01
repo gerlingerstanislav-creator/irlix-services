@@ -331,6 +331,46 @@ class ClientsMigration extends SchemaMigration
             }
         }
     }
+    /**
+     * Legacy imports can carry a submitted-looking status without a native
+     * Clients/Timesheets approval. Such a historical period must not be
+     * mistaken for a newly sealed commercial snapshot.
+     *
+     * This is intentionally fail-closed: Finance can already have invoices
+     * for act-approved periods, so only pre-act-approved imported periods
+     * with intact migration provenance and no native approval facts qualify.
+     */
+    private function isUnsealedLegacyPeriod(object $period): bool
+    {
+        if (!in_array($period->status ?? null,
+            ['ТШ на согласовании', 'ТШ согласованы', 'Акт на согласовании'], true)) return false;
+        foreach (['paid_at', 'timesheet_snapshot', 'timesheet_revision', 'timesheet_freeze_token'] as $field) {
+            if (($period->$field ?? null) !== null) return false;
+        }
+        $target = DB::connection('target_clients');
+        foreach (['reporting_period_history', 'reporting_period_approved_hours'] as $table) {
+            // Missing proof tables are not equivalent to having no approvals.
+            if (!Schema::connection('target_clients')->hasTable($table)
+                || $target->table($table)->where('reporting_period_id', $period->id)->exists()) return false;
+        }
+        $mappings = DB::table('migration_mappings')
+            ->where('service', 'clients')->where('entity_type', 'reporting_periods')
+            ->where('target_id', (string) $period->id)->get(['metadata']);
+        $canonical = 0;
+        foreach ($mappings as $mapping) {
+            $metadata = json_decode($mapping->metadata ?? '{}', true);
+            if (!is_array($metadata) || isset($metadata['alias_of'])) continue;
+            $previousPayload = $metadata['target_payload'] ?? null;
+            if (!is_array($previousPayload) || ($metadata['target_table'] ?? null) !== 'reporting_periods') return false;
+            // Reject any post-import changes, even when the status is unchanged.
+            foreach ($previousPayload as $field => $expected) {
+                if (!TargetFieldComparison::matches($period->$field ?? null, $expected, $field)) return false;
+            }
+            ++$canonical;
+        }
+        return $canonical === 1;
+    }
+
     protected function import(): void
     {
         $this->memberIdentities = [];
@@ -480,7 +520,8 @@ class ClientsMigration extends SchemaMigration
                     // is not. A broad "interval intersects" check incorrectly
                     // rejects harmless future extensions.
                     $commercialChanged = count(array_diff($changedFields, ['valid_from', 'valid_to'])) > 0;
-                    foreach ($query->get(['period_start', 'period_end']) as $period) {
+                    $unsealedLegacyPeriodCount = 0;
+                    foreach ($query->get() as $period) {
                         $periodFrom = substr((string) $period->period_start, 0, 10);
                         $periodTo = substr((string) $period->period_end, 0, 10);
                         if (!preg_match('/^\\d{4}-\\d{2}-\\d{2}$/D', $periodFrom)
@@ -497,6 +538,10 @@ class ClientsMigration extends SchemaMigration
                         $before = $clip($oldFrom, $oldTo);
                         $after = $clip($from, $to);
                         if ($before !== $after || ($commercialChanged && ($before !== null || $after !== null))) {
+                            if ($this->isUnsealedLegacyPeriod($period)) {
+                                ++$unsealedLegacyPeriodCount;
+                                continue;
+                            }
                             throw new SourceRowConflict('PROTECTED_TERM_CHANGE',
                                 'Изменение условий затрагивает уже отправленный отчётный период. '
                                 .'Автоматическая перезапись финансовой истории запрещена: '
@@ -508,6 +553,13 @@ class ClientsMigration extends SchemaMigration
                                  'reconciliation_type' => 'protected_financial_period',
                                  'automatic_override_allowed' => false]);
                         }
+                    }
+                    if ($unsealedLegacyPeriodCount > 0) {
+                        $this->warning('rates', $id, 'UNSEALED_LEGACY_PERIOD_CORRECTION',
+                            'Исторические условия исправляются по источнику: затронуты только ранее импортированные, '
+                            .'не зафиксированные в новой платформе отчётные периоды.',
+                            ['changed_fields' => $changedFields,
+                             'unsealed_legacy_periods' => $unsealedLegacyPeriodCount]);
                     }
                 }
             }
