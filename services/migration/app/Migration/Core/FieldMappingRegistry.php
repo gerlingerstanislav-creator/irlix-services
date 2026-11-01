@@ -19,7 +19,12 @@ final class FieldMappingRegistry
             return ['fate'=>'excluded', 'target'=>null, 'rule'=>'Системные журналы Laravel не относятся к доменным данным Clients и не импортируются.',
                 'reason'=>'Записи старых failed jobs и версий схемы не переносятся в новое приложение и не выполняются повторно.'];
         }
-        if ($service === 'clients' && in_array($table,['rates','attempts'],true) && $field === 'rate' && config('migration.clients_defer_rate_amounts')) return ['fate'=>'deferred','target'=>null,'rule'=>null,'reason'=>'Перенос денежных сумм отключён; существующие суммы в целевом сервисе сохраняются.'];
+        if ($service === 'clients' && $table === 'rates' && $field === 'rate' && config('migration.clients_defer_rate_amounts')) return ['fate'=>'deferred','target'=>null,'rule'=>null,'reason'=>'Перенос денежных сумм отключён; существующие суммы в целевом сервисе сохраняются.'];
+        if ($service === 'clients' && $table === 'attempts' && $field === 'rate') {
+            return ['fate'=>'metadata_only', 'target'=>null,
+                'rule'=>'Исходное attempts.rate сохраняется только как защищённая история без ставки ConnectionAttempt.',
+                'reason'=>'В актуальной схеме ConnectionAttempt нет proposed_rate; коммерческая ставка хранится только в MemberTerms.'];
+        }
         $rules = self::rules()[$service][$table] ?? [];
         if (isset($rules[$field])) {
             [$fate, $target, $rule] = $rules[$field];
@@ -31,7 +36,7 @@ final class FieldMappingRegistry
             'clients'=>['feedback','interviews','notes','reviews','attachments','legal_documents','activity_log','settings','client_technology','user_technology'],
         ];
         if (in_array($table, $metadata[$service] ?? [], true)) return ['fate'=>'metadata_only','target'=>null,'rule'=>'Только приватные метаданные переноса, без записи бизнес-сущности.','reason'=>'Таблица сохранена в метаданных; бизнес-действия по ней не восстанавливаются.'];
-        if (($service === 'clients' && $table === 'reporting_period_rate') || ($service === 'clients' && in_array($table,['rates','attempts'],true) && $field === 'rate' && config('migration.clients_defer_rate_amounts')) || ($service === 'vacations' && $table === 'attachments' && !config('migration.vacation_documents_enabled', false))) {
+        if (($service === 'clients' && $table === 'reporting_period_rate') || ($service === 'clients' && $table === 'rates' && $field === 'rate' && config('migration.clients_defer_rate_amounts')) || ($service === 'vacations' && $table === 'attachments' && !config('migration.vacation_documents_enabled', false))) {
             return ['fate'=>'deferred','target'=>null,'rule'=>null,'reason'=>'Отложено за пределами текущего переноса; требуется отдельное согласованное изменение.'];
         }
         return $unknown;
@@ -166,7 +171,7 @@ final class FieldMappingRegistry
         $add('timesheets','members','clients.client_members',['employee_id'=>'employee_id','project'=>'client_id'],'reference','Unique client membership for employee; partner requires an explicit override.');
         $add('timesheets','rates','clients.member_terms',['member_id'=>'client_member_id','from'=>'valid_from','to'=>'valid_to','workload'=>'hours_per_day'],'reference','All actual dates must have exactly one effective term.');
         $add('clients','rates','clients.member_terms',['rate'=>'hourly_rate'],'transformed','При включённом финансовом переносе: расшифровка ключом источника, проверка суммы и точности.');
-        $add('clients','attempts','clients.connection_attempts',['rate'=>'proposed_rate'],'transformed','При включённом финансовом переносе: необязательная расшифрованная сумма.');
+
         $add('clients','client_requests','clients.client_requests',['title'=>'title','description'=>'description','date'=>'request_date','expired_at'=>'deadline']);
         $add('clients','client_requests','clients.client_requests',['client_id'=>'client_id','lead_id'=>'lead_id','responsible_id'=>'responsible_employee_id'],'reference','Validated client/lead origin and employee mappings.');
         $add('clients','client_requests','clients.client_requests',['closed_at'=>'status'],'transformed','Presence of closure date determines closed/open.');
