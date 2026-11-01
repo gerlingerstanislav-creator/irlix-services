@@ -168,8 +168,8 @@ try {
         'Changed client must not rewrite unrelated ClientMember');
     $clients->fixture['clients'][0]['description'] = null;
     check(runFixture($clients,false)['conflicts']===0, 'Revert synthetic source correction');
-    check(\\App\\Migration\\Core\\TargetFieldComparison::matches('001', '1', 'login')===false
-        && \\App\\Migration\\Core\\TargetFieldComparison::matches('8.000', '8', 'hours_per_day'),
+    check(\App\Migration\Core\TargetFieldComparison::matches('001', '1', 'login')===false
+        && \App\Migration\Core\TargetFieldComparison::matches('8.000', '8', 'hours_per_day'),
         'Numeric normalization must not collapse string identities');
 
     $clients->fixture['rates'][1]['grade'] = 'Senior';
