@@ -118,10 +118,9 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
 <section class="mctrl-tree" aria-label="Таблица переноса">
  <div class="mctrl-tree-scroll" role="region" aria-label="Результаты переноса по сервисам и сущностям" tabindex="0">
   <table class="irlix-data-table mctrl-tree-table">
-   <colgroup><col class="mctrl-tree-col-name"/><col class="mctrl-tree-col-status"/><col class="mctrl-tree-col-progress"/><col class="mctrl-tree-col-errors"/><col class="mctrl-tree-col-extra"/><col class="mctrl-tree-col-action"/></colgroup>
+   <colgroup><col class="mctrl-tree-col-name"/><col class="mctrl-tree-col-progress"/><col class="mctrl-tree-col-errors"/><col class="mctrl-tree-col-extra"/><col class="mctrl-tree-col-action"/></colgroup>
    <thead><tr>
     <th scope="col">Перенос / сервис / сущность</th>
-    <th scope="col">Статус</th>
     <th scope="col">Обработано / всего</th>
     <th scope="col">Ошибки / предупреждения</th>
     <th scope="col">Дополнительно</th><th scope="col">Действия</th>
@@ -131,7 +130,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
      <th scope="row" class="mctrl-tree-label">
       <div class="mctrl-tree-node mctrl-tree-node--root">
        <UiTreeToggle :expanded="rootOpen" label="Развернуть весь перенос" @click="rootOpen=!rootOpen"/>
-       <span class="mctrl-tree-title">Весь перенос <small>#{{operation.id}}</small></span>
+       <span class="mctrl-tree-title">Весь перенос <small>#{{operation.id}} · {{statusText(operation.status)}}</small></span>
        <UiButton v-if="!operationIsActive" variant="ghost" compact class="mctrl-inline-icon" :disabled="busy"
          aria-label="Запустить перенос: Все сервисы" @click="emit('start','all')"><UiIcon name="play"/></UiButton>
        <UiButton v-else variant="ghost" compact class="mctrl-inline-icon" aria-label="Остановить перенос: Все сервисы"
@@ -140,7 +139,6 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
          @click="emit('backups','all')"><UiIcon name="save"/></UiButton>
       </div>
      </th>
-     <td><UiButton variant="ghost" compact @click="open('overview')"><UiBadge :tone="tone(operation.status)">{{statusText(operation.status)}}</UiBadge></UiButton></td>
      <td class="mctrl-tree-numeric mctrl-tree-progress"><div v-if="tree.processed!==null&&tree.total!==null">{{progressText(tree.processed,tree.total).replace('Обработано: ','')}}</div><span v-else class="mctrl-tree-no-data" title="У одного или нескольких сервисов нет подтверждённых счётчиков">—</span><progress v-if="bar(tree)!==null" :value="bar(tree)" max="100" aria-label="Прогресс всего переноса" :title="bar(tree)+'%'">{{bar(tree)}}%</progress></td>
      <td class="mctrl-tree-numeric mctrl-tree-issue-pair">
         <UiButton variant="ghost" compact @click="open('issues',null,'error')" :aria-label="'Ошибки: '+(tree.issues.errors??'неизвестно')">
@@ -156,17 +154,16 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
        <span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite('all').stale}" :title="lastWrite('all').title">{{lastWrite('all').label}}</span>
      </div></td>
      <td><div class="mctrl-tree-row-actions">
-       <UiButton variant="ghost" compact @click="open('stages')">Этапы</UiButton>
+       <UiButton variant="secondary" compact @click="open('stages')">Этапы</UiButton>
        <UiButton variant="secondary" compact :disabled="unverifiedReport" aria-label="Отчёт: Все сервисы" @click="emit('report','all')">Отчёт</UiButton>
-       <UiButton variant="ghost" compact :disabled="unverifiedReport||downloading" @click="downloadReport">Скачать JSON</UiButton>
-       <UiButton v-if="tree.issue_groups?.some(g=>g.severity==='info')" variant="ghost" compact
-         aria-label="Сведения: Все сервисы" @click="open('issues',null,'info')">Сведения</UiButton>
-       <UiButton variant="ghost" compact :disabled="busy" @click="emit('reset')">Очистить Clients / Timesheets</UiButton>
+       <UiButton variant="secondary" compact :disabled="unverifiedReport||downloading" @click="downloadReport">Скачать JSON</UiButton>
+       <UiButton variant="secondary" compact aria-label="Диагностика: Все сервисы" @click="open('issues')">Диагностика</UiButton>
+       <UiButton variant="secondary" compact :disabled="busy" @click="emit('reset')">Очистить Clients / Timesheets</UiButton>
      </div></td>
     </tr>
-    <tr v-if="downloadError" class="mctrl-tree-empty"><td colspan="6" role="alert">Не удалось скачать отчёт: {{downloadError}}</td></tr>
+    <tr v-if="downloadError" class="mctrl-tree-empty"><td colspan="5" role="alert">Не удалось скачать отчёт: {{downloadError}}</td></tr>
     <tr class="mctrl-tree-stages-row mctrl-tree-snapshot-row">
-     <td colspan="6" class="mctrl-tree-stages-cell">
+     <td colspan="5" class="mctrl-tree-stages-cell">
       <div class="mctrl-tree-stages mctrl-tree-stages--global">
        <span class="mctrl-tree-stages-heading">Подготовка операции</span>
        <button v-if="globalSnapshotStage" type="button" class="mctrl-tree-stage"
@@ -187,7 +184,9 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
         <div class="mctrl-tree-name-stack">
          <div class="mctrl-tree-node mctrl-tree-node--service">
           <UiTreeToggle :expanded="!!servicesOpen[svc.service]" :label="'Развернуть '+svc.label" @click="toggle(svc.service)"/>
+          <span v-if="activeService(svc.service)" class="mctrl-active-service-spinner" role="img" :aria-label="'Выполняется: '+svc.label"></span>
           <strong class="mctrl-tree-title">{{svc.label}}</strong>
+          <span class="mctrl-service-state">{{activeService(svc.service)?'Выполняется':statusText(svc.status)}}</span>
           <UiButton v-if="!activeService(svc.service)" variant="ghost" compact class="mctrl-inline-icon" :disabled="busy"
             :aria-label="'Запустить перенос: '+svc.label" @click="emit('start',svc.service)"><UiIcon name="play"/></UiButton>
           <UiButton v-else variant="ghost" compact class="mctrl-inline-icon" :aria-label="'Остановить перенос: '+svc.label"
@@ -209,11 +208,6 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
         </div>
         </div>
        </th>
-       <td class="mctrl-tree-status-cell">
-        <span v-if="activeService(svc.service)" class="mctrl-active-service" role="status"><span class="mctrl-active-service-spinner" aria-hidden="true"></span>Выполняется</span>
-        <UiButton v-else-if="!['partial','completed'].includes(svc.status)" variant="ghost" compact @click="open('service',svc)"><UiBadge :tone="tone(svc.status)">{{statusText(svc.status)}}</UiBadge></UiButton>
-        <span v-else class="mctrl-tree-no-data">—</span>
-       </td>
        <td class="mctrl-tree-numeric mctrl-tree-progress"><div>{{progressText(svc.processed,svc.total).replace('Обработано: ','')}}</div><progress v-if="bar(svc)!==null" :value="bar(svc)" max="100" :aria-label="'Прогресс сервиса '+svc.label" :title="bar(svc)+'%'">{{bar(svc)}}%</progress><small v-if="svc.hidden_count">По видимым сущностям</small></td>
        <td class="mctrl-tree-numeric mctrl-tree-issue-pair">
         <UiButton variant="ghost" compact @click="openWorkbench(svc.service)" :aria-label="'Ошибки: '+(svc.issues.errors??'неизвестно')">
@@ -230,10 +224,8 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
  </div></td><td><div class="mctrl-tree-row-actions">
    <UiButton variant="secondary" compact :disabled="unverifiedReport" :aria-label="'Отчёт: '+svc.label"
      @click="emit('report',svc.service)">Отчёт</UiButton>
-   <UiButton v-if="svc.issue_groups?.some(g=>g.severity==='info')" variant="ghost" compact
-     :aria-label="'Сведения: '+svc.label" @click="open('issues',svc,'info')">Сведения</UiButton>
-   <UiButton v-if="svc.issues.errors||svc.service==='timesheets'" variant="ghost" compact :aria-label="'Разобрать ошибки '+svc.label"
-     @click="openWorkbench(svc.service)">Разобрать ошибки</UiButton>
+   <UiButton variant="secondary" compact :aria-label="'Диагностика: '+svc.label"
+     @click="open('issues',svc)">Диагностика</UiButton>
  </div></td>
       </tr>
       <template v-if="rootOpen&&servicesOpen[svc.service]">
@@ -241,10 +233,9 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
         <th scope="row" class="mctrl-tree-label">
          <div class="mctrl-tree-node mctrl-tree-node--entity">
           <span class="mctrl-tree-indent" aria-hidden="true"></span>
-          <span class="mctrl-tree-title">{{entity.label}}</span>
+          <span class="mctrl-tree-title">{{entity.label}} <small>{{entity.state==='recorded'?'Результат есть':'Неизвестно'}}</small></span>
          </div>
         </th>
-        <td><UiButton variant="ghost" compact @click="open('entity',entity)"><UiBadge :tone="entity.state==='recorded'?'success':'neutral'">{{entity.state==='recorded'?'Результат есть':'Неизвестно'}}</UiBadge></UiButton></td>
         <td class="mctrl-tree-numeric mctrl-tree-progress"><div>{{progressText(entity.processed,entity.total).replace('Обработано: ','')}}</div><progress v-if="bar(entity)!==null" :value="bar(entity)" max="100" :aria-label="'Прогресс сущности '+entity.label" :title="bar(entity)+'%'">{{bar(entity)}}%</progress></td>
         <td class="mctrl-tree-numeric mctrl-tree-issue-pair">
         <UiButton variant="ghost" compact @click="open('issues',entity,'error')" :aria-label="'Ошибки: '+(entity.issues.errors??'неизвестно')">
@@ -255,14 +246,14 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
         </UiButton>
        </td>
 
-        <td><div class="mctrl-tree-extra"><span>{{statusText(entity.expectation?.status)}}</span><UiButton variant="ghost" compact @click="open('fields',entity)">Поля · {{entity.fields?.length??0}}</UiButton></div></td><td><div class="mctrl-tree-row-actions"><UiButton variant="ghost" compact :aria-label="'Скрыть строку '+svc.label+' / '+entity.label" @click="setHidden(svc.service,entity.table_name,true)">Скрыть</UiButton></div></td>
+        <td><div class="mctrl-tree-extra"><span>{{statusText(entity.expectation?.status)}}</span><UiButton variant="secondary" compact @click="open('fields',entity)">Поля · {{entity.fields?.length??0}}</UiButton></div></td><td><div class="mctrl-tree-row-actions"><UiButton variant="secondary" compact :aria-label="'Скрыть строку '+svc.label+' / '+entity.label" @click="setHidden(svc.service,entity.table_name,true)">Скрыть</UiButton></div></td>
        </tr>
-       <tr v-if="!svc.entities.length" class="mctrl-tree-empty"><td colspan="6">{{svc.hidden_count?'Все '+svc.hidden_count+' строки скрыты. Откройте «Скрытые», чтобы вернуть их.':'Сущности сервиса '+svc.label+' не подтверждены отчётом.'}}</td></tr>
+       <tr v-if="!svc.entities.length" class="mctrl-tree-empty"><td colspan="5">{{svc.hidden_count?'Все '+svc.hidden_count+' строки скрыты. Откройте «Скрытые», чтобы вернуть их.':'Сущности сервиса '+svc.label+' не подтверждены отчётом.'}}</td></tr>
       </template>
      </template>
      <tr v-for="svc in missingServices" :key="'connection:'+svc.service" class="mctrl-tree-settings-only">
       <th scope="row" class="mctrl-tree-label"><div class="mctrl-tree-node mctrl-tree-node--service">
-        <strong class="mctrl-tree-title">{{svc.label}}</strong>
+        <strong class="mctrl-tree-title">{{svc.label}}</strong><span class="mctrl-service-state">Вне операции</span>
         <UiButton variant="ghost" compact class="mctrl-inline-icon" :disabled="busy"
           :aria-label="'Запустить перенос: '+svc.label" @click="emit('start',svc.service)"><UiIcon name="play"/></UiButton>
         <UiButton variant="ghost" compact class="mctrl-service-settings-trigger"
@@ -270,7 +261,6 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
         <UiButton variant="ghost" compact class="mctrl-inline-icon"
           :aria-label="'Точки отката: '+svc.label" @click="emit('backups',svc.service)"><UiIcon name="save"/></UiButton>
        </div></th>
-       <td class="mctrl-tree-no-data" title="Не участвует в выбранной операции">Вне операции</td>
        <td class="mctrl-tree-no-data">—</td>
        <td class="mctrl-tree-no-data">— / —</td>
        <td><div class="mctrl-tree-extra"><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span></div></td>
@@ -356,6 +346,8 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
  </div>
  <template v-else-if="detail?.kind==='issues'">
   <p>Диагностические события операции #{{operation.id}}. Группы и затронутые строки нельзя складывать как уникальные строки.</p>
+  <UiButton v-if="detail.node?.service&&detail.node?.issues?.errors" variant="secondary" compact
+    @click="openWorkbench(detail.node.service,detail.node.table_name||'');close()">Разобрать ошибки по строкам</UiButton>
   <p v-if="(full||report)?.runs?.some(r=>r.diagnostics?.items_complete===false)" class="mctrl-blocked-reason">
     Подробные события показаны частично (не более 256 на этап). Полный набор безопасных записей сохранён в неизменяемом серверном архиве; счётчики и группы причин не сокращены.
   </p>
