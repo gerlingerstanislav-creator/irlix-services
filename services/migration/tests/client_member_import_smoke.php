@@ -195,6 +195,16 @@ try {
     target('clients')->table('member_terms')->where('id', $canonicalTermId)
         ->update(['valid_to'=>'2026-01-31', 'hourly_rate'=>'1500.50']);
 
+    // Clients itself compares the clipped span within a protected month.
+    // An extension after January changes no approved January day.
+    $clients->fixture['rates'][1]['end_date'] = '2026-02-10';
+    check(runFixture($clients, true)['conflicts']===0,
+        'An extension entirely after the submitted month does not require reconciliation');
+    $clients->fixture['rates'][1]['end_date'] = '2026-01-30';
+    check(runFixture($clients, true)['conflicts']>0,
+        'Shortening a term inside a submitted month requires reconciliation');
+    $clients->fixture['rates'][1]['end_date'] = '2026-01-31';
+
     // Moving the incoming interval completely out of a protected month
     // must not bypass protection of the *previous* target interval.
     $originalRates = $clients->fixture['rates'];
