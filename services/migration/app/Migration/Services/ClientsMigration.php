@@ -707,7 +707,11 @@ class ClientsMigration extends SchemaMigration
                 foreach ($periodPayload as $field => $value) {
                     if (!TargetFieldComparison::matches($previous->$field ?? null, $value, $field)) $changes[] = $field;
                 }
-                if ($changes && !$this->isUnsealedLegacyPeriod($previous)) {
+                // The old system may supply initial historical terminal
+                // states, but a later delta must never approve an act or
+                // mark a period paid in place of Clients/Finance.
+                if ($changes && (in_array($status, ['Акт согласован', 'Счет оплачен'], true)
+                    || !$this->isUnsealedLegacyPeriod($previous))) {
                     throw new SourceRowConflict('PROTECTED_REPORTING_PERIOD_CHANGE',
                         'Повторный перенос не может переписать оплаченную, согласованную в новой платформе '
                         .'или изменённую вне миграции отчётность.',
