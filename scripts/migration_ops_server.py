@@ -5,6 +5,8 @@ import http.server, json, os, secrets, shutil, socketserver, sqlite3, subprocess
 from pathlib import Path
 import migration_console as console
 import migration_control as control
+import migration_daily as daily
+import datetime as dt
 import migration_retention as retention
 import migration_diagnostics as diagnostics
 import uuid
@@ -85,7 +87,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         service,path=self.route()
-        if self.path=='/control/state': return self.reply(200,{**control.payload(),'snapshot_operation':read_status()})
+        if self.path=='/control/state': return self.reply(200,{**control.payload(),'snapshot_operation':read_status(), 'daily_schedule':daily.public_state()})
         if self.path.startswith('/control/operations/') and (self.path.endswith('/report') or self.path.endswith('/summary')):
             parts=self.path.split('/')
             if len(parts)!=5: return self.reply(404,{'message':'Not found'})
@@ -192,6 +194,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self,format,*args): pass
 
 
+def daily_loop():
+    # A separate ops thread owns the entire sequence; HTTP actions remain
+    # responsive, but cannot start a parallel run due to the shared locks.
+    while True:
+        try:
+            reservation = None
+            with LOCK:
+                if read_status().get('state') not in ('queued', 'running'):
+                    reservation = daily.reserve(
+                        dt.datetime.now(dt.timezone.utc),
+                        lambda: console.start(
+                            {'scope': 'all', 'requested_by': 'migration-daily'},
+                            'snapshot'))
+            if reservation is not None:
+                daily.run_reserved(reservation)
+        except Exception as exc:
+            print('Daily Migration Control deferred: ' + type(exc).__name__, flush=True)
+        time.sleep(30)
+
+
 class Server(socketserver.ThreadingMixIn,socketserver.UnixStreamServer): daemon_threads=True
 
 if __name__=='__main__':
@@ -214,5 +236,6 @@ if __name__=='__main__':
         print('Migration checkpoint startup retention: removed=' + str(result['removed']), flush=True)
     except (RuntimeError, BlockingIOError, OSError, sqlite3.Error) as exc:
         print('Migration checkpoint startup retention deferred: ' + type(exc).__name__, flush=True)
+    threading.Thread(target=daily_loop, name='migration-daily', daemon=True).start()
     with Server(str(SOCKET),Handler) as server:
         os.chmod(SOCKET,0o600); server.serve_forever()
