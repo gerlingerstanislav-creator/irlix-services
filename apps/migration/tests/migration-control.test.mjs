@@ -280,3 +280,16 @@ test('scoped reports never leak other service groups or reuse global report',asy
  assert.equal(scopedReportText(report,{id:'202'},'clients'),'','stale report cannot be read as another operation');
  assert.equal(scopedReportText(report,operation,'employees'),'','no invented report for a service absent from operation');
 });
+
+test('protected rate reconciliation exposes only fixed changed field labels',async()=>{
+ const {protectedTermFieldLabels,scopedReportText}=await import('../src/migration-control-model.js');
+ assert.deepEqual(protectedTermFieldLabels({changed_fields:['hourly_rate','valid_to','private_data']}),['ставка за час','дата окончания условия']);
+ assert.deepEqual(protectedTermFieldLabels({changed_fields:'hourly_rate'}),[]);
+ const operation={id:'370',services:['clients']};
+ const report={operation,runs:[{service:'clients',mode:'migrate',status:'partial',run_id:384}],
+   root_cause_groups:[{service:'clients',table:'rates',code:'PROTECTED_TERM_CHANGE',severity:'error',message:'Сверьте снимок',count:1,
+     examples:[{context:{changed_fields:['hourly_rate','valid_to','private_data']}}]}]};
+ const text=scopedReportText(report,operation,'clients');
+ assert.match(text,/Изменились: ставка за час, дата окончания условия/);
+ assert.doesNotMatch(text,/private_data/);
+});
