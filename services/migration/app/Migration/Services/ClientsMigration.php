@@ -3,6 +3,7 @@
 namespace App\Migration\Services;
 
 use App\Migration\Core\SchemaMigration;
+use App\Migration\Core\TargetFieldComparison;
 use App\Migration\Core\SourceRowConflict;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -416,32 +417,57 @@ class ClientsMigration extends SchemaMigration
                     : ['hourly_rate' => $this->amount($r['rate'], 'rates.rate', 9999999999.99)]);
             $existingId = $this->store->mapping('clients', 'rates', $id);
             if ($existingId !== null) {
-                $old = DB::connection('target_clients')->table('member_terms')->find((int)$existingId);
+                $old = DB::connection('target_clients')->table('member_terms')->find((int) $existingId);
+                if (!$old) throw new SourceRowConflict('MAPPED_TARGET_MISSING',
+                    'Сопоставленное коммерческое условие отсутствует в целевой системе; нужна сверка mapping.',
+                    ['target_mapping_present' => true]);
                 $changedFields = [];
                 foreach ($termPayload as $field => $value) {
-                    if ($old && ($value === null ? $old->$field !== null : (string)$old->$field !== (string)$value)) {
-                        if ($old->$field !== null && is_numeric($old->$field) && is_numeric($value)
-                            && abs((float)$old->$field - (float)$value) < 0.000001) continue;
+                    if (!TargetFieldComparison::matches($old->$field ?? null, $value, $field)) {
                         $changedFields[] = $field;
                     }
                 }
-                // Legacy Clients amounts were intentionally left NULL before its APP_KEY
-                // was recovered. Filling that one missing value is not a rewrite of
-                // previously agreed terms; dates, identity, hours and all other fields
-                // must still match exactly. Zero is a valid recovered amount.
-                $missingAmountOnly = $old !== null
-                    && $old->hourly_rate === null
+                // A legacy encrypted amount can safely fill a previously
+                // unknown NULL, but no other commercial change is exempt.
+                $missingAmountOnly = $old->hourly_rate === null
                     && $changedFields === ['hourly_rate']
                     && isset($termPayload['hourly_rate']);
                 if ($changedFields && !$missingAmountOnly) {
-                    $clientId = DB::connection('target_clients')->table('client_members')->where('id', $member)->value('client_id');
-                    $locked = DB::connection('target_clients')->table('reporting_periods')
-                        ->where('client_id', $clientId)->where('status', '<>', 'Новый')
-                        ->whereDate('period_start', '<=', $to ?? '9999-12-31')
-                        ->whereDate('period_end', '>=', $from)->exists();
-                    if ($locked) throw new SourceRowConflict('PROTECTED_TERM_CHANGE',
-                        'Изменение уже перенесённого условия пересекает отправленный отчётный период. Требуется сверка снимка.',
-                        ['changed_fields' => $changedFields]);
+                    $clientId = DB::connection('target_clients')->table('client_members')
+                        ->where('id', $member)->value('client_id');
+                    if ($clientId === null) throw new SourceRowConflict('MAPPED_CLIENT_MEMBER_MISSING',
+                        'У ранее сопоставленного условия отсутствует клиентское подключение.',
+                        ['target_mapping_present' => true]);
+
+                    // A date move can leave the *new* interval outside the
+                    // submitted report while the *old* interval was inside.
+                    // Protect the entire old/new envelope, not only the new
+                    // source dates. This is conservative until a versioned
+                    // financial reconciliation workflow is approved.
+                    $oldFrom = substr((string) $old->valid_from, 0, 10);
+                    $oldTo = $old->valid_to === null ? null : substr((string) $old->valid_to, 0, 10);
+                    if (!preg_match('/^\\d{4}-\\d{2}-\\d{2}$/D', $oldFrom)
+                        || ($oldTo !== null && !preg_match('/^\\d{4}-\\d{2}-\\d{2}$/D', $oldTo))) {
+                        throw new SourceRowConflict('MAPPED_TERM_DATES_INVALID',
+                            'Даты ранее сопоставленного условия невозможно безопасно сопоставить.',
+                            ['changed_fields' => $changedFields]);
+                    }
+                    $protectedFrom = min($oldFrom, $from);
+                    $protectedTo = $oldTo === null || $to === null ? null : max($oldTo, $to);
+                    $query = DB::connection('target_clients')->table('reporting_periods')
+                        ->where('client_id', $clientId)
+                        ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '<>', 'Новый'))
+                        ->whereDate('period_end', '>=', $protectedFrom);
+                    if ($protectedTo !== null) $query->whereDate('period_start', '<=', $protectedTo);
+                    if ($query->exists()) throw new SourceRowConflict('PROTECTED_TERM_CHANGE',
+                        'Условия отличаются от источника и затрагивают уже отправленный отчётный период. '
+                        .'Автоматическая перезапись финансовой истории запрещена; нужна единая сверка '
+                        .'защищённых периодов, а не исправление отдельных строк.',
+                        ['changed_fields' => $changedFields,
+                         'target_interval' => ['from' => $oldFrom, 'to' => $oldTo],
+                         'source_interval' => ['from' => $from, 'to' => $to],
+                         'reconciliation_type' => 'protected_financial_period',
+                         'automatic_override_allowed' => false]);
                 }
             }
             $this->noOverlap('rates', $id, 'member_terms', ['client_member_id' => $member], 'valid_from', 'valid_to', $from, $to);
