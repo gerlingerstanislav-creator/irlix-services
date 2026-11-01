@@ -7,6 +7,7 @@ use App\Migration\Core\LegacyReader;
 use App\Migration\Core\EmploymentConflictDetails;
 use App\Migration\Core\EmploymentPeriodSynchronizer;
 use App\Migration\Core\MigrationStore;
+use App\Migration\Core\TargetFieldComparison;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\DB;
@@ -62,7 +63,7 @@ final class EmployeesMigration implements ServiceMigration
 
         $summary = [
             'departments' => ['created' => 0, 'matched' => 0],
-            'employees' => ['created' => 0, 'updated' => 0],
+            'employees' => ['created' => 0, 'updated' => 0, 'unchanged' => 0],
             'employment_periods' => 0,
             'employment_periods_updated' => 0,
             'roles' => 0,
@@ -148,15 +149,26 @@ SQL);
                 'is_remote' => (bool) $employee->is_remote,
                 'hired_at' => $this->usableDate($employee->hired_at),
                 'fired_at' => $this->usableDate($employee->dismissed_at),
-                'updated_at' => now(),
             ];
 
             if ($existing) {
                 $targetId = (int) $existing->id;
-                $target->table('employees')->where('id', $targetId)->update($payload);
-                $summary['employees']['updated']++;
+                $changed = [];
+                foreach ($payload as $field => $value) {
+                    if (!TargetFieldComparison::matches($existing->{$field} ?? null, $value, $field)) {
+                        $changed[$field] = $value;
+                    }
+                }
+                if ($changed) {
+                    $target->table('employees')->where('id', $targetId)
+                        ->update($changed + ['updated_at' => now()]);
+                    $summary['employees']['updated']++;
+                } else {
+                    $summary['employees']['unchanged']++;
+                }
             } else {
                 $targetId = (int) $target->table('employees')->insertGetId($payload + [
+                    'updated_at' => now(),
                     'identity_status' => 'not_provisioned',
                     'onboarding_email_status' => 'not_requested',
                     'created_at' => $employee->created_at ?: now(),
