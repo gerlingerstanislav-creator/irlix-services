@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict');const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 (async()=>{const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE,args:['--no-sandbox','--disable-dev-shm-usage','--use-gl=angle','--use-angle=swiftshader','--disable-gpu']});const page=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));const embedded=process.env.MIGRATION_EMBEDDED==='1';const routePath=embedded?'/system/migration/control/':'/migration/control/';const storagePrefix=embedded?'irlix.system.auth':'irlix.migration.auth';const base=process.env.MIGRATION_PREVIEW||'http://127.0.0.1:5173/';const issuer=new URL('/keycloak/auth/realms/irlix',base).href;
 await page.addInitScript(({issuer,storagePrefix})=>{sessionStorage.setItem(storagePrefix+'.tokens',JSON.stringify({access_token:`e30.${btoa(JSON.stringify({iss:issuer,exp:Math.floor(Date.now()/1000)+3600,name:'Synthetic Operator'}))}.synthetic`}));Object.defineProperty(navigator,'clipboard',{value:{writeText:()=>Promise.reject(Error('Denied'))}});},{issuer,storagePrefix});let status='running',offline=false,forbidden=false,accessOffline=false,slowReport=false,brokenReport=false,noOperation=false,reports=0,active=0,maxActive=0;const calls=[];
-const op=id=>({id,action:'migrate',scope:'clients',services:['clients'],status:id==='99'?'cancelled':status,phase:'migrate',updated_at:status,started_at:1700000000,data_outcome:'partial',cancel_reason:id==='99'?'Synthetic manual stop':'',runs:[{id:3,service:'clients',mode:'migrate',status}],snapshot_ids:{clients:'55'}});
+const op=id=>({id,action:'migrate',scope:'clients',services:['clients'],status:id==='99'?'cancelled':status,phase:'dry-run',current_service:status==='running'?'clients':null,updated_at:status,started_at:1700000000,data_outcome:'partial',cancel_reason:id==='99'?'Synthetic manual stop':'',runs:[{id:3,service:'clients',mode:'migrate',status}],snapshot_ids:{clients:'55'}});
 const report=id=>({operation:op(id),chat_summary:`Synthetic report ${id}`,implementation_revision:'synthetic-revision',
  coverage:{expected_unprocessed_rows:108,semantic_complete:false},
  service_evidence:[{service:'clients',status:'partial',write_processed:133,write_total:241,evidence_status:'partial'}],
@@ -47,6 +47,9 @@ assert.equal(await page.locator('.mctrl-tree-root').count(),1,'one operation roo
 assert.equal(await page.locator('.mctrl-tree-service').count(),1,'service row below root');
 assert.equal(await page.locator('.mctrl-tree-service .mctrl-service-indicator').count(),0,'service no longer has standalone spinner or ring');
 assert.equal(await page.locator('.mctrl-tree-service .mctrl-tree-status-stage').count(),4,'four plain-text stage statuses are visible');
+assert.match(await page.locator('.mctrl-tree-service .mctrl-active-service').innerText(),/Выполняется/,'live service is visibly running while archived status is unknown');
+assert.match(await page.locator('.mctrl-tree-service .mctrl-tree-status-stage--active').innerText(),/Проверка переноса/,'current coordinator phase is highlighted before a report is archived');
+assert.equal(await page.locator('.mctrl-tree-service .mctrl-tree-status-stage--active .mctrl-tree-stage-state-icon--running').count(),1,'active phase has a spinner');
 await page.locator('.mctrl-tree-service').hover();
 const rowColors=await page.evaluate(()=>{
  const row=document.querySelector('.mctrl-tree-service');
@@ -61,7 +64,7 @@ assert.equal(await page.locator('.mctrl-tree-table tbody tr.mctrl-tree-entity').
 assert.equal(await page.locator('.mctrl-tree-table .mctrl-tree-service td').count(),5,'service metrics occupy six aligned columns');
 assert.equal(await page.locator('.mctrl-tree-stages-row').count(),1,'global checkpoint remains, service stage strip removed');
 assert.equal(await page.locator('.mctrl-tree-snapshot-row .mctrl-tree-stage').count(),1,'global checkpoint remains separate');
-assert.match(await page.locator('.mctrl-tree-status-stage--active').innerText(),/Запись данных/,'active stage uses ordinary text');
+assert.match(await page.locator('.mctrl-tree-status-stage--active').first().innerText(),/Проверка переноса/,'active stage uses ordinary text');
 assert.equal(await page.locator('.mctrl-tree-service td:nth-child(5) .mctrl-tree-extra').count(),1,'supplementary information has correct column');
 await page.getByRole('button',{name:'Разобрать ошибки Клиенты'}).click();
 await page.getByText('Ошибки переноса · расследование',{exact:true}).waitFor();
