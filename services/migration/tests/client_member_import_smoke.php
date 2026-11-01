@@ -259,6 +259,10 @@ try {
         'Changed workload with missing rate must still be protected');
     $clients->fixture['rates'][0]['workload'] = 8;
     $clients->fixture['rates'][1]['workload'] = 8;
+    $clients->fixture['rates'][1]['rate'] = $cipher->encryptString('1500.50');
+    check($clients->fixture['rates'][0]['rate'] !== $clients->fixture['rates'][1]['rate']
+        && runFixture($clients, true)['conflicts']===0,
+        'Distinct encrypted payloads of equal amounts must coalesce without a false interval conflict');
     check(runFixture($clients, false)['conflicts']===0, 'Backfill deferred encrypted rates without remapping');
     $afterBackfill = target('clients')->table('member_terms')->orderBy('id')->get()->toArray();
     check(array_column($afterBackfill, 'id')===$originalIds,
