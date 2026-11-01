@@ -114,5 +114,69 @@ jobs:
           else
             echo "WORKER_PHP_PROCESSES=unknown_no_container"
           fi
+          # One-off investigation of completed Clients control operation.
+          # Read-only metadata, no legacy connection, monetary amounts,
+          # employee details, source row IDs, SQL or target writes.
+          $SUDO sh -c "$COMPOSE exec -T migration-ops python3 -" <<'PY'
+          import json, re, sqlite3
+          from pathlib import Path
+          expected_operation = '1793516497642312'
+          try:
+              ops = json.loads(Path('/ops/console.json').read_text())
+              latest = ops.get('operation') or {}
+              print('CLIENTS_384_COORDINATOR_MATCH', str(latest.get('id')) == expected_operation)
+              with sqlite3.connect('file:/data/migration.sqlite?mode=ro', uri=True, timeout=5) as db:
+                  db.row_factory=sqlite3.Row
+                  db.execute('PRAGMA query_only=ON')
+                  rows=db.execute(
+                      "SELECT id,service,mode,status,summary FROM migration_runs "
+                      "WHERE id BETWEEN 381 AND 384 ORDER BY id"
+                  ).fetchall()
+                  visible=[{'mode':r['mode'],'status':r['status']} for r in rows if r['service']=='clients']
+                  print('CLIENTS_384_RUN_STATES',json.dumps(visible,sort_keys=True))
+                  migrate=next((r for r in rows if r['service']=='clients' and r['mode']=='migrate'),None)
+                  inspect=next((r for r in rows if r['service']=='clients' and r['mode']=='inspect'),None)
+                  if migrate:
+                      name_ok=lambda v: bool(re.fullmatch(r'[a-z_]{1,48}',str(v)))
+                      table_progress={}
+                      for p in db.execute(
+                          "SELECT table_name,total,processed_count FROM migration_table_progress "
+                          "WHERE migration_run_id=?",(migrate['id'],)
+                      ):
+                          if name_ok(p['table_name']):
+                              table_progress[p['table_name']]={'total':p['total'],'processed':p['processed_count']}
+                      items=[]
+                      if inspect:
+                          inventory=(json.loads(inspect['summary'] or '{}').get('inventory') or {})
+                          for table in inventory.get('tables') or []:
+                              name=table.get('name')
+                              schema=table.get('schema')
+                              if schema!='public' or not name_ok(name): continue
+                              total=table.get('total')
+                              if not isinstance(total,int): continue
+                              processed=(table_progress.get(name) or {}).get('processed') or 0
+                              remaining=max(0,total-int(processed))
+                              if remaining:
+                                  status=(table.get('expectation') or {}).get('status','undocumented')
+                                  if status not in ('expected','undocumented','excluded'): status='unknown'
+                                  items.append({'table':name,'remaining':remaining,'expectation':status})
+                      print('CLIENTS_384_REMAINING',json.dumps(sorted(items,key=lambda x:x['table'])[:35],sort_keys=True))
+                      protected=db.execute(
+                          "SELECT context FROM migration_conflicts WHERE migration_run_id=? "
+                          "AND code='PROTECTED_TERM_CHANGE' AND severity='error' LIMIT 10",
+                          (migrate['id'],)
+                      ).fetchall()
+                      allowed=('hourly_rate','valid_to','valid_from','hours_per_day','technology','level','client_member_id')
+                      differences=[]
+                      for conflict in protected:
+                          context=json.loads(conflict['context'] or '{}')
+                          fields=context.get('changed_fields') or []
+                          differences.append(sorted(set(f for f in fields if f in allowed)))
+                      print('CLIENTS_384_PROTECTED_FIELDS',json.dumps({
+                          'conflicts':len(protected),'changed_fields':differences
+                      },sort_keys=True))
+          except Exception as exc:
+              print('CLIENTS_384_PROBE_UNAVAILABLE',type(exc).__name__)
+          PY
           echo "PROBE_FINISHED: no state changed"
           REMOTE
