@@ -27,6 +27,10 @@ try {
     $target->statement('CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, status TEXT, created_at TEXT, updated_at TEXT)');
     $store = app(\App\Migration\Core\MigrationStore::class);
     $module = new ControlFixture($store);
+    $attemptRateFate = \App\Migration\Core\FieldMappingRegistry::resolve('clients','public','attempts','rate');
+    ensureControl($attemptRateFate['fate']==='metadata_only' && $attemptRateFate['target']===null,
+        'Legacy proposed attempt rates stay in protected metadata, not a removed target column');
+
     // A deliberately preserved legacy row is evidenced but not a warning or
     // domain success. Multiple facts on the same source ID count once.
     $infoRun = $store->beginRun('clients','migrate');
