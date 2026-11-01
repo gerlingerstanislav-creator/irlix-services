@@ -95,6 +95,10 @@ await page.getByRole('button',{name:'Этапы',exact:true}).first().click();
 assert.match(await page.locator('.irlix-drawer').last().innerText(),/Этапы/);
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 assert.equal(await page.locator('.mctrl-tree-service th').getByRole('button',{name:'Точки отката: Клиенты'}).count(),1,'service diskette beside settings');
+const downloadPromise=page.waitForEvent('download');
+await page.locator('.mctrl-tree-root').getByRole('button',{name:'Скачать JSON'}).click();
+const downloaded=await downloadPromise;
+assert.equal(downloaded.suggestedFilename(),'migration-control-100.json','authenticated full report can be downloaded for review');
 assert.equal(await page.locator('.mctrl-tree-table thead th').count(),6,'rollback column removed');
 assert.equal(await page.locator('.mctrl-tree-service td:last-child').getByRole('button',{name:'Отчёт: Клиенты'}).count(),1,'service report in actions');
 const viewportFill=await page.evaluate(()=>{

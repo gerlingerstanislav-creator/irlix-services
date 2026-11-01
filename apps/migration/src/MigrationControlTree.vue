@@ -25,6 +25,7 @@ const missingServices=computed(()=>{
    .map(service=>({service,label:serviceTitles[service]}));
 });
 const rootOpen=ref(true),servicesOpen=ref({}),detail=ref(null),full=ref(null),loading=ref(false),problem=ref('');
+const downloading=ref(false),downloadError=ref('');
 const hiddenPanel=ref(null);
 const workbenchOpen=ref(false),workbenchService=ref('timesheets'),workbenchTable=ref('');
 function openWorkbench(service='timesheets',table=''){workbenchService.value=service;workbenchTable.value=table;workbenchOpen.value=true;}
@@ -90,6 +91,25 @@ async function loadItems(){
  }catch(e){if(seq===request)problem.value=controller.signal.aborted?'Список событий недоступен: превышено время ожидания Migration API':'Список событий недоступен: '+e.message;}
  finally{clearTimeout(timeout);controllers.delete(controller);if(seq===request)loading.value=false;}
 }
+async function downloadReport(){
+ if(downloading.value)return;
+ downloading.value=true;downloadError.value='';
+ const id=String(props.operation.id),controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),30000);
+ controllers.add(controller);
+ try{
+  const response=await props.auth.fetch('/api/migration/control/operations/'+encodeURIComponent(id)+'/report?download=1',
+   {headers:{Accept:'application/json'},cache:'no-store',signal:controller.signal});
+  if(!response.ok)throw new Error('HTTP '+response.status);
+  const body=await response.json();
+  if(String(props.operation.id)!==id)return;
+  const blob=new Blob([JSON.stringify(body,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob);
+  try{
+   const link=document.createElement('a');link.href=url;link.download='migration-control-'+id+'.json';
+   document.body.appendChild(link);link.click();link.remove();
+  }finally{setTimeout(()=>URL.revokeObjectURL(url),1000);}
+ }catch(e){downloadError.value=controller.signal.aborted?'Превышено время ожидания отчёта.':e.message;}
+ finally{clearTimeout(timeout);controllers.delete(controller);downloading.value=false;}
+}
 onBeforeUnmount(()=>{seq++;for(const controller of controllers)controller.abort();});
 const proof=node=>node.evidence_status==='full'?'Доказательства полные':node.evidence_status==='partial'?'Доказательства частичные':'Доказательства неизвестны';
 </script>
@@ -138,11 +158,13 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
      <td><div class="mctrl-tree-row-actions">
        <UiButton variant="ghost" compact @click="open('stages')">Этапы</UiButton>
        <UiButton variant="secondary" compact :disabled="unverifiedReport" aria-label="Отчёт: Все сервисы" @click="emit('report','all')">Отчёт</UiButton>
+       <UiButton variant="ghost" compact :disabled="unverifiedReport||downloading" @click="downloadReport">Скачать JSON</UiButton>
        <UiButton v-if="tree.issue_groups?.some(g=>g.severity==='info')" variant="ghost" compact
          aria-label="Сведения: Все сервисы" @click="open('issues',null,'info')">Сведения</UiButton>
        <UiButton variant="ghost" compact :disabled="busy" @click="emit('reset')">Очистить Clients / Timesheets</UiButton>
      </div></td>
     </tr>
+    <tr v-if="downloadError" class="mctrl-tree-empty"><td colspan="6" role="alert">Не удалось скачать отчёт: {{downloadError}}</td></tr>
     <tr class="mctrl-tree-stages-row mctrl-tree-snapshot-row">
      <td colspan="6" class="mctrl-tree-stages-cell">
       <div class="mctrl-tree-stages mctrl-tree-stages--global">
