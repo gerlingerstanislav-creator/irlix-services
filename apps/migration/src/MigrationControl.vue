@@ -4,7 +4,7 @@ import {UiButton,UiDrawer,UiIcon,UiLoader,UiSearchSelect} from '@irlix/ui';
 import MigrationControlTree from './MigrationControlTree.vue';
 import MigrationAdministration from './MigrationAdministration.vue';
 import {
-  dateText,isActive,lastMigrationAge,scopedReportText,serviceTitles,stageTitles,statusText,text,
+  dateText,isActive,checkpointAge,scopedReportText,serviceTitles,stageTitles,statusText,text,
 } from './migration-control-model.js';
 import './migration-control.css';
 
@@ -78,7 +78,7 @@ function beginTransfer(scope='all'){
  launchScope.value='all';launchContext.value='new';launchSourceId.value='';drawer.value='start';
 }
 function requestStop(){if(!isActive(state.value.operation)||pending.value||cancelRequested.value)return;reason.value='';drawer.value='cancel';}
-const serviceAge=scope=>lastMigrationAge(state.value.last_migrations,scope);
+const backupAge=scope=>checkpointAge(state.value.snapshots,scope);
 const cancelRequested=computed(()=>Boolean(state.value.operation?.cancel_requested)
   ||(isActive(state.value.operation)&&cancelAcknowledgedId.value===String(state.value.operation?.id)));
 
@@ -286,14 +286,13 @@ onBeforeUnmount(()=>{
   <p v-if="!operation&&!loading&&!offline">Перенос ещё не запускался. Настройте подключения и начните новый перенос.</p>
   <section v-if="!operation&&!loading&&!offline" class="mctrl-setup-table">
     <table class="irlix-data-table">
-      <thead><tr><th scope="col">Перенос / сервис</th><th scope="col">Последняя запись</th><th scope="col">Действия</th></tr></thead>
+      <thead><tr><th scope="col">Перенос / сервис</th><th scope="col">Действия</th></tr></thead>
       <tbody>
         <tr><th scope="row"><div class="mctrl-tree-node">
           <strong class="mctrl-tree-title">Весь перенос</strong>
           <UiButton variant="ghost" compact class="mctrl-inline-icon" :disabled="busy" aria-label="Запустить перенос: Все сервисы" @click="beginTransfer('all')"><UiIcon name="play"/></UiButton>
-          <UiButton variant="ghost" compact class="mctrl-inline-icon" aria-label="Точки отката: Все сервисы" @click="openBackups('all','')"><UiIcon name="save"/></UiButton>
+          <UiButton variant="ghost" compact class="mctrl-inline-icon" :class="{'mctrl-backup-icon--stale':backupAge('all').stale}" :title="backupAge('all').title" aria-label="Точки отката: Все сервисы" @click="openBackups('all','')"><UiIcon name="save"/></UiButton>
         </div></th>
-        <td><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':serviceAge('all').stale}">{{serviceAge('all').label}}</span></td>
         <td><div class="mctrl-tree-row-actions">
           <UiButton variant="secondary" compact :disabled="busy" @click="openDisposableReset">Очистить Clients / Timesheets</UiButton>
         </div></td></tr>
@@ -304,10 +303,9 @@ onBeforeUnmount(()=>{
               :aria-label="'Запустить перенос: '+serviceTitles[key]" @click="beginTransfer(key)"><UiIcon name="play"/></UiButton>
             <UiButton variant="ghost" compact class="mctrl-service-settings-trigger"
               :aria-label="'Настройки подключения: '+serviceTitles[key]" @click="configureService(key)"><UiIcon name="settings"/></UiButton>
-            <UiButton variant="ghost" compact class="mctrl-inline-icon"
+            <UiButton variant="ghost" compact class="mctrl-inline-icon" :class="{'mctrl-backup-icon--stale':backupAge(key).stale}" :title="backupAge(key).title"
               :aria-label="'Точки отката: '+serviceTitles[key]" @click="openBackups(key,'')"><UiIcon name="save"/></UiButton>
           </div></th>
-          <td><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':serviceAge(key).stale}">{{serviceAge(key).label}}</span></td>
           <td class="mctrl-tree-no-data">—</td>
         </tr>
       </tbody>
@@ -315,7 +313,7 @@ onBeforeUnmount(()=>{
   </section>
   <MigrationControlTree v-if="operation" :key="String(operation.id)" :operation="operation"
     :report="selectedReport" :auth="auth" :busy="busy" :active-operation="isActive(state.operation)?state.operation:null"
-    :last-migrations="state.last_migrations||{}" :restore-history="state.restore_history||[]"
+    :snapshots="state.snapshots||{}" :restore-history="state.restore_history||[]"
     @settings="configureService" @backups="scope=>openBackups(scope,'')"
     @start="beginTransfer" @stop="requestStop" @report="reportFor" @reset="openDisposableReset"/>
   <MigrationAdministration :auth="auth" :view="adminView" :service="adminService" :backup-scope="backupScope" :backup-action-request="backupAction" :busy="busy" @close="adminView=''" @changed="refresh"/>

@@ -1,11 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {text,entityRows,inventoryRows,causeGroups,stageRows,tableEvidenceRows,serviceEvidenceRows,migrationTree,diagnosticItems,progressText,serviceIndicatorState,serviceIndicatorLabels} from '../src/migration-control-model.js';
+import {text,entityRows,inventoryRows,causeGroups,stageRows,stageStripStatus,checkpointAge,tableEvidenceRows,serviceEvidenceRows,migrationTree,diagnosticItems,progressText,serviceIndicatorState,serviceIndicatorLabels} from '../src/migration-control-model.js';
 test('unknown values remain unknown while confirmed zero remains zero',()=>{assert.equal(text(null),'Нет данных');assert.equal(text(undefined),'Нет данных');assert.equal(text(0),'0');});
 test('data outcomes only use migration stage and preserve unknown counters',()=>{const report={runs:[{service:'clients',mode:'inspect',tables:[{table_name:'users',total:99}]},{service:'clients',mode:'migrate',tables:[{table_name:'users',total:null,source_outcomes:{metadata_only:7}}]}]};assert.equal(entityRows(report).length,1);assert.equal(entityRows(report)[0].total,null);assert.equal(entityRows(report,'employees').length,0);});
 test('inventory deduplicates snapshots by service and includes unknown fields',()=>{const inventory={service:'clients',tables:[{name:'legacy',columns:[{name:'unexpected',mapping:{fate:'unmapped'}}]}]};assert.equal(inventoryRows({inventory:[inventory,inventory,null]}).length,1);assert.equal(inventoryRows({inventory:[inventory]})[0].mapping.fate,'unmapped');});
 test('groups are independent of paged errors and examples limited to three',()=>{const report={root_cause_groups:Array.from({length:31},(_,i)=>({service:'clients',code:`C${i}`,count:201})),runs:[{service:'clients',diagnostics:{items:Array.from({length:205},(_,i)=>({code:'C0',legacy_id:i}))}}]};assert.equal(causeGroups(report).length,31);assert.equal(causeGroups(report)[0].count,201);assert.equal(causeGroups(report)[0].examples.length,3);assert.equal(causeGroups(report,'vacations').length,0);});
 test('stages include dry-run contract and no synthetic success for unregistered stage',()=>{const rows=stageRows({services:['clients'],runs:[{service:'clients',mode:'dry-run',status:'completed'}]},null);assert.equal(rows.find(row=>row.mode==='dry-run').status,'completed');assert.equal(rows.find(row=>row.mode==='validate').known,false);});
+test('conflicted preflight is visible as failure rather than an empty step',()=>{
+ const step=stageRows({services:['clients'],runs:[{service:'clients',mode:'dry-run',status:'conflicts'}]},null).find(row=>row.mode==='dry-run');
+ assert.equal(stageStripStatus(step),'failed');
+});
+test('diskette age uses compatible checkpoints, including a global fallback',()=>{
+ const now=Date.parse('2026-11-01T12:00:00Z');
+ const points={clients:[{scope:'clients',compatible:false,created_at:'2026-11-01T11:00:00Z'}],
+  all:[{scope:'all',compatible:true,created_at:'2026-11-01T10:00:00Z'}]};
+ assert.equal(checkpointAge(points,'clients',now).stale,false);
+ assert.equal(checkpointAge(points,'all',now).stale,false);
+ assert.equal(checkpointAge({},'clients',now).stale,true);
+ assert.equal(checkpointAge(points,'clients',now+86400001).stale,true);
+});
 test('live counters replace queued archived stage and snapshot remains a separate stage',()=>{const rows=stageRows({scope:'clients',services:['clients'],phase:'snapshot',status:'running',runs:[{service:'clients',mode:'migrate',status:'running',tables:[{total:10,processed_count:4}]}]},{runs:[{service:'clients',mode:'migrate',status:'queued',tables:[]}]});assert.equal(rows[0].mode,'snapshot');assert.equal(rows[0].status,'running');const migrate=rows.find(row=>row.mode==='migrate');assert.equal(migrate.status,'running');assert.equal(migrate.run.total,10);assert.equal(migrate.run.processed_count,4);});
 
 test('explicit field rules classify tables without guessing from zero counters',()=>{
@@ -147,7 +160,8 @@ test('manual checkpoint controls and text report replace implicit backup/JSON do
  assert.match(tree,/emit\('report','all'\)/);
  assert.match(tree,/emit\('backups',svc\.service\)/);
  assert.match(tree,/emit\('report',svc\.service\)/);
- assert.match(tree,/mctrl-last-write--stale/);
+ assert.match(tree,/mctrl-backup-icon--stale/);
+ assert.doesNotMatch(tree,/Последняя запись:/);
  assert.match(tree,/>Отчёт<\/UiButton>/);
  assert.doesNotMatch(control,/JSON-отчёт|async function download\(/);
  assert.doesNotMatch(control,/Перед записью создаётся точка отката/);

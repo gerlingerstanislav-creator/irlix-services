@@ -1,7 +1,7 @@
 import {summarizeIssues} from './migration-control-visibility.js';
 export const serviceTitles = {all:'Все сервисы',employees:'Сотрудники',vacations:'Отпуска',clients:'Клиенты',timesheets:'Таймшиты'};
 export const stageTitles = {snapshot:'Точка отката',inspect:'Чтение источника','dry-run':'Проверка переноса',migrate:'Запись данных',validate:'Проверка результата'};
-export const statusTitles = {queued:'В очереди',running:'Выполняется',completed:'Завершено',partial:'Частично',failed:'Ошибка',cancelled:'Остановлено',interrupted:'Прервано',skipped:'Пропущено',pending:'Ожидает',not_started:'Не начато',changed:'Данные изменены',unknown:'Неизвестно',checked:'Проверено',metadata_only:'Только metadata',domain_written:'Перенесено',reference_matched:'Сопоставлено',deferred:'Отложено',unmapped:'Не описано',blocked:'Заблокировано',direct:'Прямое копирование',transformed:'Преобразовано',reference:'Сопоставленная ссылка',excluded:'Исключено с объяснением',expected:'Ожидается перенос',undocumented:'Решение не описано',recorded:'Результат подтверждён'};
+export const statusTitles = {queued:'В очереди',running:'Выполняется',completed:'Завершено',partial:'Частично',conflicts:'Есть конфликты',failed:'Ошибка',cancelled:'Остановлено',interrupted:'Прервано',skipped:'Пропущено',pending:'Ожидает',not_started:'Не начато',changed:'Данные изменены',unknown:'Неизвестно',checked:'Проверено',metadata_only:'Только metadata',domain_written:'Перенесено',reference_matched:'Сопоставлено',deferred:'Отложено',unmapped:'Не описано',blocked:'Заблокировано',direct:'Прямое копирование',transformed:'Преобразовано',reference:'Сопоставленная ссылка',excluded:'Исключено с объяснением',expected:'Ожидается перенос',undocumented:'Решение не описано',recorded:'Результат подтверждён'};
 export const text = value => value === null || value === undefined || value === '' ? 'Нет данных' : String(value);
 export const statusText = value => statusTitles[value] || text(value);
 export const isActive = operation => ['queued','running'].includes(operation?.status??operation?.state);
@@ -44,6 +44,21 @@ export function lastMigrationAge(lastMigrations,scope,now=Date.now()) {
  const prefix=scope==='all'?'Самая давняя запись: ':'Последняя запись: ';
  return {label:prefix+age+' назад',stale:elapsed>86400,known:true,
    title:(serviceTitles[oldest.service]||oldest.service)+' · '+dateText(Number(oldest.at))+' · '+statusText(oldest.status)};
+}
+/** Checkpoint freshness is independent of the latest data-write timestamp.
+ * A compatible global checkpoint also protects an individual service.
+ */
+export function checkpointAge(snapshots,scope,now=Date.now()) {
+ const points=[...(snapshots?.[scope]||[]).map(point=>({...point,scope})),
+  ...(scope==='all'?[]:(snapshots?.all||[]).map(point=>({...point,scope:'all'})))]
+  .filter(point=>point?.compatible===true)
+  .map(point=>({scope:point.scope,at:Date.parse(point.created_at)}))
+  .filter(point=>Number.isFinite(point.at))
+  .sort((a,b)=>b.at-a.at);
+ if(!points.length)return {stale:true,title:'Совместимая точка отката не найдена'};
+ const latest=points[0];
+ return {stale:now-latest.at>86400000,
+  title:'Последняя точка отката · '+(serviceTitles[latest.scope]||latest.scope)+' · '+dateText(latest.at/1000)};
 }
 export function reportRuns(report,service='all') { return (report?.runs || []).filter(run=>service==='all'||run.service===service); }
 /**
@@ -190,7 +205,8 @@ export function stageRows(operation,report,service='all') {
   const run=source?{...source,...source.run}:null;
   if(run?.tables?.length){for(const name of ['total','processed_count'])if(run[name]==null)run[name]=run.tables.every(table=>table[name]!=null)?run.tables.reduce((sum,table)=>sum+Number(table[name]),0):null;}
   const result=results.get(key), stoppedAt=order.indexOf(result?.stage);
-  const provenNotStarted=!run&&result?.status==='failed'&&stoppedAt>=0&&order.indexOf(mode)>stoppedAt;
+  const provenNotStarted=!run&&(result?.status==='skipped'||
+    ['failed','partial'].includes(result?.status)&&stoppedAt>=0&&order.indexOf(mode)>stoppedAt);
   // A coordinator phase can be shown as live, but never invent a completed stage.
   const activeCurrent=!run&&isActive(operation)&&(operation?.current_service||operation?.last_service)===key
     &&(operation?.phase||operation?.last_phase)===mode;
@@ -268,7 +284,7 @@ export function stageStripStatus(stage) {
  if(!stage?.known)return 'unknown';
  if(stage.status==='running')return 'running';
  if(['completed','checked'].includes(stage.status))return 'completed';
- if(['failed','interrupted','partial','cancelled'].includes(stage.status))return 'failed';
+ if(['failed','interrupted','partial','conflicts','cancelled'].includes(stage.status))return 'failed';
  if(['not_started','skipped'].includes(stage.status))return 'skipped';
  return 'waiting';
 }

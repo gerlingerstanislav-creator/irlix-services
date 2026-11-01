@@ -3,10 +3,10 @@ import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue';
 import {UiBadge,UiButton,UiDrawer,UiIcon,UiLoader,UiPanel,UiTreeToggle} from '@irlix/ui';
 import MigrationIdentityMapping from './MigrationIdentityMapping.vue';
 import MigrationErrorWorkbench from './MigrationErrorWorkbench.vue';
-import {migrationTree,diagnosticItems,protectedTermFieldLabels,progressText,lastMigrationAge,serviceTitles,stageRows,stageTitles,stageStripStatus,stageStripTooltip,statusText,text,tone} from './migration-control-model.js';
+import {migrationTree,diagnosticItems,protectedTermFieldLabels,progressText,checkpointAge,serviceTitles,stageRows,stageTitles,stageStripStatus,stageStripTooltip,statusText,text,tone} from './migration-control-model.js';
 import {VISIBILITY_KEY,filterMigrationTree,hiddenEntities,progressPercent,readHidden,saveHidden,updateHidden} from './migration-control-visibility.js';
 
-const props=defineProps({operation:{type:Object,required:true},report:{type:Object,default:null},auth:{type:Object,required:true},busy:{type:Boolean,default:false},lastMigrations:{type:Object,default:()=>({})},restoreHistory:{type:Array,default:()=>[]},activeOperation:{type:Object,default:null}});
+const props=defineProps({operation:{type:Object,required:true},report:{type:Object,default:null},auth:{type:Object,required:true},busy:{type:Boolean,default:false},snapshots:{type:Object,default:()=>({})},restoreHistory:{type:Array,default:()=>[]},activeOperation:{type:Object,default:null}});
 const emit=defineEmits(['start','stop','settings','backups','report','reset']);
 const rawTree=computed(()=>migrationTree(props.report,props.operation));
 const operationIsActive=computed(()=>['queued','running'].includes(props.activeOperation?.status)
@@ -60,7 +60,7 @@ function revealAll(service){
 }
 function showHidden(service){hiddenPanel.value=service;}
 const bar=entity=>progressPercent(entity.processed,entity.total);
-const lastWrite=service=>lastMigrationAge(props.lastMigrations,service);
+const backupAge=service=>checkpointAge(props.snapshots,service);
 
 let seq=0;const controllers=new Set();
 watch(()=>props.operation.id,()=>{rootOpen.value=true;servicesOpen.value={};detail.value=null;hiddenPanel.value=null;workbenchOpen.value=false;full.value=null;problem.value='';seq++;});
@@ -135,7 +135,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
          aria-label="Запустить перенос: Все сервисы" @click="emit('start','all')"><UiIcon name="play"/></UiButton>
        <UiButton v-else variant="ghost" compact class="mctrl-inline-icon" aria-label="Остановить перенос: Все сервисы"
          @click="emit('stop')"><UiIcon name="square"/></UiButton>
-       <UiButton variant="ghost" compact class="mctrl-inline-icon" aria-label="Точки отката: Все сервисы"
+       <UiButton variant="ghost" compact class="mctrl-inline-icon" :class="{'mctrl-backup-icon--stale':backupAge('all').stale}" :title="backupAge('all').title" aria-label="Точки отката: Все сервисы"
          @click="emit('backups','all')"><UiIcon name="save"/></UiButton>
       </div>
      </th>
@@ -151,7 +151,6 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
 
      <td><div class="mctrl-tree-extra">
        <span v-if="tree.hidden_count">Скрыто сущностей: {{tree.hidden_count}}</span>
-       <span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite('all').stale}" :title="lastWrite('all').title">{{lastWrite('all').label}}</span>
      </div></td>
      <td><div class="mctrl-tree-row-actions">
        <UiButton variant="secondary" compact @click="open('stages')">Этапы</UiButton>
@@ -193,7 +192,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
             @click="emit('stop')"><UiIcon name="square"/></UiButton>
           <UiButton variant="ghost" compact class="mctrl-service-settings-trigger" :aria-label="'Настройки подключения: '+svc.label"
              :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
-          <UiButton variant="ghost" compact class="mctrl-inline-icon" :aria-label="'Точки отката: '+svc.label"
+          <UiButton variant="ghost" compact class="mctrl-inline-icon" :class="{'mctrl-backup-icon--stale':backupAge(svc.service).stale}" :title="backupAge(svc.service).title" :aria-label="'Точки отката: '+svc.label"
             @click="emit('backups',svc.service)"><UiIcon name="save"/></UiButton>
          </div>
         <div class="mctrl-tree-status-stages" :aria-label="'Этапы переноса: '+svc.label">
@@ -220,7 +219,6 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
 
        <td><div class="mctrl-tree-extra">
  <UiButton v-if="svc.hidden_count" variant="ghost" compact :aria-label="'Скрытые строки: '+svc.label" @click="showHidden(svc.service)">Скрытые ({{svc.hidden_count}})</UiButton>
- <span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span>
  </div></td><td><div class="mctrl-tree-row-actions">
    <UiButton variant="secondary" compact :disabled="unverifiedReport" :aria-label="'Отчёт: '+svc.label"
      @click="emit('report',svc.service)">Отчёт</UiButton>
@@ -258,12 +256,12 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
           :aria-label="'Запустить перенос: '+svc.label" @click="emit('start',svc.service)"><UiIcon name="play"/></UiButton>
         <UiButton variant="ghost" compact class="mctrl-service-settings-trigger"
           :aria-label="'Настройки подключения: '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
-        <UiButton variant="ghost" compact class="mctrl-inline-icon"
+        <UiButton variant="ghost" compact class="mctrl-inline-icon" :class="{'mctrl-backup-icon--stale':backupAge(svc.service).stale}" :title="backupAge(svc.service).title"
           :aria-label="'Точки отката: '+svc.label" @click="emit('backups',svc.service)"><UiIcon name="save"/></UiButton>
        </div></th>
        <td class="mctrl-tree-no-data">—</td>
        <td class="mctrl-tree-no-data">— / —</td>
-       <td><div class="mctrl-tree-extra"><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span></div></td>
+       <td class="mctrl-tree-no-data">—</td>
        <td class="mctrl-tree-no-data" title="Сервис не участвует в выбранной операции">—</td>
 </tr>
     </template>

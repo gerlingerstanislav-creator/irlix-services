@@ -838,7 +838,7 @@ def build_report(operation):
                                                       and table['source_outcomes'].get('unprocessed') is not None
                                                       for table in migrate_tables)
         if migrate_export is None:
-            write_state = 'not_started' if exact_stage in stage_order and stage_order[exact_stage] < stage_order['migrate'] else 'unknown'
+            write_state = 'not_started' if result_status == 'skipped' or exact_stage in stage_order and stage_order[exact_stage] < stage_order['migrate'] else 'unknown'
         elif not outcomes_known:
             write_state = 'unknown'
         else:
@@ -873,6 +873,8 @@ def build_report(operation):
             consequence = 'По подтверждённой последовательности отказ произошёл до этапа записи; запись этого сервиса не была начата.'
         elif result_status == 'failed':
             consequence = 'Следующие этапы этого сервиса были пропущены; состояние уже выполненных записей определяется только сохранёнными outcome-доказательствами.'
+        elif result_status == 'skipped':
+            consequence = 'Зависимый сервис не запускался; запись данных отсутствует в этой операции.'
         elif result_status == 'partial':
             consequence = 'Часть исхода требует решения или дополнительного доказательства; категории результата не следует суммировать как уникальные строки.'
         else:
@@ -1073,9 +1075,20 @@ def execute(operation):
             return
         # Checkpoints are an explicit, separate operator action. Keep existing
         # snapshots untouched and never create a new one during a data run.
+        dependencies = {'vacations': ('employees',), 'clients': ('employees',),
+                        'timesheets': ('employees', 'clients')}
         for service in operation['services']:
             if cancelled(operation):
                 break
+            outcomes = {item['service']: item['status'] for item in operation['service_results']}
+            blocked_by = [parent for parent in dependencies.get(service, ())
+                          if parent in operation['services'] and outcomes.get(parent) != 'completed']
+            if blocked_by:
+                result(operation, service, 'skipped',
+                       'Зависимый сервис не запускался: сначала разрешите результат '
+                       + ', '.join(blocked_by) + ' в этой операции.',
+                       data_outcome='not_started')
+                continue
             stage = 'inspect'
             stage_status = 'running'
             try:
@@ -1098,17 +1111,14 @@ def execute(operation):
                         update(operation, data_outcome=outcome)
                     if status in ('conflicts', 'partial'):
                         partial = True
-                        if mode == 'dry-run' and service == 'timesheets':
-                            # A partial Timesheets preflight can have genuine
-                            # identity or rate conflicts. Unique member connections
-                            # are proven by the normal importer, not by a separate
-                            # UI checklist or unconditional operator overrides.
-                            # Never proceed to target writes on partial dry-run.
+                        if mode == 'dry-run' and service in ('clients', 'timesheets'):
+                            # Both importers can discover protected terms or
+                            # unresolved identities in read-only preflight.
+                            # Never start target writes after such conflicts.
                             update(operation, message=(
-                                'Timesheets: Dry run выявил нерешённые зависимости. '
-                                'Уникальные подключения сопоставляются автоматически. '
-                                'Изучите коды ошибок в «Разобрать ошибки» и повторите перенос; '
-                                'целевые данные на этапе Dry run не менялись.'
+                                service + ': Проверка переноса выявила нерешённые конфликты. '
+                                'Изучите диагностику и повторите перенос после сверки; '
+                                'запись данных этого сервиса не запускалась.'
                             ))
                             break
                     elif status != 'completed':
