@@ -137,6 +137,15 @@ assertVisibleGears(await gearPaint('.mctrl-tree-service .mctrl-service-settings-
  assert.equal(await play.locator('svg circle').count(),0,'play must not fall back to a circle');
  const stop=page.getByRole('button',{name:'Остановить перенос: Все сервисы'});
  assert.equal(await stop.locator('svg rect').count(),1,'stop is an outlined square, not a fallback circle');
+ for(const button of [disk,play,stop,page.getByRole('button',{name:'Точки отката: Все сервисы'})]){
+  const paint=await button.locator('svg').evaluate(svg=>{
+   const style=getComputedStyle(svg),bounds=svg.getBoundingClientRect();
+   return {stroke:style.stroke,color:getComputedStyle(svg.parentElement).color,
+    strokeWidth:parseFloat(style.strokeWidth),width:bounds.width,height:bounds.height};
+  });
+  assert.equal(paint.stroke,paint.color,'action glyph stroke uses visible button text color');
+  assert.ok(paint.strokeWidth>=1.5&&paint.width>=16&&paint.height>=16,'action glyph has painted dimensions');
+ }
 
 assert.equal(await page.getByRole('button',{name:/^Настройки подключения:/}).count(),4,'all service connections visible even when historical operation includes only one service');
 await page.getByRole('button',{name:'Развернуть весь перенос'}).click();
