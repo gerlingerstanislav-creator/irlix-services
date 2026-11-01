@@ -325,6 +325,9 @@ main.mctrl .mctrl-tree-scroll{flex:1 1 auto;min-height:0;max-height:none;overscr
  stroke-linecap:round;stroke-linejoin:round;
 }
 .mctrl-tree-table .mctrl-service-settings-trigger{flex:0 0 28px}
+.mctrl-active-service{display:inline-flex;align-items:center;gap:7px;font-weight:600;color:var(--irlix-color-primary)}
+.mctrl-active-service-spinner{width:13px;height:13px;box-sizing:border-box;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:mctrl-stage-spin 1s linear infinite}
+@media(prefers-reduced-motion:reduce){.mctrl-active-service-spinner{animation:none;border-top-color:currentColor}}
 .mctrl-tree-row-actions{gap:4px;align-items:center}
 .mctrl-tree-scroll{max-height:calc(100dvh - 136px)}
 @media(max-width:720px){
