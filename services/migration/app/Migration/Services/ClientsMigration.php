@@ -331,6 +331,61 @@ class ClientsMigration extends SchemaMigration
             }
         }
     }
+    /**
+     * Legacy imports can carry a submitted-looking status without a native
+     * Clients/Timesheets approval. Such a historical period must not be
+     * mistaken for a newly sealed commercial snapshot.
+     *
+     * This is intentionally fail-closed: Finance can already have invoices
+     * for act-approved periods, so only pre-act-approved imported periods
+     * with intact migration provenance and no native approval facts qualify.
+     */
+    /** Null means eligible. Safe class codes explain every fail-closed case. */
+    private function unsealedLegacyProtectionReason(object $period): ?string
+    {
+        if (!in_array($period->status ?? null,
+            ['Новый', 'ТШ на согласовании', 'ТШ согласованы', 'Акт на согласовании'], true)) {
+            return 'FINAL_OR_UNKNOWN_REPORTING_STATUS';
+        }
+        if (($period->paid_at ?? null) !== null) return 'PAID_REPORTING_PERIOD';
+        foreach (['timesheet_snapshot', 'timesheet_revision', 'timesheet_freeze_token'] as $field) {
+            if (($period->$field ?? null) !== null) return 'NATIVE_TIMESHEETS_FREEZE';
+        }
+        $target = DB::connection('target_clients');
+        foreach (['reporting_period_history', 'reporting_period_approved_hours'] as $table) {
+            if (!Schema::connection('target_clients')->hasTable($table)) return 'APPROVAL_PROOF_TABLE_MISSING';
+            if ($target->table($table)->where('reporting_period_id', $period->id)->exists()) {
+                return $table === 'reporting_period_history'
+                    ? 'NATIVE_CLIENTS_REPORTING_HISTORY' : 'NATIVE_APPROVED_HOURS';
+            }
+        }
+        $mappings = DB::table('migration_mappings')
+            ->where('service', 'clients')->where('entity_type', 'reporting_periods')
+            ->where('target_id', (string) $period->id)->get(['metadata']);
+        $canonical = 0;
+        foreach ($mappings as $mapping) {
+            $metadata = json_decode($mapping->metadata ?? '{}', true);
+            if (!is_array($metadata)) return 'INVALID_REPORTING_MAPPING_METADATA';
+            if (isset($metadata['alias_of'])) continue;
+            $previousPayload = $metadata['target_payload'] ?? null;
+            if (!is_array($previousPayload) || ($metadata['target_table'] ?? null) !== 'reporting_periods') {
+                return 'REPORTING_MAPPING_PROVENANCE_MISSING';
+            }
+            foreach ($previousPayload as $field => $expected) {
+                if (!TargetFieldComparison::matches($period->$field ?? null, $expected, $field)) {
+                    return 'TARGET_REPORTING_PERIOD_CHANGED';
+                }
+            }
+            ++$canonical;
+        }
+        return $canonical === 1 ? null : 'CANONICAL_REPORTING_MAPPING_NOT_UNIQUE';
+    }
+
+    private function isUnsealedLegacyPeriod(object $period): bool
+    {
+        return $this->unsealedLegacyProtectionReason($period) === null;
+    }
+
     protected function import(): void
     {
         $this->memberIdentities = [];
@@ -480,7 +535,8 @@ class ClientsMigration extends SchemaMigration
                     // is not. A broad "interval intersects" check incorrectly
                     // rejects harmless future extensions.
                     $commercialChanged = count(array_diff($changedFields, ['valid_from', 'valid_to'])) > 0;
-                    foreach ($query->get(['period_start', 'period_end']) as $period) {
+                    $unsealedLegacyPeriodCount = 0;
+                    foreach ($query->get() as $period) {
                         $periodFrom = substr((string) $period->period_start, 0, 10);
                         $periodTo = substr((string) $period->period_end, 0, 10);
                         if (!preg_match('/^\\d{4}-\\d{2}-\\d{2}$/D', $periodFrom)
@@ -497,6 +553,11 @@ class ClientsMigration extends SchemaMigration
                         $before = $clip($oldFrom, $oldTo);
                         $after = $clip($from, $to);
                         if ($before !== $after || ($commercialChanged && ($before !== null || $after !== null))) {
+                            $protectionReason = $this->unsealedLegacyProtectionReason($period);
+                            if ($protectionReason === null) {
+                                ++$unsealedLegacyPeriodCount;
+                                continue;
+                            }
                             throw new SourceRowConflict('PROTECTED_TERM_CHANGE',
                                 'Изменение условий затрагивает уже отправленный отчётный период. '
                                 .'Автоматическая перезапись финансовой истории запрещена: '
@@ -506,8 +567,16 @@ class ClientsMigration extends SchemaMigration
                                  'source_interval' => ['from' => $from, 'to' => $to],
                                  'protected_interval' => ['from' => $periodFrom, 'to' => $periodTo],
                                  'reconciliation_type' => 'protected_financial_period',
-                                 'automatic_override_allowed' => false]);
+                                 'automatic_override_allowed' => false,
+                                 'protection_reason' => $protectionReason]);
                         }
+                    }
+                    if ($unsealedLegacyPeriodCount > 0) {
+                        $this->warning('rates', $id, 'UNSEALED_LEGACY_PERIOD_CORRECTION',
+                            'Исторические условия исправляются по источнику: затронуты только ранее импортированные, '
+                            .'не зафиксированные в новой платформе отчётные периоды.',
+                            ['changed_fields' => $changedFields,
+                             'unsealed_legacy_periods' => $unsealedLegacyPeriodCount]);
                     }
                 }
             }
@@ -639,10 +708,34 @@ class ClientsMigration extends SchemaMigration
                 ]);
             }
             $status = $r['paid_at'] ? 'Счет оплачен' : ($r['act_approved_at'] ? 'Акт согласован' : ($r['act_approval_at'] ? 'Акт на согласовании' : ($r['approved_at'] ? 'ТШ согласованы' : ($r['approval_at'] ? 'ТШ на согласовании' : 'Новый'))));
-            $this->write('reporting_periods', $id, 'reporting_periods', ['client_id' => $client, 'period_start' => $from, 'period_end' => $to,
+            $periodPayload = ['client_id' => $client, 'period_start' => $from, 'period_end' => $to,
                 'status' => $status, 'confirmed_hours' => $r['approved_hours'] === null ? null : $this->decimal($r['approved_hours'], 9999999999.99),
                 'timesheets_sent_at' => $r['approval_at'], 'timesheets_approved_at' => $r['approved_at'],
-                'act_sent_at' => $r['act_approval_at'], 'act_approved_at' => $r['act_approved_at'], 'paid_at' => $r['paid_at']], $r,
+                'act_sent_at' => $r['act_approval_at'], 'act_approved_at' => $r['act_approved_at'], 'paid_at' => $r['paid_at']];
+            $mappedPeriod = $this->store->mapping('clients', 'reporting_periods', $id);
+            if ($mappedPeriod !== null) {
+                $previous = DB::connection('target_clients')->table('reporting_periods')->find((int) $mappedPeriod);
+                if (!$previous) throw new SourceRowConflict('MAPPED_TARGET_MISSING',
+                    'Сопоставленный отчётный период отсутствует; автоматическое восстановление запрещено.');
+                $changes = [];
+                foreach ($periodPayload as $field => $value) {
+                    if (!TargetFieldComparison::matches($previous->$field ?? null, $value, $field)) $changes[] = $field;
+                }
+                // The old system may supply initial historical terminal
+                // states, but a later delta must never approve an act or
+                // mark a period paid in place of Clients/Finance.
+                $protectionReason = $this->unsealedLegacyProtectionReason($previous);
+                if ($changes && (in_array($status, ['Акт согласован', 'Счет оплачен'], true)
+                    || $protectionReason !== null)) {
+                    throw new SourceRowConflict('PROTECTED_REPORTING_PERIOD_CHANGE',
+                        'Повторный перенос не может переписать оплаченную, согласованную в новой платформе '
+                        .'или изменённую вне миграции отчётность.',
+                        ['changed_fields' => $changes, 'target_status' => $previous->status,
+                         'reconciliation_type' => 'reporting_period_provenance',
+                         'protection_reason' => $protectionReason ?? 'LEGACY_FINAL_STATUS_CHANGE']);
+                }
+            }
+            $this->write('reporting_periods', $id, 'reporting_periods', $periodPayload, $r,
                 ['client_id' => $client, 'period_start' => $from, 'period_end' => $to]);
         });
         foreach (['contacts','technologies','sectors','grades','grade_rates','departments','results','attempt_result','reporting_period_rate','feedback','interviews','notes','reviews','subcontracts','attachments','legal_documents','activity_log','settings','client_technology','user_technology'] as $table) {

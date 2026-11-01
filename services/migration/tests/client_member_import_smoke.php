@@ -95,8 +95,10 @@ try {
         'client_requests'=>'client_id lead_id title description responsible_employee_id request_date deadline lifetime_weeks status',
         'positions'=>'client_request_id technology level description direction_department_id quantity status',
         'connection_attempts'=>'position_id specialist_id specialist_name is_external status closed_from_status failure_reasons description cv_sent_at connection_date closed_at control_date',
-        'reporting_periods'=>'client_id period_start period_end status confirmed_hours timesheets_sent_at timesheets_approved_at act_sent_at act_approved_at paid_at',
+        'reporting_periods'=>'client_id period_start period_end status confirmed_hours timesheets_sent_at timesheets_approved_at act_sent_at act_approved_at paid_at timesheet_snapshot timesheet_revision timesheet_freeze_token',
     ] as $name=>$columns) entity('clients',$name,$columns);
+    entity('clients','reporting_period_history','reporting_period_id type title');
+    entity('clients','reporting_period_approved_hours','reporting_period_id member_term_id hours');
     entity('timesheets','timesheet_entries','client_member_id employee_id project_id work_date hours description','client_member_id,work_date');
 
     config(['migration.clients_defer_rate_amounts'=>false]);
@@ -295,6 +297,109 @@ try {
     \Illuminate\Support\Facades\DB::table('migration_mappings')->where('service','clients')
         ->where('entity_type','default_projects')->where('legacy_id','legacy-only')->delete();
     $store->finishRun($legacyRun,'completed');
+
+    // A submitted-looking status imported from the old service is not by
+    // itself a native approval. The legacy source can correct such terms
+    // while there is no frozen Timesheets report, Finance closure or native
+    // approval history, and the migration mapping is still intact.
+    target('clients')->table('reporting_periods')->delete();
+    $clients->fixture['reporting_periods'] = [[
+        'id'=>51, 'client_id'=>6, 'from'=>'2026-01-01', 'to'=>'2026-01-31',
+        'approval_at'=>'2026-02-01', 'approved_at'=>'2026-02-02',
+        'act_approval_at'=>null, 'act_approved_at'=>null, 'paid_at'=>null,
+        'approved_hours'=>null,
+    ]];
+    check(runFixture($clients, false)['conflicts']===0,
+        'Source reporting period is imported with its legacy submitted status');
+    $legacyPeriodId = $store->mapping('clients','reporting_periods','51');
+    check($legacyPeriodId!==null
+        && target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)->value('status')==='ТШ согласованы',
+        'Imported legacy reporting period has no native freeze');
+    $clients->fixture['rates'][0]['rate'] = '1600.50';
+    $clients->fixture['rates'][1]['rate'] = '1600.50';
+    $clients->fixture['rates'][1]['end_date'] = '2026-01-30';
+    $beforeUnsealedDry = target('clients')->table('member_terms')
+        ->where('id',$canonicalTermId)->first();
+    check(runFixture($clients, true)['conflicts']===0,
+        'Legacy-only, unsealed reporting period allows source rate correction in dry-run');
+    check(target('clients')->table('member_terms')->where('id',$canonicalTermId)->value('valid_to')
+        ===$beforeUnsealedDry->valid_to,
+        'Dry run cannot apply a historical correction');
+    check(runFixture($clients, false)['conflicts']===0,
+        'Safe historical correction is applied by normal mapped write');
+    $correctedTerm = target('clients')->table('member_terms')->where('id',$canonicalTermId)->first();
+    check($correctedTerm->valid_to==='2026-01-30'
+        && (float)$correctedTerm->hourly_rate===1600.5,
+        'Historical correction preserves MemberTerm identity and adopts legacy truth');
+    check(runFixture($clients, false)['conflicts']===0,
+        'Safe historical correction remains idempotent on rerun');
+
+    $clients->fixture['rates'][0]['rate']='1700.50';
+    $clients->fixture['rates'][1]['rate']='1700.50';
+    target('clients')->table('reporting_period_history')->insert([
+        'reporting_period_id'=>$legacyPeriodId,'type'=>'native-approval','title'=>'Native approval',
+    ]);
+    check(runFixture($clients, true)['conflicts']>0,
+        'Any new Clients approval history blocks correcting historical submitted amounts');
+    target('clients')->table('reporting_period_history')->delete();
+
+    target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
+        ->update(['timesheet_snapshot'=>'{"revision":"native"}']);
+    check(runFixture($clients, true)['conflicts']>0,
+        'Timesheets freeze snapshot protects an otherwise legacy-imported period');
+    target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
+        ->update(['timesheet_snapshot'=>null]);
+
+    target('clients')->table('reporting_period_approved_hours')->insert([
+        'reporting_period_id'=>$legacyPeriodId,'member_term_id'=>$canonicalTermId,'hours'=>'3',
+    ]);
+    check(runFixture($clients, true)['conflicts']>0,
+        'Native hour approvals protect an otherwise legacy-imported period');
+    target('clients')->table('reporting_period_approved_hours')->delete();
+
+    target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
+        ->update(['status'=>'Счет оплачен', 'paid_at'=>'2026-03-01']);
+    check(runFixture($clients, true)['conflicts']>0,
+        'Finance paid state cannot be rewritten by legacy migration');
+    target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
+        ->update(['status'=>'ТШ согласованы', 'paid_at'=>null]);
+
+    target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
+        ->update(['confirmed_hours'=>'12']);
+    check(runFixture($clients, true)['conflicts']>0,
+        'Reporting period changed outside migration is no longer a verified legacy-only record');
+    target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
+        ->update(['confirmed_hours'=>null]);
+
+    $clients->fixture['rates'][0]['rate']='1600.50';
+    $clients->fixture['rates'][1]['rate']='1600.50';
+    check(runFixture($clients, true)['conflicts']===0,
+        'Original source correction persists after negative safety cases');
+
+    // Source can change the reporting status too. A repeated import must
+    // never manufacture a paid period or roll back a native Finance closure.
+    $clients->fixture['reporting_periods'][0]['paid_at'] = '2026-03-01';
+    $reportAttempt = runFixture($clients, true);
+    check($reportAttempt['conflicts']>0
+        && \Illuminate\Support\Facades\DB::table('migration_conflicts')
+            ->where('code','PROTECTED_REPORTING_PERIOD_CHANGE')->exists(),
+        'An already imported period cannot become Finance-paid via a legacy delta');
+    $clients->fixture['reporting_periods'][0]['paid_at'] = null;
+    $clients->fixture['reporting_periods'][0]['act_approved_at'] = '2026-03-01';
+    check(runFixture($clients, true)['conflicts']>0,
+        'A legacy delta cannot issue newly act-approved status in place of native workflow');
+    $clients->fixture['reporting_periods'][0]['act_approved_at'] = null;
+
+    target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
+        ->update(['status'=>'Счет оплачен','paid_at'=>'2026-03-01']);
+    check(runFixture($clients, true)['conflicts']>0,
+        'Repeat import cannot downgrade a Finance-paid period back to source status');
+    check(target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)->value('status')==='Счет оплачен',
+        'A denied dry-run leaves the paid period intact');
+    target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
+        ->update(['status'=>'ТШ согласованы','paid_at'=>null]);
+    check(runFixture($clients, true)['conflicts']===0,
+        'No-op after restoring original historical status still succeeds');
 
     $only = [['target_id'=>98,'client_name'=>'Renamed Client','project_names'=>[],
         'terms'=>[['id'=>5,'valid_from'=>'2026-01-01','valid_to'=>'2026-12-31']]]];

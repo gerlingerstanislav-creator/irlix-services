@@ -22,6 +22,8 @@ final class TargetFieldComparison
     private const DATE_ONLY = [
         'valid_from', 'valid_to', 'period_start', 'period_end',
         'work_date', 'start_date', 'end_date',
+        'timesheets_sent_at', 'timesheets_approved_at',
+        'act_sent_at', 'act_approved_at', 'paid_at',
     ];
 
     public static function matches(mixed $actual, mixed $expected, string $field): bool
