@@ -196,7 +196,6 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
        </td>
 
        <td><div class="mctrl-tree-extra">
- <UiButton v-if="svc.issues.errors||svc.service==='timesheets'" variant="secondary" compact :aria-label="'Разобрать ошибки '+svc.label" @click="openWorkbench(svc.service)">Разобрать ошибки</UiButton>
  <UiButton v-if="svc.hidden_count" variant="ghost" compact :aria-label="'Скрытые строки: '+svc.label" @click="showHidden(svc.service)">Скрытые ({{svc.hidden_count}})</UiButton>
  <span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span>
  </div></td><td><div class="mctrl-tree-row-actions">
