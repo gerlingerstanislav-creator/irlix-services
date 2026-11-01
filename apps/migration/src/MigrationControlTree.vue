@@ -12,6 +12,10 @@ const rawTree=computed(()=>migrationTree(props.report,props.operation));
 const operationIsActive=computed(()=>['queued','running'].includes(props.activeOperation?.status)
  && String(props.activeOperation?.id)===String(props.operation?.id));
 const activeService=service=>operationIsActive.value&&props.activeOperation?.current_service===service;
+const activeStage=(service,mode)=>activeService(service)
+ &&(props.activeOperation?.phase||props.activeOperation?.last_phase)===mode;
+const visibleStageStatus=step=>activeStage(step.service,step.mode)?'running'
+ :activeService(step.service)&&stageStripStatus(step)==='running'?'waiting':stageStripStatus(step);
 const hidden=ref({});
 const tree=computed(()=>filterMigrationTree(rawTree.value,hidden.value));
 const unverifiedReport=computed(()=>!props.report||props.report.report_degraded===true);
@@ -174,17 +178,18 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
         <div class="mctrl-tree-status-stages" :aria-label="'Этапы переноса: '+svc.label">
           <div v-for="step in stageRows(operation,report,svc.service).filter(item=>item.mode!=='snapshot')"
             :key="svc.service+':'+step.mode" class="mctrl-tree-status-stage"
-            :class="{'mctrl-tree-status-stage--active':stageStripStatus(step)==='running'}"
-            :title="stageStripTooltip(step)">
-            <span class="mctrl-tree-stage-state-icon" :class="'mctrl-tree-stage-state-icon--'+stageStripStatus(step)" aria-hidden="true"></span>
+            :class="{'mctrl-tree-status-stage--active':visibleStageStatus(step)==='running'}"
+            :title="activeStage(svc.service,step.mode)?'Выполняется · '+(stageTitles[step.mode]||step.mode):stageStripTooltip(step)">
+            <span class="mctrl-tree-stage-state-icon" :class="'mctrl-tree-stage-state-icon--'+visibleStageStatus(step)" aria-hidden="true"></span>
             <span>{{stageTitles[step.mode]||step.mode}}</span>
-            <span class="mctrl-tree-visually-hidden">: {{step.known?statusText(step.status):'Неизвестно'}}</span>
+            <span class="mctrl-tree-visually-hidden">: {{activeStage(svc.service,step.mode)?'Выполняется':activeService(svc.service)&&step.status==='running'?'Нет текущего подтверждения':step.known?statusText(step.status):'Неизвестно'}}</span>
           </div>
         </div>
         </div>
        </th>
        <td class="mctrl-tree-status-cell">
-        <UiButton v-if="!['partial','completed'].includes(svc.status)" variant="ghost" compact @click="open('service',svc)"><UiBadge :tone="tone(svc.status)">{{statusText(svc.status)}}</UiBadge></UiButton>
+        <span v-if="activeService(svc.service)" class="mctrl-active-service" role="status"><span class="mctrl-active-service-spinner" aria-hidden="true"></span>Выполняется</span>
+        <UiButton v-else-if="!['partial','completed'].includes(svc.status)" variant="ghost" compact @click="open('service',svc)"><UiBadge :tone="tone(svc.status)">{{statusText(svc.status)}}</UiBadge></UiButton>
         <span v-else class="mctrl-tree-no-data">—</span>
        </td>
        <td class="mctrl-tree-numeric mctrl-tree-progress"><div>{{progressText(svc.processed,svc.total).replace('Обработано: ','')}}</div><progress v-if="bar(svc)!==null" :value="bar(svc)" max="100" :aria-label="'Прогресс сервиса '+svc.label" :title="bar(svc)+'%'">{{bar(svc)}}%</progress><small v-if="svc.hidden_count">По видимым сущностям</small></td>
