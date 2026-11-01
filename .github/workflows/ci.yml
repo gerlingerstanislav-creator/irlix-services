@@ -72,6 +72,8 @@ jobs:
         run: node --test packages/ui/tests/*.test.*
       - name: Shared auth regression tests
         run: node --test packages/auth/tests/*.test.mjs
+      - name: System OIDC startup regression tests
+        run: node --test apps/system/tests/*.test.mjs
       - name: Timesheets frontend regression tests
         run: node --test apps/timesheets/tests/*.test.mjs
       - name: Recruitment authorization regression tests
