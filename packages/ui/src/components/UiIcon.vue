@@ -91,6 +91,16 @@ defineProps({ name: { type: String, required: true } });
     <template v-else-if="name === 'audit'">
       <path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/>
     </template>
+    <template v-else-if="name === 'play'">
+      <path d="M8 5.2 19 12 8 18.8V5.2Z" stroke-linejoin="round"/>
+    </template>
+    <template v-else-if="name === 'square'">
+      <rect x="5.5" y="5.5" width="13" height="13" rx="2"/>
+    </template>
+    <template v-else-if="name === 'save'">
+      <path d="M4 3.5h13l3 3V20.5H4V3.5Z"/>
+      <path d="M8 3.5v6h8v-6M7.5 20.5v-8h9v8M12 15v3"/>
+    </template>
     <template v-else>
       <circle cx="12" cy="12" r="8"/>
     </template>
