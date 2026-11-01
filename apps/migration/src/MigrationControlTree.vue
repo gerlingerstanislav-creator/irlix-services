@@ -62,7 +62,7 @@ watch(()=>props.operation.id,()=>{rootOpen.value=true;servicesOpen.value={};deta
 function toggle(s){servicesOpen.value={...servicesOpen.value,[s]:!servicesOpen.value[s]};}
 function open(kind,node=null,severity=null){detail.value={kind,node,severity};problem.value='';if(kind==='issues')loadItems();}
 function close(){detail.value=null;seq++;loading.value=false;}
-const detailTitle=computed(()=>{const d=detail.value;return d?(d.kind==='issues'?(d.severity==='error'?'Ошибки':'Предупреждения'):d.kind==='fields'?'Поля':d.kind==='stages'?'Этапы':'Подробности')+' · '+(d.node?.label||'Весь перенос'):'';});
+const detailTitle=computed(()=>{const d=detail.value;return d?(d.kind==='issues'?(d.severity==='error'?'Ошибки':d.severity==='info'?'Сведения':'Предупреждения'):d.kind==='fields'?'Поля':d.kind==='stages'?'Этапы':'Подробности')+' · '+(d.node?.label||'Весь перенос'):'';});
 const groups=computed(()=>(detail.value?.node?.issue_groups||tree.value?.issue_groups||[]).filter(g=>!detail.value?.severity||g.severity===detail.value.severity));
 const items=computed(()=>{
  if(detail.value?.kind!=='issues')return [];
@@ -134,6 +134,8 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
      <td><div class="mctrl-tree-row-actions">
        <UiButton variant="ghost" compact @click="open('stages')">Этапы</UiButton>
        <UiButton variant="secondary" compact :disabled="unverifiedReport" aria-label="Отчёт: Все сервисы" @click="emit('report','all')">Отчёт</UiButton>
+       <UiButton v-if="tree.issue_groups?.some(g=>g.severity==='info')" variant="ghost" compact
+         aria-label="Сведения: Все сервисы" @click="open('issues',null,'info')">Сведения</UiButton>
        <UiButton variant="ghost" compact :disabled="busy" @click="emit('reset')">Очистить Clients / Timesheets</UiButton>
      </div></td>
     </tr>
@@ -201,6 +203,8 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
  </div></td><td><div class="mctrl-tree-row-actions">
    <UiButton variant="secondary" compact :disabled="unverifiedReport" :aria-label="'Отчёт: '+svc.label"
      @click="emit('report',svc.service)">Отчёт</UiButton>
+   <UiButton v-if="svc.issue_groups?.some(g=>g.severity==='info')" variant="ghost" compact
+     :aria-label="'Сведения: '+svc.label" @click="open('issues',svc,'info')">Сведения</UiButton>
    <UiButton v-if="svc.issues.errors||svc.service==='timesheets'" variant="ghost" compact :aria-label="'Разобрать ошибки '+svc.label"
      @click="openWorkbench(svc.service)">Разобрать ошибки</UiButton>
  </div></td>
@@ -342,7 +346,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
   </UiPanel>
   <p v-if="!loading&&!items.length">Построчные события недоступны. Ниже — сгруппированная диагностика.</p>
   <UiPanel v-for="(g,i) in groups" :key="'group-'+i" class="mctrl-tree-issue">
-   <header><strong>{{text(g.code)}} · {{text(g.table)}}</strong><UiBadge :tone="g.severity==='error'?'danger':'warning'">{{text(g.severity)}}</UiBadge></header>
+   <header><strong>{{text(g.code)}} · {{text(g.table)}}</strong><UiBadge :tone="g.severity==='error'?'danger':g.severity==='info'?'neutral':'warning'">{{text(g.severity)}}</UiBadge></header>
    <p>{{text(g.message)}} · событий {{text(g.count)}} · затронуто строк {{text(g.affected_rows)}}</p>
    <details v-if="g.examples?.length"><summary>Примеры</summary><pre>{{JSON.stringify(g.examples,null,2)}}</pre></details>
   </UiPanel>
