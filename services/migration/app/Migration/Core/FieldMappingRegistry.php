@@ -10,6 +10,15 @@ final class FieldMappingRegistry
         if (in_array($field,['password','password_hash','remember_token','api_token','access_token','refresh_token','two_factor_secret','two_factor_recovery_codes'],true)) return ['fate'=>'excluded','target'=>null,'rule'=>null,'reason'=>'Учётные данные, пароли и токены не переносятся по правилам безопасности.'];
         if ($service === 'employees' && in_array($table,['salary','salaries','salary_history'],true)) return ['fate'=>'excluded','target'=>null,'rule'=>null,'reason'=>'Перенос зарплат исключён из согласованного объёма.'];
         if ($schema !== 'public') return $unknown;
+        // Laravel's schema version ledger and failed-queue payloads belong to
+        // the obsolete source runtime, not the Clients business model.
+        // Never replay failed jobs or import old migration state into this app.
+        // Preserve the source database unchanged; this rule only records the
+        // reviewed exclusion in the coverage/inventory report.
+        if ($service === 'clients' && in_array($table, ['failed_jobs','migrations'], true)) {
+            return ['fate'=>'excluded', 'target'=>null, 'rule'=>'Системные журналы Laravel не относятся к доменным данным Clients и не импортируются.',
+                'reason'=>'Записи старых failed jobs и версий схемы не переносятся в новое приложение и не выполняются повторно.'];
+        }
         if ($service === 'clients' && in_array($table,['rates','attempts'],true) && $field === 'rate' && config('migration.clients_defer_rate_amounts')) return ['fate'=>'deferred','target'=>null,'rule'=>null,'reason'=>'Перенос денежных сумм отключён; существующие суммы в целевом сервисе сохраняются.'];
         $rules = self::rules()[$service][$table] ?? [];
         if (isset($rules[$field])) {
