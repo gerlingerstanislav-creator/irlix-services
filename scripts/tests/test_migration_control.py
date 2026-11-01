@@ -402,18 +402,23 @@ class ControlTests(unittest.TestCase):
         self.assertFalse(report['coverage']['semantic_complete'])
         self.assertFalse(report['archive_complete'])
 
-    def test_partial_runs_continue_services_and_stages(self):
+    def test_clients_conflicting_preflight_skips_dependent_timesheets(self):
         calls = []
         def run(service, mode, operation, sid):
             calls.append((service, mode))
             self.run_stage(service, mode, operation, sid)
-            return 'conflicts' if mode == 'dry-run' else 'completed'
+            return 'conflicts' if service == 'clients' and mode == 'dry-run' else 'completed'
         op = self.start()
         with patch.object(console, 'checkpoint', side_effect=AssertionError('No snapshot during import')), patch.object(control, 'enqueue', side_effect=run):
             control.execute(op)
-        expected = [(s, m) for s in console.SERVICES for m in control.MODES
-                    if s != 'timesheets' or m in ('inspect', 'dry-run')]
+        expected = [(s, m) for s in ('employees', 'vacations') for m in control.MODES]
+        expected += [('clients', 'inspect'), ('clients', 'dry-run')]
         self.assertEqual(calls, expected)
+        self.assertEqual([r['status'] for r in op['service_results']],
+                         ['completed', 'completed', 'partial', 'skipped'])
+        timesheets = next(r for r in control.report(op['id'])['service_evidence']
+                          if r['service'] == 'timesheets')
+        self.assertEqual(timesheets['write_state'], 'not_started')
         self.assertEqual(control.report(op['id'])['operation']['status'], 'partial')
         self.assertEqual(op['data_outcome'], 'partial')
 
@@ -433,6 +438,21 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(op['status'], 'partial')
         self.assertNotIn('migrate', [run['mode'] for run in op['runs']])
 
+    def test_clients_protected_term_conflict_stops_before_write(self):
+        calls = []
+        op = self.start('clients')
+        def run(service, mode, operation, sid):
+            calls.append(mode)
+            self.run_stage(service, mode, operation, sid)
+            return 'conflicts' if mode == 'dry-run' else 'completed'
+        with patch.object(control, 'enqueue', side_effect=run):
+            control.execute(op)
+        self.assertEqual(calls, ['inspect', 'dry-run'])
+        self.assertEqual(op['data_outcome'], 'not_started')
+        self.assertEqual(op['service_results'][0]['stage'], 'dry-run')
+        self.assertEqual(op['service_results'][0]['status'], 'partial')
+        self.assertNotIn('migrate', [run['mode'] for run in op['runs']])
+
     def test_timesheets_clean_dry_run_still_runs_migrate_validate(self):
         calls = []
         op = self.start('timesheets')
@@ -445,13 +465,13 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(calls, list(control.MODES))
         self.assertEqual(op['service_results'][0]['status'], 'completed')
 
-    def test_failed_service_does_not_hide_other_service_results(self):
+    def test_failed_clients_service_does_not_hide_independent_results(self):
         def run(service, mode, operation, sid):
-            return 'failed' if service == 'employees' else self.run_stage(service, mode, operation, sid)
+            return 'failed' if service == 'clients' else self.run_stage(service, mode, operation, sid)
         op = self.start()
         with patch.object(console, 'checkpoint', return_value='123'), patch.object(control, 'enqueue', side_effect=run):
             control.execute(op)
-        self.assertEqual([r['status'] for r in op['service_results']], ['failed', 'completed', 'completed', 'completed'])
+        self.assertEqual([r['status'] for r in op['service_results']], ['completed', 'completed', 'failed', 'skipped'])
         self.assertEqual(op['status'], 'partial')
 
     def test_cancel_between_stages_retains_completed_work_and_reason(self):
@@ -605,7 +625,7 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(employee['stage'], 'migrate')
         self.assertEqual(employee['stage_status'], 'failed')
         self.assertIsNotNone(employee['run_id'])
-        self.assertEqual([item['status'] for item in op['service_results'][1:]], ['completed', 'completed', 'completed'])
+        self.assertEqual([item['status'] for item in op['service_results'][1:]], ['skipped', 'skipped', 'skipped'])
         report = control.report(op['id'])
         evidence = next(item for item in report['service_evidence'] if item['service'] == 'employees')
         self.assertEqual(evidence['stage'], 'migrate')

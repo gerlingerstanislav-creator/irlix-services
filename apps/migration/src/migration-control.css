@@ -323,6 +323,9 @@ main.mctrl .mctrl-tree-scroll{flex:1 1 auto;min-height:0;max-height:none;overscr
  fill:none;stroke:currentColor;stroke-width:1.8;
  stroke-linecap:round;stroke-linejoin:round;
 }
+.mctrl-tree-table .mctrl-backup-icon--stale.ui-button,.mctrl-setup-table .mctrl-backup-icon--stale.ui-button{
+ color:var(--irlix-color-danger,#c02a35);
+}
 .mctrl-tree-table .mctrl-service-settings-trigger{flex:0 0 28px}
 .mctrl-service-state{font-size:var(--irlix-font-size-caption);font-weight:400;color:var(--irlix-color-text-muted);white-space:nowrap}
 .mctrl-tree-node--service .mctrl-active-service-spinner{flex:none;color:var(--irlix-color-primary)}
