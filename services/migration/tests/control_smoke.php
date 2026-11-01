@@ -232,6 +232,25 @@ try {
         ['name'=>'body','mapping'=>\App\Migration\Core\FieldMappingRegistry::resolve('clients','public','notes','body')],
     ]);
     ensureControl($metadataIntent['status']==='excluded' && $metadataIntent['domain_write_expected']===false,'Explicit metadata-only table is consciously excluded from domain writes');
+    // Clients operation #1793516497642312 left exactly 1161 failed_jobs
+    // and 126 migrations rows unprocessed; these are source Laravel
+    // runtime artefacts, not Clients records.
+    foreach (['failed_jobs'=>['id','uuid','payload','exception','failed_at'],
+              'migrations'=>['id','migration','batch']] as $technicalTable=>$fields) {
+        $columns = array_map(static fn ($field)=>['name'=>$field,'mapping'=>\App\Migration\Core\FieldMappingRegistry::resolve('clients','public',$technicalTable,$field)], $fields);
+        $decision = \App\Migration\Core\FieldMappingRegistry::tableExpectation('clients','public',$technicalTable,$columns);
+        ensureControl($decision['status']==='excluded' && $decision['domain_write_expected']===false
+            && $decision['decision_complete']===true,
+            'Explicitly exclude old Clients Laravel runtime table '.$technicalTable);
+        ensureControl(count(array_filter($columns,static fn ($col)=>$col['mapping']['fate']!=='excluded'))===0,
+            'Old Laravel technical fields cannot silently become target domain data');
+    }
+    $unknownTechnical = \App\Migration\Core\FieldMappingRegistry::tableExpectation('clients','public','unexpected_table',[
+        ['name'=>'payload','mapping'=>\App\Migration\Core\FieldMappingRegistry::resolve('clients','public','unexpected_table','payload')],
+    ]);
+    ensureControl($unknownTechnical['status']==='undocumented' && !$unknownTechnical['decision_complete'],
+        'Unknown source tables stay unresolved; no blanket omission');
+
     // Only a completed v3 Timesheets preflight in this operation can authorize
     // the dependency-plan baseline for write. Version 2 must remain rejected.
     $oldDry = $store->beginRun('timesheets', 'dry-run');
