@@ -185,14 +185,14 @@ test('per-service stage strip keeps unknown, active, failed and skipped stages d
 });
 
 
-test('migration control keeps stages and uses six summary columns',async()=>{
+test('migration control keeps stages and uses five summary columns',async()=>{
  const {readFileSync}=await import('node:fs');
  const {fileURLToPath}=await import('node:url');
  const {resolve,dirname}=await import('node:path');
  const source=readFileSync(resolve(dirname(fileURLToPath(import.meta.url)),'../src/MigrationControlTree.vue'),'utf8');
  assert.match(source,/Ошибки \/ предупреждения/);
  assert.doesNotMatch(source,/Без результата<\/th>/);
- assert.equal((source.match(/<col class=/g)||[]).length,6);
+ assert.equal((source.match(/<col class=/g)||[]).length,5);
  assert.match(source,/mctrl-tree-status-stages/);
  assert.doesNotMatch(source,/:data-service="svc\.service"/);
  assert.doesNotMatch(source,/serviceIndicatorState\(svc,operation\)/);
@@ -218,7 +218,8 @@ test('service stages render under service title and completeness is not repeated
  const row=html.split('<tr class="mctrl-tree-service">')[1].split('</tr>')[0];
  assert.ok(row.indexOf('mctrl-tree-status-stages')<row.indexOf('</th>'),'stages are in name column');
  assert.match(row,/v-if="activeService\(svc\.service\)"/);
- assert.match(row,/v-else-if="!\['partial','completed'\]\.includes\(svc\.status\)"/);
+ assert.match(row,/mctrl-service-state/);
+ assert.doesNotMatch(row,/mctrl-tree-status-cell/);
  assert.doesNotMatch(row,/svc\.evidence_status/);
 });
 
@@ -245,8 +246,8 @@ test('mobile migration interface retains report completeness but omits table col
  const view=readFileSync(resolve(root,'MigrationControl.vue'),'utf8');
  const css=readFileSync(resolve(root,'migration-control.css'),'utf8');
  assert.doesNotMatch(tree,/<th scope="col">Полнота<\/th>/);
- assert.equal((tree.match(/<col class=/g)||[]).length,6);
- assert.match(tree,/colspan="6"/);
+ assert.equal((tree.match(/<col class=/g)||[]).length,5);
+ assert.match(tree,/colspan="5"/);
  assert.match(tree,/report\?\.coverage\?\.semantic_complete/);
  assert.match(view,/mctrl-operation-details/);
  assert.match(css,/\.mctrl-operation-details:not\(\[open\]\)/);
