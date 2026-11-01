@@ -8,6 +8,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const screenshotDir=process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
   require('node:fs').mkdirSync(screenshotDir,{recursive:true});
   const partnerHistory=[{id:1,type:'partner_created',title:'Создание партнёра',created_at:'2026-10-23'}];
+  // The roster defaults to the current UTC month; keep its synthetic absence in that month.
+  const rosterMonth = new Date().toISOString().slice(0, 7);
   const partnerContacts=[];
   const partnerContactWrites=[];
   const partnerLegal=[];
@@ -62,7 +64,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     {id:42,name:'Synthetic Department',parent_id:40,is_production:false},
     {id:50,name:'Another Direction',parent_id:null,is_production:true},
     {id:52,name:'Another Department',parent_id:50,is_production:false},
-   ],absences:[{id:5,employee_id:1,starts_on:'2026-10-26',ends_on:'2026-10-29',status:'planned'}]}}});
+   ],absences:[{id:5,employee_id:1,starts_on:`${rosterMonth}-10`,ends_on:`${rosterMonth}-13`,status:'planned'}]}}});
    if(path==='/api/clients/specialists/filter-clients') return r.fulfill({json:{data:[{id:1,name:'Synthetic Client'},{id:2,name:'Another Client'}]}});
    if(path==='/api/clients/partners') return r.fulfill({json:{data:{partners:[partnerState],unassigned:[]}}});
    if(path.endsWith('/members') && r.request().method()==='POST'){saved.push(r.request().postDataJSON());return r.fulfill({status:201,json:{data:{member_id:71}}});}
