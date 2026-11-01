@@ -110,7 +110,8 @@ const aligned=await page.evaluate(()=>{
 });
 console.log('MIGRATION_COLUMN_COORDINATES',JSON.stringify(aligned));
 assert.ok(Math.abs(aligned.root.left-aligned.service.left)<1,'root and service progress metrics stay in the same column');
-assert.equal(await page.getByRole('button',{name:'Запустить перенос: Клиенты'}).isDisabled(),true,'running operation locks single-service launch');
+assert.equal(await page.getByRole('button',{name:'Остановить перенос: Клиенты'}).count(),1,'running service shows a stop action');
+assert.equal(await page.getByRole('button',{name:'Запустить перенос: Сотрудники'}).isDisabled(),true,'running operation locks another service launch');
 assert.equal(await page.getByRole('button',{name:'Настройки подключения: Клиенты'}).count(),1,'settings gear is attached to each service row');
 // Checking for a button and tooltip does not prove that its SVG glyph is painted.
 const gearPaint=async selector=>page.locator(selector).evaluateAll(buttons=>buttons.map(button=>{
@@ -135,7 +136,7 @@ assertVisibleGears(await gearPaint('.mctrl-tree-service .mctrl-service-settings-
  const disk=page.getByRole('button',{name:'Точки отката: Клиенты'});
  assert.equal(await disk.locator('svg path').count(),2,'diskette glyph has its storage outline and slot');
  assert.equal(await disk.locator('svg circle').count(),0,'diskette must not silently render default-circle fallback');
- const play=page.getByRole('button',{name:'Запустить перенос: Клиенты'});
+ const play=page.getByRole('button',{name:'Запустить перенос: Сотрудники'});
  assert.equal(await play.locator('svg path').count(),1,'play glyph is actually rendered');
  assert.equal(await play.locator('svg circle').count(),0,'play must not fall back to a circle');
  const stop=page.getByRole('button',{name:'Остановить перенос: Все сервисы'});
