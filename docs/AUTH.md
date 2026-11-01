@@ -29,6 +29,12 @@ Keycloak and the IRLIX platform are intentionally separate access contours and m
 - Public OIDC endpoints required by platform applications — realm discovery, authorization, token, logout and related protocol endpoints under `/keycloak/auth/realms/*` — must remain reachable by the browser. Platform authentication must not be placed in front of the whole `/keycloak/auth/*` prefix, otherwise the Identity Provider would be hidden behind the authentication mechanism that depends on it.
 - `keycloak-admin` and platform users are separate identity concepts. Keycloak console administration does not imply platform application access, and platform administration does not imply Keycloak console access.
 
+## Startup UI contract
+
+`auth.init()` returns `false` when Keycloak navigation has been initiated, **not** when Employees denied service access. A frontend must keep its neutral loading state on that path. A `finally` block must not unconditionally reveal the application or an access-denied page after the redirect return. The 403 state is shown only after a successful OIDC initialization followed by an actual denial from Employees/the service API; transport and OIDC failures remain distinct errors.
+
+System and Storage explicitly retain their loaders during OIDC navigation. Other audited entrypoints mount their application only after `auth.init() === true`, or already hold a neutral loader. System's regression tests cover redirect, pending access check, denied access and errors.
+
 ## Browser transaction handling
 
 `packages/auth` stores pending OIDC transactions by `state` instead of keeping only one mutable transaction record. Each transaction stores `state`, exact callback URI, original return URL, start time and PKCE verifier when HTTPS is available. This prevents a second authorization attempt from overwriting the transaction needed by a callback already in flight. Expired transactions are removed automatically.

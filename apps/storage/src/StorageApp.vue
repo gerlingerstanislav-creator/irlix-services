@@ -63,8 +63,12 @@ function navigateSection(id) {
 }
 
 onMounted(async () => {
+  let navigatingToLogin = false;
   try {
-    if (!await auth.init()) return; // OIDC redirects to the existing corporate login.
+    if (!await auth.init()) {
+      navigatingToLogin = true; // OIDC redirects; keep the loader until the document is replaced.
+      return;
+    }
     const response = await auth.fetch('/api/employees/access/me', {
       headers: { Accept: 'application/json' }, cache: 'no-store',
     });
@@ -103,7 +107,7 @@ onMounted(async () => {
   } catch (_) {
     error.value = 'Не удалось проверить права доступа. Откройте хранилище через дашборд.';
   } finally {
-    loading.value = false;
+    if (!navigatingToLogin) loading.value = false;
   }
 });
 </script>
