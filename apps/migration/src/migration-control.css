@@ -312,12 +312,11 @@ main.mctrl .mctrl-tree-scroll{flex:1 1 auto;min-height:0;max-height:none;overscr
 .mctrl-operation-bar .mctrl-operation-picker{display:flex;align-items:center;gap:8px}
 .mctrl-operation-bar .mctrl-operation-picker .ui-search-select{width:min(290px,46vw)}
 .mctrl-operation-bar .mctrl-loader-slot{min-width:28px}
-.mctrl-tree-table .mctrl-tree-col-name{width:34%}
-.mctrl-tree-table .mctrl-tree-col-status{width:10%}
-.mctrl-tree-table .mctrl-tree-col-progress{width:13%}
+.mctrl-tree-table .mctrl-tree-col-name{width:35%}
+.mctrl-tree-table .mctrl-tree-col-progress{width:15%}
 .mctrl-tree-table .mctrl-tree-col-errors{width:11%}
-.mctrl-tree-table .mctrl-tree-col-extra{width:14%}
-.mctrl-tree-table .mctrl-tree-col-action{width:18%}
+.mctrl-tree-table .mctrl-tree-col-extra{width:15%}
+.mctrl-tree-table .mctrl-tree-col-action{width:24%}
 .mctrl-tree-table .mctrl-inline-icon,.mctrl-setup-table .mctrl-inline-icon{width:28px;min-width:28px;height:28px;min-height:28px;padding:4px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 28px}
 .mctrl-tree-table .mctrl-inline-icon.ui-button > svg,.mctrl-setup-table .mctrl-inline-icon.ui-button > svg{
  display:block;flex:none;width:16px;height:16px;
@@ -325,17 +324,19 @@ main.mctrl .mctrl-tree-scroll{flex:1 1 auto;min-height:0;max-height:none;overscr
  stroke-linecap:round;stroke-linejoin:round;
 }
 .mctrl-tree-table .mctrl-service-settings-trigger{flex:0 0 28px}
+.mctrl-service-state{font-size:var(--irlix-font-size-caption);font-weight:400;color:var(--irlix-color-text-muted);white-space:nowrap}
+.mctrl-tree-node--service .mctrl-active-service-spinner{flex:none;color:var(--irlix-color-primary)}
 .mctrl-active-service{display:inline-flex;align-items:center;gap:7px;font-weight:600;color:var(--irlix-color-primary)}
 .mctrl-active-service-spinner{width:13px;height:13px;box-sizing:border-box;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:mctrl-stage-spin 1s linear infinite}
 @media(prefers-reduced-motion:reduce){.mctrl-active-service-spinner{animation:none;border-top-color:currentColor}}
 .mctrl-tree-row-actions{gap:4px;align-items:center}
+.mctrl-tree-row-actions .ui-button{min-height:30px}
 .mctrl-tree-scroll{max-height:calc(100dvh - 136px)}
 @media(max-width:720px){
  .mctrl-operation-bar{justify-content:flex-start;flex-wrap:wrap}
  .mctrl-operation-bar .mctrl-operation-picker .ui-search-select{width:min(260px,65vw)}
  .mctrl-tree-table{min-width:1000px}
  .mctrl-tree-table .mctrl-tree-col-name{width:310px}
- .mctrl-tree-table .mctrl-tree-col-status{width:92px}
  .mctrl-tree-table .mctrl-tree-col-progress{width:140px}
  .mctrl-tree-table .mctrl-tree-col-errors{width:110px}
  .mctrl-tree-table .mctrl-tree-col-extra{width:145px}
