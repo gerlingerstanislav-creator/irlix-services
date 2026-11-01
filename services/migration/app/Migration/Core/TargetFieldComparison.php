@@ -16,6 +16,14 @@ final class TargetFieldComparison
         'quantity', 'payment_days', 'act_approval_days',
     ];
 
+    // PostgreSQL DATE values can reach import comparisons as either a plain
+    // date or a midnight timestamp. Only normalize known date-only columns;
+    // datetime instants, IDs and strings must keep their exact semantics.
+    private const DATE_ONLY = [
+        'valid_from', 'valid_to', 'period_start', 'period_end',
+        'work_date', 'start_date', 'end_date',
+    ];
+
     public static function matches(mixed $actual, mixed $expected, string $field): bool
     {
         if ($actual === $expected) {
@@ -46,6 +54,11 @@ final class TargetFieldComparison
         if ((string) $actual === (string) $expected) {
             return true;
         }
+        if (in_array($field, self::DATE_ONLY, true)) {
+            $aDate = self::dateOnly((string) $actual);
+            $bDate = self::dateOnly((string) $expected);
+            return $aDate !== null && $aDate === $bDate;
+        }
         // Compare only known numeric columns numerically. Logins, phone
         // numbers and identifiers may legitimately contain leading zeros.
         if (!in_array($field, self::NUMERIC, true)) {
@@ -54,6 +67,14 @@ final class TargetFieldComparison
         $a = self::decimal((string) $actual);
         $b = self::decimal((string) $expected);
         return $a !== null && $a === $b;
+    }
+
+    private static function dateOnly(string $value): ?string
+    {
+        if (!preg_match('/^(\\d{4}-\\d{2}-\\d{2})(?:[ T]00:00:00(?:\\.0+)?)?$/D', $value, $matches)) {
+            return null;
+        }
+        return $matches[1];
     }
 
     private static function decimal(string $value): ?string

@@ -169,8 +169,10 @@ try {
     $clients->fixture['clients'][0]['description'] = null;
     check(runFixture($clients,false)['conflicts']===0, 'Revert synthetic source correction');
     check(\App\Migration\Core\TargetFieldComparison::matches('001', '1', 'login')===false
-        && \App\Migration\Core\TargetFieldComparison::matches('8.000', '8', 'hours_per_day'),
-        'Numeric normalization must not collapse string identities');
+        && \App\Migration\Core\TargetFieldComparison::matches('8.000', '8', 'hours_per_day')
+        && \App\Migration\Core\TargetFieldComparison::matches('2026-01-31 00:00:00', '2026-01-31', 'valid_to')
+        && !\App\Migration\Core\TargetFieldComparison::matches('2026-01-31 10:00:00', '2026-01-31', 'valid_to'),
+        'Numeric and date normalization must preserve actual differences and string identities');
 
     $clients->fixture['rates'][1]['grade'] = 'Senior';
     check(runFixture($clients,true)['conflicts']>0,'Conflicting overlapping terms of one ClientMember are blocked');
@@ -180,6 +182,53 @@ try {
     $clients->fixture['rates'][0]['rate'] = '1600.50';
     $clients->fixture['rates'][1]['rate'] = '1600.50';
     check(runFixture($clients,true)['conflicts']>0,'Protected reporting period blocks a mapped term rewrite');
+    $clients->fixture['rates'][0]['rate'] = '1500.50';
+    $clients->fixture['rates'][1]['rate'] = '1500.50';
+
+    // Repeated imports must use the *same* scalar/date comparison as writes.
+    // SQL DATE and DECIMAL display formats do not signify a business change.
+    $canonicalTermId = $store->mapping('clients', 'rates', '41');
+    target('clients')->table('member_terms')->where('id', $canonicalTermId)
+        ->update(['valid_to'=>'2026-01-31 00:00:00', 'hourly_rate'=>'1500.5000']);
+    check(runFixture($clients, true)['conflicts']===0,
+        'Equivalent date and decimal representations do not block a submitted period');
+    target('clients')->table('member_terms')->where('id', $canonicalTermId)
+        ->update(['valid_to'=>'2026-01-31', 'hourly_rate'=>'1500.50']);
+
+    // Clients itself compares the clipped span within a protected month.
+    // An extension after January changes no approved January day.
+    $clients->fixture['rates'][1]['end_date'] = '2026-02-10';
+    check(runFixture($clients, true)['conflicts']===0,
+        'An extension entirely after the submitted month does not require reconciliation');
+    check(runFixture($clients, false)['conflicts']===0
+        && target('clients')->table('member_terms')->where('id',$canonicalTermId)->value('valid_to')==='2026-02-10',
+        'Approved future-only date extension is actually synchronized');
+    $clients->fixture['rates'][1]['end_date'] = '2026-01-31';
+    check(runFixture($clients, false)['conflicts']===0,
+        'Idempotent shrink back to the prior end is safe without changing approved January');
+    $clients->fixture['rates'][1]['end_date'] = '2026-01-30';
+    check(runFixture($clients, true)['conflicts']>0,
+        'Shortening a term inside a submitted month requires reconciliation');
+    $clients->fixture['rates'][1]['end_date'] = '2026-01-31';
+
+    // Moving the incoming interval completely out of a protected month
+    // must not bypass protection of the *previous* target interval.
+    $originalRates = $clients->fixture['rates'];
+    $clients->fixture['rates'][0]['start_date'] = '2026-02-01';
+    $clients->fixture['rates'][0]['end_date'] = '2026-02-20';
+    $clients->fixture['rates'][1]['start_date'] = '2026-02-10';
+    $clients->fixture['rates'][1]['end_date'] = '2026-02-28';
+    check(runFixture($clients, true)['conflicts']>0,
+        'Moving a term outside a submitted month must also protect its former dates');
+    $clients->fixture['rates'] = $originalRates;
+
+    // Unknown reporting states are not proof that a period is editable.
+    target('clients')->table('reporting_periods')->update(['status'=>null]);
+    $clients->fixture['rates'][0]['rate'] = '1600.50';
+    $clients->fixture['rates'][1]['rate'] = '1600.50';
+    check(runFixture($clients, true)['conflicts']>0,
+        'Unknown reporting status fails closed for changed legacy commercial terms');
+    target('clients')->table('reporting_periods')->update(['status'=>'ТШ согласованы']);
     $clients->fixture['rates'][0]['rate'] = '1500.50';
     $clients->fixture['rates'][1]['rate'] = '1500.50';
 
@@ -210,6 +259,10 @@ try {
         'Changed workload with missing rate must still be protected');
     $clients->fixture['rates'][0]['workload'] = 8;
     $clients->fixture['rates'][1]['workload'] = 8;
+    $clients->fixture['rates'][1]['rate'] = $cipher->encryptString('1500.50');
+    check($clients->fixture['rates'][0]['rate'] !== $clients->fixture['rates'][1]['rate']
+        && runFixture($clients, true)['conflicts']===0,
+        'Distinct encrypted payloads of equal amounts must coalesce without a false interval conflict');
     check(runFixture($clients, false)['conflicts']===0, 'Backfill deferred encrypted rates without remapping');
     $afterBackfill = target('clients')->table('member_terms')->orderBy('id')->get()->toArray();
     check(array_column($afterBackfill, 'id')===$originalIds,
