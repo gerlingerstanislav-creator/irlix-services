@@ -126,7 +126,10 @@ try {
         $run=$store->beginRun('employees','migrate'); \App\Migration\Core\TableProgress::$activeRun=$run;
         $result=$adapter->migrate($run,false); $store->finishRun($run,'completed',$result);
         ensure(\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$run)->count()===0,'Manual date conflicts reconciled without errors');
-        ensure($result['employees']['created']===0 && $result['employees']['updated']===2 && $result['employment_periods']===2,'Existing employees and mapped periods count as success');
+        ensure($result['employees']['created']===0 && $result['employees']['updated']===($first?2:0)
+            && ($result['employees']['unchanged'] ?? 0)===($first?0:2)
+            && $result['employment_periods']===2,
+            'Changed employees update once; equal employees are not rewritten on repeat');
         ensure($result['employment_periods_updated']===($first?2:0),'Repeat import does not change equal periods');
         ensure(\Illuminate\Support\Facades\DB::table('migration_run_events')->where('migration_run_id',$run)->where('event','employment_period_updated')->count()===($first?2:0),'Changed dates audited once with before and after values');
         ensure($target->table('employees')->count()===2 && $target->table('employment_periods')->count()===2,'No duplicate employee or interval');
