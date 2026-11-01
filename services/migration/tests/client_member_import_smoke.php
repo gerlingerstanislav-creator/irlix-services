@@ -200,6 +200,12 @@ try {
     $clients->fixture['rates'][1]['end_date'] = '2026-02-10';
     check(runFixture($clients, true)['conflicts']===0,
         'An extension entirely after the submitted month does not require reconciliation');
+    check(runFixture($clients, false)['conflicts']===0
+        && target('clients')->table('member_terms')->where('id',$canonicalTermId)->value('valid_to')==='2026-02-10',
+        'Approved future-only date extension is actually synchronized');
+    $clients->fixture['rates'][1]['end_date'] = '2026-01-31';
+    check(runFixture($clients, false)['conflicts']===0,
+        'Idempotent shrink back to the prior end is safe without changing approved January');
     $clients->fixture['rates'][1]['end_date'] = '2026-01-30';
     check(runFixture($clients, true)['conflicts']>0,
         'Shortening a term inside a submitted month requires reconciliation');
