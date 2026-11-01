@@ -143,12 +143,12 @@ test('manual checkpoint controls and text report replace implicit backup/JSON do
    read('../src/MigrationControl.vue'),read('../src/MigrationControlTree.vue'),
    read('../src/MigrationAdministration.vue'),
  ]);
- assert.match(tree,/emit\('snapshot','all'\)/);
- assert.match(tree,/emit\('restore','all'\)/);
- assert.match(tree,/emit\('snapshot',svc\.service\)/);
- assert.match(tree,/emit\('restore',svc\.service\)/);
+ assert.match(tree,/emit\('backups','all'\)/);
+ assert.match(tree,/emit\('report','all'\)/);
+ assert.match(tree,/emit\('backups',svc\.service\)/);
+ assert.match(tree,/emit\('report',svc\.service\)/);
  assert.match(tree,/mctrl-last-write--stale/);
- assert.match(control,/>Отчёт<\/UiButton>/);
+ assert.match(tree,/>Отчёт<\/UiButton>/);
  assert.doesNotMatch(control,/JSON-отчёт|async function download\(/);
  assert.doesNotMatch(control,/Перед записью создаётся точка отката/);
  assert.match(admin,/backupScope/);
@@ -185,14 +185,14 @@ test('per-service stage strip keeps unknown, active, failed and skipped stages d
 });
 
 
-test('migration control keeps stages and uses seven summary columns',async()=>{
+test('migration control keeps stages and uses six summary columns',async()=>{
  const {readFileSync}=await import('node:fs');
  const {fileURLToPath}=await import('node:url');
  const {resolve,dirname}=await import('node:path');
  const source=readFileSync(resolve(dirname(fileURLToPath(import.meta.url)),'../src/MigrationControlTree.vue'),'utf8');
  assert.match(source,/Ошибки \/ предупреждения/);
  assert.doesNotMatch(source,/Без результата<\/th>/);
- assert.equal((source.match(/<col class=/g)||[]).length,7);
+ assert.equal((source.match(/<col class=/g)||[]).length,6);
  assert.match(source,/mctrl-tree-status-stages/);
  assert.doesNotMatch(source,/:data-service="svc\.service"/);
  assert.doesNotMatch(source,/serviceIndicatorState\(svc,operation\)/);
@@ -245,7 +245,7 @@ test('mobile migration interface retains report completeness but omits table col
  const css=readFileSync(resolve(root,'migration-control.css'),'utf8');
  assert.doesNotMatch(tree,/<th scope="col">Полнота<\/th>/);
  assert.equal((tree.match(/<col class=/g)||[]).length,7);
- assert.match(tree,/colspan="7"/);
+ assert.match(tree,/colspan="6"/);
  assert.match(tree,/report\?\.coverage\?\.semantic_complete/);
  assert.match(view,/mctrl-operation-details/);
  assert.match(css,/\.mctrl-operation-details:not\(\[open\]\)/);
@@ -260,4 +260,23 @@ test('connection verification buttons do not accidentally submit the save form',
  for(const action of ['verify','reachability','inspect','dry-run','delete']) {
   assert.match(source,new RegExp('<UiButton\\s+type="button"[^>]*@click="run\\(\\\''+action+'\\\'\\)"'),action+' must never submit connection form');
  }
+});
+
+test('scoped reports never leak other service groups or reuse global report',async()=>{
+ const {scopedReportText}=await import('../src/migration-control-model.js');
+ const operation={id:'201',services:['clients','timesheets'],status:'partial'};
+ const report={operation,chat_summary:'Global includes both Clients and Timesheets',runs:[
+  {service:'clients',mode:'migrate',status:'partial',run_id:50},
+  {service:'timesheets',mode:'migrate',status:'completed',run_id:51},
+ ],root_cause_groups:[
+  {service:'clients',table:'rates',code:'PROTECTED_TERM_CHANGE',severity:'error',count:1,message:'Ставка защищена'},
+  {service:'timesheets',table:'timesheets',code:'PRIVATE_TIMESHEETS_CODE',severity:'warning',count:5},
+ ]};
+ const clients=scopedReportText(report,operation,'clients');
+ assert.match(clients,/PROTECTED_TERM_CHANGE/);
+ assert.doesNotMatch(clients,/PRIVATE_TIMESHEETS_CODE|Global includes both/);
+ assert.match(scopedReportText(report,operation,'timesheets'),/PRIVATE_TIMESHEETS_CODE/);
+ assert.equal(scopedReportText(report,operation,'all'),report.chat_summary);
+ assert.equal(scopedReportText(report,{id:'202'},'clients'),'','stale report cannot be read as another operation');
+ assert.equal(scopedReportText(report,operation,'employees'),'','no invented report for a service absent from operation');
 });
