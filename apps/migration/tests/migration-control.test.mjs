@@ -244,7 +244,7 @@ test('mobile migration interface retains report completeness but omits table col
  const view=readFileSync(resolve(root,'MigrationControl.vue'),'utf8');
  const css=readFileSync(resolve(root,'migration-control.css'),'utf8');
  assert.doesNotMatch(tree,/<th scope="col">Полнота<\/th>/);
- assert.equal((tree.match(/<col class=/g)||[]).length,7);
+ assert.equal((tree.match(/<col class=/g)||[]).length,6);
  assert.match(tree,/colspan="6"/);
  assert.match(tree,/report\?\.coverage\?\.semantic_complete/);
  assert.match(view,/mctrl-operation-details/);
