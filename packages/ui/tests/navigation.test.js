@@ -189,7 +189,8 @@ test('embedded System Migration keeps legacy links and query/hash on its own rou
   }
   assert.equal(routes.find(route => route.name === 'not-found').path, '/:pathMatch(.*)*');
   const main = readFileSync(new URL('../../../apps/system/src/main.js', import.meta.url), 'utf8');
-  assert.match(main, /if\(!await auth\.init\(\)\)return;/);
+  assert.match(main, /runAuthenticatedStartup\(/);
+  assert.match(main, /authenticate:\s*\(\)\s*=>\s*auth\.init\(\)/);
   assert.match(main, /await router\.isReady\(\)/);
   assert.match(main, /const restoredTarget = restoredPath \+ window\.location\.search \+ window\.location\.hash/);
   assert.match(main, /router\.replace\(restoredTarget\)/);
