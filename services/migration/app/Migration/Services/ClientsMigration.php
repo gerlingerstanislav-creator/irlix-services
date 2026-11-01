@@ -459,15 +459,41 @@ class ClientsMigration extends SchemaMigration
                         ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '<>', 'Новый'))
                         ->whereDate('period_end', '>=', $protectedFrom);
                     if ($protectedTo !== null) $query->whereDate('period_start', '<=', $protectedTo);
-                    if ($query->exists()) throw new SourceRowConflict('PROTECTED_TERM_CHANGE',
-                        'Условия отличаются от источника и затрагивают уже отправленный отчётный период. '
-                        .'Автоматическая перезапись финансовой истории запрещена; нужна единая сверка '
-                        .'защищённых периодов, а не исправление отдельных строк.',
-                        ['changed_fields' => $changedFields,
-                         'target_interval' => ['from' => $oldFrom, 'to' => $oldTo],
-                         'source_interval' => ['from' => $from, 'to' => $to],
-                         'reconciliation_type' => 'protected_financial_period',
-                         'automatic_override_allowed' => false]);
+                    // Match the target Clients service's MemberIdentity policy:
+                    // moving an edge outside the locked month's clipped span
+                    // is safe; altering its covered days or commercial values
+                    // is not. A broad "interval intersects" check incorrectly
+                    // rejects harmless future extensions.
+                    $commercialChanged = count(array_diff($changedFields, ['valid_from', 'valid_to'])) > 0;
+                    foreach ($query->get(['period_start', 'period_end']) as $period) {
+                        $periodFrom = substr((string) $period->period_start, 0, 10);
+                        $periodTo = substr((string) $period->period_end, 0, 10);
+                        if (!preg_match('/^\\d{4}-\\d{2}-\\d{2}$/D', $periodFrom)
+                            || !preg_match('/^\\d{4}-\\d{2}-\\d{2}$/D', $periodTo)) {
+                            throw new SourceRowConflict('PROTECTED_PERIOD_DATES_INVALID',
+                                'У защищённого отчётного периода отсутствуют корректные границы.',
+                                ['changed_fields' => $changedFields]);
+                        }
+                        $clip = static function (string $start, ?string $end) use ($periodFrom, $periodTo): ?array {
+                            $a = max($periodFrom, $start);
+                            $z = min($periodTo, $end ?? '9999-12-31');
+                            return $a <= $z ? [$a, $z] : null;
+                        };
+                        $before = $clip($oldFrom, $oldTo);
+                        $after = $clip($from, $to);
+                        if ($before !== $after || ($commercialChanged && ($before !== null || $after !== null))) {
+                            throw new SourceRowConflict('PROTECTED_TERM_CHANGE',
+                                'Изменение условий затрагивает уже отправленный отчётный период. '
+                                .'Автоматическая перезапись финансовой истории запрещена: '
+                                .'требуется сверка защищённых периодов по единой политике.',
+                                ['changed_fields' => $changedFields,
+                                 'target_interval' => ['from' => $oldFrom, 'to' => $oldTo],
+                                 'source_interval' => ['from' => $from, 'to' => $to],
+                                 'protected_interval' => ['from' => $periodFrom, 'to' => $periodTo],
+                                 'reconciliation_type' => 'protected_financial_period',
+                                 'automatic_override_allowed' => false]);
+                        }
+                    }
                 }
             }
             $this->noOverlap('rates', $id, 'member_terms', ['client_member_id' => $member], 'valid_from', 'valid_to', $from, $to);
