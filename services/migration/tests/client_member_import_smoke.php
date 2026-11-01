@@ -376,6 +376,31 @@ try {
     check(runFixture($clients, true)['conflicts']===0,
         'Original source correction persists after negative safety cases');
 
+    // Source can change the reporting status too. A repeated import must
+    // never manufacture a paid period or roll back a native Finance closure.
+    $clients->fixture['reporting_periods'][0]['paid_at'] = '2026-03-01';
+    $reportAttempt = runFixture($clients, true);
+    check($reportAttempt['conflicts']>0
+        && \Illuminate\Support\Facades\DB::table('migration_conflicts')
+            ->where('code','PROTECTED_REPORTING_PERIOD_CHANGE')->exists(),
+        'An already imported period cannot become Finance-paid via a legacy delta');
+    $clients->fixture['reporting_periods'][0]['paid_at'] = null;
+    $clients->fixture['reporting_periods'][0]['act_approved_at'] = '2026-03-01';
+    check(runFixture($clients, true)['conflicts']>0,
+        'A legacy delta cannot issue newly act-approved status in place of native workflow');
+    $clients->fixture['reporting_periods'][0]['act_approved_at'] = null;
+
+    target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
+        ->update(['status'=>'Счет оплачен','paid_at'=>'2026-03-01']);
+    check(runFixture($clients, true)['conflicts']>0,
+        'Repeat import cannot downgrade a Finance-paid period back to source status');
+    check(target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)->value('status')==='Счет оплачен',
+        'A denied dry-run leaves the paid period intact');
+    target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
+        ->update(['status'=>'ТШ согласованы','paid_at'=>null]);
+    check(runFixture($clients, true)['conflicts']===0,
+        'No-op after restoring original historical status still succeeds');
+
     $only = [['target_id'=>98,'client_name'=>'Renamed Client','project_names'=>[],
         'terms'=>[['id'=>5,'valid_from'=>'2026-01-01','valid_to'=>'2026-12-31']]]];
     check(\App\Migration\Core\TimesheetsMemberMatching::choose('Old project', [], $only)['selected_id']===98,
