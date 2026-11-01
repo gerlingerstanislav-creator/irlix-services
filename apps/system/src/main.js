@@ -3,6 +3,7 @@ import { createApp, h, ref, computed } from 'vue';
 import { router } from './router';
 import { UiAppShell, isPlatformAdministratorAccess } from '@irlix/ui';
 import { createBrowserAuth } from '@irlix/auth';
+import { runAuthenticatedStartup } from './startup.js';
 import ResourceMonitor from '../../portal/src/ResourceMonitor.vue';
 import ServiceMap from '../../portal/src/ServiceMap.vue';
 import BugReportsPage from './BugReportsPage.vue';
@@ -35,7 +36,9 @@ h('h1', error.value ? '503 — Сервис временно недоступе�
 app.use(router);
 router.isReady().then(() => app.mount('#app'));
 
-(async()=>{try{if(!await auth.init())return;
+runAuthenticatedStartup({
+  authenticate: () => auth.init(),
+  initialize: async () => {
 // Auth can restore a different deep link via history.replaceState during OIDC callback.
 // Reconcile Vue Router after callback processing (the router was installed earlier).
 await router.isReady();
@@ -46,5 +49,10 @@ const response=await auth.fetch('/api/employees/access/me',{headers:{Accept:'app
 if(!response.ok)throw new Error('Role check failed');
 access.value=(await response.json())?.data||null;authorized.value=isPlatformAdministratorAccess(access.value);
 if (authorized.value && router.currentRoute.value.name === 'root') await router.replace({ name: 'resources' });
-}catch(e){error.value='Не удалось проверить доступ. Повторите позднее.';console.error('System access check failed',e);}
-finally{loading.value=false;}})();
+  },
+  onError: (e) => {
+    error.value = 'Не удалось проверить доступ. Повторите позднее.';
+    console.error('System access check failed', e);
+  },
+  onReady: () => { loading.value = false; },
+});
