@@ -28,7 +28,7 @@ await page.route('**/.well-known/openid-configuration',r=>r.fulfill({json:{issue
 }
 if(path.startsWith('/console/runs/4/conflicts')){if(path.endsWith('/evidence'))return r.fulfill({json:{data:{source_type:'timesheets',source_id:'700',source:{date:'2026-05-03'},rate:{id:12},member:{id:8},checks:[{name:'Дата записи входит в исходный период',ok:false,severity:'warning',detail:'2026-05-03 вне исходного периода'}],mapped_member_id:41,mapped_term_id:51,mapped_term_ids:[51,52],resolution:{version:2,employee_id:9,project_id:31,project_member_id:41,term_ids:[51,52]},root_cause:{table:'rates',code:'SOURCE_RATE_DATE_MISMATCH',message:'Дата исходной записи вне периода ставки'},candidates:[{target_id:41,project_id:31,client_name:'Synthetic Client',project_name:'Synthetic Project',period_matches:true,matched_rates:1,rate_count:1,mapped_term_ids:[51,52],period_evidence:[{from:'2026-05-01',to:'2026-05-31',workload:8,fact_dates:['2026-05-03','2026-05-04'],matching_term_ids:[51,52],date_term_matches:[{date:'2026-05-03',term_id:51},{date:'2026-05-04',term_id:52}]}],terms:[{id:51,valid_from:'2026-05-01',valid_to:'2026-05-03',hours_per_day:8},{id:52,valid_from:'2026-05-04',valid_to:'2026-05-31',hours_per_day:8}]}],action:'Synthetic review'}}});return r.fulfill({json:{data:{items:[{id:701,entity_type:'timesheets',legacy_id:'700',code:'SOURCE_RATE_DATE_MISMATCH',message:'Synthetic date warning',severity:'error'}],total:1,cursor:null,more:false}}});}if(path.includes('/report')){reports++;if(brokenReport&&!url.search)return r.fulfill({status:500,json:{message:'Synthetic evidence aggregation failed'}});if(slowReport&&!url.search)await new Promise(resolve=>setTimeout(resolve,4800));if(url.search)await new Promise(resolve=>setTimeout(resolve,150));return r.fulfill({json:{data:report(path.split('/')[3])}});}if(path==='/control/start')status='running';if(path==='/control/cancel')status='cancelled';return r.fulfill({json:{data:{operation:op('100')}}});});
 await page.goto(new URL(routePath+'?service=clients',base).href);
-await page.getByText('Весь перенос #100',{exact:true}).waitFor();
+await page.locator('.mctrl-tree-root .mctrl-tree-title').getByText(/#100/).waitFor();
 assert.equal(await page.locator('.irlix-app-shell').count(),1,'one host shell');
 assert.equal(await page.getByRole('tab').count(),0,'control is a page, not a tab');
 if(embedded)assert.equal(await page.locator('.migration-embedded').count(),1,'actual embedded facade');
@@ -201,7 +201,7 @@ assert.equal(calls.filter(c=>c.path==='/control/start').length,0,'manual checkpo
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 status='running';brokenReport=false;
 await page.reload();
-await page.getByText('Весь перенос #100',{exact:true}).waitFor();
+await page.locator('.mctrl-tree-root .mctrl-tree-title').getByText(/#100/).waitFor();
 assert.equal(await page.getByRole('button',{name:'Подключения',exact:true}).count(),0,'no global settings selector');
 await page.getByRole('button',{name:'Настройки подключения: Клиенты'}).click();
 await page.getByText('Настройки импорта · Клиенты',{exact:true}).waitFor();
@@ -232,7 +232,7 @@ assert.equal(await page.getByRole('progressbar',{name:'Прогресс серв
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс всего переноса'}).getAttribute('value'),'50');
 // On refresh the report is fetched again, but visibility remains local and stable.
 await page.reload();
-await page.getByText('Весь перенос #100',{exact:true}).waitFor();
+await page.locator('.mctrl-tree-root .mctrl-tree-title').getByText(/#100/).waitFor();
 await page.getByRole('button',{name:'Развернуть Клиенты'}).click();
 assert.equal(await page.locator('.mctrl-tree-entity').count(),1,'hidden cache survives full reload');
 assert.match(await page.locator('.mctrl-tree-service td:nth-child(2)').innerText(),/100 \/ 201/);
@@ -286,7 +286,7 @@ await page.getByText(/unknown_flag/).first().waitFor();
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 await page.getByRole('button',{name:'История операций'}).click();
 await page.getByRole('option',{name:/#99/}).click();
-await page.getByText('Весь перенос #99',{exact:true}).waitFor();
+await page.locator('.mctrl-tree-root .mctrl-tree-title').getByText(/#99/).waitFor();
 assert.equal(await page.locator('.mctrl-tree-service').count(),1,'historical service selected');
 await page.getByRole('button',{name:'Развернуть Клиенты'}).click();
 assert.equal(await page.locator('.mctrl-tree-entity').count(),2,'historical version uses shared per-service row visibility');
@@ -302,7 +302,7 @@ assert.equal(await page.getByRole('textbox',{name:'Текст отчёта'}).in
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 await page.getByRole('button',{name:'История операций'}).click();
 await page.getByRole('option',{name:'Текущая операция',exact:true}).click();
-await page.getByText('Весь перенос #100',{exact:true}).waitFor();
+await page.locator('.mctrl-tree-root .mctrl-tree-title').getByText(/#100/).waitFor();
 await page.waitForTimeout(150);
 await page.getByRole('button',{name:'Развернуть Клиенты'}).click();
 assert.equal(await page.locator('.mctrl-tree-entity').count(),2,'returning to active version preserves visibility preferences');
@@ -333,7 +333,7 @@ const treeTopBefore=await page.locator('.mctrl-tree-scroll').evaluate(el=>el.get
 offline=true;await page.getByText(/Нет связи с Migration/).waitFor({timeout:8000});await page.locator('.mctrl-connection-loader').waitFor();assert.ok(await page.evaluate(()=>document.querySelector('.mctrl-operation-bar .mctrl-connection-loader')!==null),'offline spinner stays in the top toolbar, not in a standalone row');assert.ok(await page.evaluate(()=>{const t=document.querySelector('.mctrl-status-toast');return t&&getComputedStyle(t).position==='fixed';}),'network error floats without moving the page');assert.ok(Math.abs((await page.locator('.mctrl-tree-scroll').evaluate(el=>el.getBoundingClientRect().top))-treeTopBefore)<2,'offline message does not shift transfer table');assert.equal(await page.getByRole('button',{name:'Остановить перенос: Все сервисы'}).isEnabled(),true,'cancel stays available when GET polling fails');await page.getByRole('button',{name:'Остановить перенос: Все сервисы'}).click();await page.getByRole('textbox',{name:'Причина остановки'}).fill('Synthetic safe stop during offline GET');await page.getByRole('button',{name:'Остановить после этапа'}).click();await page.waitForTimeout(180);assert.ok(calls.some(c=>c.path==='/control/cancel'&&c.body.reason==='Synthetic safe stop during offline GET'),'cancel POST works even if state GET is temporarily offline');assert.match(await page.locator('.mctrl-tree-root .mctrl-tree-title').innerText(),/Весь перенос\s*#100/);assert.ok(maxActive<=2,'manual checkpoint drawer may read state in parallel with lightweight polling, but never fan out unboundedly');await page.screenshot({path:process.env.MIGRATION_CONTROL_SCREENSHOT||'/tmp/migration-control-desktop.png',fullPage:true});await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/migration-control-mobile.png',fullPage:true});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'mobile document does not overflow');
 assert.ok(await page.evaluate(()=>{const el=document.querySelector('.mctrl-tree-scroll');return el.scrollWidth>el.clientWidth;}),'mobile table scrolls inside its own container');offline=false;await page.locator('.mctrl-connection-loader').waitFor({state:'hidden',timeout:8000});
 await page.goto(new URL((embedded?'/system/migration/':'/migration/')+'?service=clients',base).href);
-await page.getByText('Весь перенос #100',{exact:true}).waitFor();
+await page.locator('.mctrl-tree-root .mctrl-tree-title').getByText(/#100/).waitFor();
 assert.ok(new URL(page.url()).pathname.endsWith('/migration/control/'),'old console bookmark redirects to Control');
 assert.equal(new URL(page.url()).searchParams.get('service'),'clients','redirect retains the service scope');
 assert.equal(await page.getByRole('navigation',{name:'Очередь переноса'}).count(),0,'legacy screen and menu are removed');
