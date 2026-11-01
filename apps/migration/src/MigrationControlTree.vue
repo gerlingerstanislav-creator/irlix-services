@@ -3,7 +3,7 @@ import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue';
 import {UiBadge,UiButton,UiDrawer,UiIcon,UiLoader,UiPanel,UiTreeToggle} from '@irlix/ui';
 import MigrationIdentityMapping from './MigrationIdentityMapping.vue';
 import MigrationErrorWorkbench from './MigrationErrorWorkbench.vue';
-import {migrationTree,diagnosticItems,progressText,lastMigrationAge,serviceTitles,stageRows,stageTitles,stageStripStatus,stageStripTooltip,statusText,text,tone} from './migration-control-model.js';
+import {migrationTree,diagnosticItems,protectedTermFieldLabels,progressText,lastMigrationAge,serviceTitles,stageRows,stageTitles,stageStripStatus,stageStripTooltip,statusText,text,tone} from './migration-control-model.js';
 import {VISIBILITY_KEY,filterMigrationTree,hiddenEntities,progressPercent,readHidden,saveHidden,updateHidden} from './migration-control-visibility.js';
 
 const props=defineProps({operation:{type:Object,required:true},report:{type:Object,default:null},auth:{type:Object,required:true},busy:{type:Boolean,default:false},lastMigrations:{type:Object,default:()=>({})},restoreHistory:{type:Array,default:()=>[]},activeOperation:{type:Object,default:null}});
@@ -335,9 +335,13 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
   <UiLoader v-if="loading" show-label label="Загружаем подробные события…"/>
   <p v-if="problem" role="alert">{{problem}}. Группы доступны ниже.</p>
   <UiPanel v-for="(r,i) in items" :key="'item-'+i" class="mctrl-tree-issue">
-   <header><strong>{{text(r.code)}} · {{text(r.table||r.entity_type)}}</strong><UiBadge :tone="r.severity==='error'?'danger':'warning'">{{text(r.severity)}}</UiBadge></header>
+   <header><strong>{{text(r.code)}} · {{text(r.table||r.entity_type)}}</strong><UiBadge :tone="r.severity==='error'?'danger':r.severity==='info'?'neutral':'warning'">{{text(r.severity)}}</UiBadge></header>
    <p>Источник #{{text(r.legacy_id)}} · {{serviceTitles[r.service]||r.service}} · {{stageTitles[r.stage]||text(r.stage)}} · run #{{text(r.run_id)}}</p>
    <p>{{text(r.message)}}</p>
+   <p v-if="r.code==='PROTECTED_TERM_CHANGE'&&protectedTermFieldLabels(r.context).length">
+     <strong>Защищённые различия:</strong> {{protectedTermFieldLabels(r.context).join(', ')}}.
+     Требуется сверка с уже отправленным отчётным периодом; автоматическое изменение запрещено.
+   </p>
    <UiButton v-if="r.id&&r.entity_type==='users'&&r.severity==='error'&&['vacations','clients'].includes(r.service)"
      variant="secondary" compact :disabled="busy" @click="identityConflict=r">Сопоставить пользователя</UiButton>
    <UiButton v-if="r.id&&r.entity_type==='employment'&&r.service==='employees'" variant="secondary" compact
@@ -348,6 +352,10 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
   <UiPanel v-for="(g,i) in groups" :key="'group-'+i" class="mctrl-tree-issue">
    <header><strong>{{text(g.code)}} · {{text(g.table)}}</strong><UiBadge :tone="g.severity==='error'?'danger':g.severity==='info'?'neutral':'warning'">{{text(g.severity)}}</UiBadge></header>
    <p>{{text(g.message)}} · событий {{text(g.count)}} · затронуто строк {{text(g.affected_rows)}}</p>
+   <p v-if="g.code==='PROTECTED_TERM_CHANGE'&&protectedTermFieldLabels(g.examples?.[0]?.context).length">
+     <strong>Защищённые различия:</strong> {{protectedTermFieldLabels(g.examples?.[0]?.context).join(', ')}}.
+     Сверьте исходное условие, целевой MemberTerms и снимок отчётного периода.
+   </p>
    <details v-if="g.examples?.length"><summary>Примеры</summary><pre>{{JSON.stringify(g.examples,null,2)}}</pre></details>
   </UiPanel>
   <p v-if="!groups.length">Диагностических групп нет. Это не является доказательством отсутствия проблем.</p>
