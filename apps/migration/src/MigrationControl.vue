@@ -1,10 +1,10 @@
 <script setup>
 import {computed,onBeforeUnmount,onMounted,ref,watch} from 'vue';
-import {UiButton,UiDrawer,UiIcon,UiLoader,UiPageHeader,UiSearchSelect} from '@irlix/ui';
+import {UiButton,UiDrawer,UiIcon,UiLoader,UiSearchSelect} from '@irlix/ui';
 import MigrationControlTree from './MigrationControlTree.vue';
 import MigrationAdministration from './MigrationAdministration.vue';
 import {
-  dateText,isActive,lastMigrationAge,serviceTitles,stageTitles,statusText,text,
+  dateText,isActive,lastMigrationAge,scopedReportText,serviceTitles,stageTitles,statusText,text,
 } from './migration-control-model.js';
 import './migration-control.css';
 
@@ -35,6 +35,7 @@ const reason=ref('');
 const launchScope=ref('all');
 const launchContext=ref('new');
 const launchSourceId=ref('');
+const reportScope=ref('all');
 
 const selected=computed(()=>historyId.value
   ? state.value.history.find(op=>String(op.id)===historyId.value)
@@ -69,7 +70,14 @@ const blockedReason=computed(()=>{
   if(pending.value)return 'Ожидается подтверждение предыдущего действия.';
   return '';
 });
-const chat=computed(()=>selectedReport.value?.chat_summary||'');
+const chat=computed(()=>scopedReportText(selectedReport.value,operation.value,reportScope.value));
+function reportFor(scope='all'){void copy(scope);}
+function beginTransfer(scope='all'){
+ if(busy.value)return;
+ if(scope!=='all'){retryService(scope);return;}
+ launchScope.value='all';launchContext.value='new';launchSourceId.value='';drawer.value='start';
+}
+function requestStop(){if(!isActive(state.value.operation)||pending.value||cancelRequested.value)return;reason.value='';drawer.value='cancel';}
 const serviceAge=scope=>lastMigrationAge(state.value.last_migrations,scope);
 const cancelRequested=computed(()=>Boolean(state.value.operation?.cancel_requested)
   ||(isActive(state.value.operation)&&cancelAcknowledgedId.value===String(state.value.operation?.id)));
@@ -219,10 +227,12 @@ async function performDisposableReset(){
  }catch(e){resetFailed.value=true;error.value=e.message;}
  finally{pending.value=false;void refresh();}
 }
-async function copy(){
-  if(!chat.value)return;
+async function copy(scope='all'){
+  reportScope.value=scope;
+  const reportText=scopedReportText(selectedReport.value,operation.value,scope);
+  if(!reportText)return;
   try{
-    await navigator.clipboard.writeText(chat.value);
+    await navigator.clipboard.writeText(reportText);
     notice.value='Текст отчёта скопирован.';
   }catch{drawer.value='copy';}
 }
@@ -239,28 +249,14 @@ onBeforeUnmount(()=>{
 
 <template>
 <main class="mctrl" aria-label="Контроль переноса">
-  <UiPageHeader title="Контроль переноса">
-    <template #actions>
-      <div class="mctrl-toolbar-actions" aria-label="Управление переносом">
-        <label class="mctrl-operation-picker">
-          <span>Операция</span>
-          <UiSearchSelect v-model="historyId" :options="historyOptions" :clearable="false"
-            :teleport="true" aria-label="История операций"/>
-        </label>
-        <UiButton variant="secondary" @click="openBackups('all','')">Снимки</UiButton>
-        <UiButton variant="secondary" :disabled="busy" @click="openDisposableReset">Очистить Clients / Timesheets</UiButton>
-        <UiButton :disabled="busy" @click="launchScope='all';launchContext='new';launchSourceId='';drawer='start'">Новый перенос</UiButton>
-        <span class="mctrl-loader-slot"><UiLoader v-show="loading||offline||waiting" class="mctrl-connection-loader" size="small"
-          :label="offline?'Ожидаем восстановления Migration API… Повторяем проверку автоматически.':loading?'Загружаем состояние переноса…':'Ожидаем ответ Migration API…'"/></span>
-        <UiButton v-if="isActive(state.operation)" variant="secondary"
-          :disabled="pending||cancelRequested" @click="reason='';drawer='cancel'">
-          {{cancelRequested?'Остановка запрошена':'Остановить'}}
-        </UiButton>
-        <UiButton variant="ghost" aria-label="Скопировать текст отчёта" :disabled="!chat" @click="copy">Отчёт</UiButton>
-      </div>
-    </template>
-  </UiPageHeader>
-
+  <div class="mctrl-operation-bar" aria-label="Выбор операции">
+    <label class="mctrl-operation-picker">
+      <span>Операция</span>
+      <UiSearchSelect v-model="historyId" :options="historyOptions" :clearable="false" :teleport="true" aria-label="История операций"/>
+    </label>
+    <span class="mctrl-loader-slot"><UiLoader v-show="loading||offline||waiting" class="mctrl-connection-loader" size="small"
+      :label="offline?'Ожидаем восстановления Migration API… Повторяем проверку автоматически.':loading?'Загружаем состояние переноса…':'Ожидаем ответ Migration API…'"/></span>
+  </div>
   <div v-if="offline||error||reportError||notice" class="mctrl-status-toast"
     :role="offline||error||reportError?'alert':'status'">
     <span v-if="offline">Нет связи с Migration. Показан последний подтверждённый ответ; актуальный статус неизвестен. {{error}}</span>
@@ -290,31 +286,38 @@ onBeforeUnmount(()=>{
   <p v-if="!operation&&!loading&&!offline">Перенос ещё не запускался. Настройте подключения и начните новый перенос.</p>
   <section v-if="!operation&&!loading&&!offline" class="mctrl-setup-table">
     <table class="irlix-data-table">
-      <thead><tr><th scope="col">Сервис</th><th scope="col">Последняя запись</th><th scope="col">Действия</th></tr></thead>
-       <tbody><tr><th scope="row">Все сервисы</th>
-        <td><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':serviceAge('all').stale}">{{serviceAge('all').label}}</span></td>
-        <td><div class="mctrl-tree-row-actions"><UiButton variant="secondary" compact :disabled="busy" @click="openBackups('all','snapshot')">Создать точку</UiButton><UiButton variant="secondary" compact @click="openBackups('all','restore')">Откат к точке</UiButton></div></td>
-       </tr></tbody>
-      <tbody><tr v-for="key in ['employees','vacations','clients','timesheets']" :key="key">
-        <th scope="row"><div class="mctrl-tree-node mctrl-tree-node--service">
-          <strong class="mctrl-tree-title">{{serviceTitles[key]}}</strong>
-          <UiButton variant="ghost" compact class="mctrl-service-settings-trigger"
-            :aria-label="'Настройки подключения: '+serviceTitles[key]"
-            :title="'Настройки подключения · '+serviceTitles[key]"
-            @click="configureService(key)"><UiIcon name="settings"/></UiButton>
+      <thead><tr><th scope="col">Перенос / сервис</th><th scope="col">Последняя запись</th><th scope="col">Действия</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><div class="mctrl-tree-node">
+          <strong class="mctrl-tree-title">Весь перенос</strong>
+          <UiButton variant="ghost" compact class="mctrl-inline-icon" :disabled="busy" aria-label="Запустить перенос: Все сервисы" @click="beginTransfer('all')"><UiIcon name="play"/></UiButton>
+          <UiButton variant="ghost" compact class="mctrl-inline-icon" aria-label="Точки отката: Все сервисы" @click="openBackups('all','')"><UiIcon name="save"/></UiButton>
         </div></th>
-        <td><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':serviceAge(key).stale}">{{serviceAge(key).label}}</span></td>
+        <td><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':serviceAge('all').stale}">{{serviceAge('all').label}}</span></td>
         <td><div class="mctrl-tree-row-actions">
-         <UiButton variant="secondary" compact :disabled="busy" @click="openBackups(key,'snapshot')">Создать точку</UiButton>
-         <UiButton variant="secondary" compact @click="openBackups(key,'restore')">Откат к точке</UiButton>
-        </div></td>
-      </tr></tbody>
+          <UiButton variant="secondary" compact :disabled="busy" @click="openDisposableReset">Очистить Clients / Timesheets</UiButton>
+        </div></td></tr>
+        <tr v-for="key in ['employees','vacations','clients','timesheets']" :key="key">
+          <th scope="row"><div class="mctrl-tree-node mctrl-tree-node--service">
+            <strong class="mctrl-tree-title">{{serviceTitles[key]}}</strong>
+            <UiButton variant="ghost" compact class="mctrl-inline-icon" :disabled="busy"
+              :aria-label="'Запустить перенос: '+serviceTitles[key]" @click="beginTransfer(key)"><UiIcon name="play"/></UiButton>
+            <UiButton variant="ghost" compact class="mctrl-service-settings-trigger"
+              :aria-label="'Настройки подключения: '+serviceTitles[key]" @click="configureService(key)"><UiIcon name="settings"/></UiButton>
+            <UiButton variant="ghost" compact class="mctrl-inline-icon"
+              :aria-label="'Точки отката: '+serviceTitles[key]" @click="openBackups(key,'')"><UiIcon name="save"/></UiButton>
+          </div></th>
+          <td><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':serviceAge(key).stale}">{{serviceAge(key).label}}</span></td>
+          <td class="mctrl-tree-no-data">—</td>
+        </tr>
+      </tbody>
     </table>
   </section>
   <MigrationControlTree v-if="operation" :key="String(operation.id)" :operation="operation"
-    :report="selectedReport" :auth="auth" :busy="busy" :last-migrations="state.last_migrations||{}" :restore-history="state.restore_history||[]"
-    @retry-service="retryService" @settings="configureService"
-    @snapshot="scope=>openBackups(scope,'snapshot')" @restore="scope=>openBackups(scope,'restore')"/>
+    :report="selectedReport" :auth="auth" :busy="busy" :active-operation="isActive(state.operation)?state.operation:null"
+    :last-migrations="state.last_migrations||{}" :restore-history="state.restore_history||[]"
+    @settings="configureService" @backups="scope=>openBackups(scope,'')"
+    @start="beginTransfer" @stop="requestStop" @report="reportFor" @reset="openDisposableReset"/>
   <MigrationAdministration :auth="auth" :view="adminView" :service="adminService" :backup-scope="backupScope" :backup-action-request="backupAction" :busy="busy" @close="adminView=''" @changed="refresh"/>
   <UiDrawer :open="!!drawer" :title="drawer==='start'?(launchContext==='retry'?'Запуск переноса сервиса':'Новый перенос'):drawer==='cancel'?'Остановка переноса':drawer==='reset'?'Очистка перед повторным переносом':'Текст отчёта'" @close="drawer=''">
     <form v-if="drawer==='start'" class="mctrl-form" @submit.prevent="start">

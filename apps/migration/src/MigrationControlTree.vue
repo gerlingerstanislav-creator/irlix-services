@@ -3,12 +3,15 @@ import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue';
 import {UiBadge,UiButton,UiDrawer,UiIcon,UiLoader,UiPanel,UiTreeToggle} from '@irlix/ui';
 import MigrationIdentityMapping from './MigrationIdentityMapping.vue';
 import MigrationErrorWorkbench from './MigrationErrorWorkbench.vue';
-import {migrationTree,diagnosticItems,progressText,lastMigrationAge,serviceTitles,stageRows,stageTitles,stageStripStatus,stageStripTooltip,statusText,text,tone} from './migration-control-model.js';
+import {migrationTree,diagnosticItems,protectedTermFieldLabels,progressText,lastMigrationAge,serviceTitles,stageRows,stageTitles,stageStripStatus,stageStripTooltip,statusText,text,tone} from './migration-control-model.js';
 import {VISIBILITY_KEY,filterMigrationTree,hiddenEntities,progressPercent,readHidden,saveHidden,updateHidden} from './migration-control-visibility.js';
 
-const props=defineProps({operation:{type:Object,required:true},report:{type:Object,default:null},auth:{type:Object,required:true},busy:{type:Boolean,default:false},lastMigrations:{type:Object,default:()=>({})},restoreHistory:{type:Array,default:()=>[]}});
-const emit=defineEmits(['retry-service','settings','snapshot','restore']);
+const props=defineProps({operation:{type:Object,required:true},report:{type:Object,default:null},auth:{type:Object,required:true},busy:{type:Boolean,default:false},lastMigrations:{type:Object,default:()=>({})},restoreHistory:{type:Array,default:()=>[]},activeOperation:{type:Object,default:null}});
+const emit=defineEmits(['start','stop','settings','backups','report','reset']);
 const rawTree=computed(()=>migrationTree(props.report,props.operation));
+const operationIsActive=computed(()=>['queued','running'].includes(props.activeOperation?.status)
+ && String(props.activeOperation?.id)===String(props.operation?.id));
+const activeService=service=>operationIsActive.value&&props.activeOperation?.current_service===service;
 const hidden=ref({});
 const tree=computed(()=>filterMigrationTree(rawTree.value,hidden.value));
 const unverifiedReport=computed(()=>!props.report||props.report.report_degraded===true);
@@ -59,7 +62,7 @@ watch(()=>props.operation.id,()=>{rootOpen.value=true;servicesOpen.value={};deta
 function toggle(s){servicesOpen.value={...servicesOpen.value,[s]:!servicesOpen.value[s]};}
 function open(kind,node=null,severity=null){detail.value={kind,node,severity};problem.value='';if(kind==='issues')loadItems();}
 function close(){detail.value=null;seq++;loading.value=false;}
-const detailTitle=computed(()=>{const d=detail.value;return d?(d.kind==='issues'?(d.severity==='error'?'Ошибки':'Предупреждения'):d.kind==='fields'?'Поля':d.kind==='stages'?'Этапы':'Подробности')+' · '+(d.node?.label||'Весь перенос'):'';});
+const detailTitle=computed(()=>{const d=detail.value;return d?(d.kind==='issues'?(d.severity==='error'?'Ошибки':d.severity==='info'?'Сведения':'Предупреждения'):d.kind==='fields'?'Поля':d.kind==='stages'?'Этапы':'Подробности')+' · '+(d.node?.label||'Весь перенос'):'';});
 const groups=computed(()=>(detail.value?.node?.issue_groups||tree.value?.issue_groups||[]).filter(g=>!detail.value?.severity||g.severity===detail.value.severity));
 const items=computed(()=>{
  if(detail.value?.kind!=='issues')return [];
@@ -91,13 +94,13 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
 <section class="mctrl-tree" aria-label="Таблица переноса">
  <div class="mctrl-tree-scroll" role="region" aria-label="Результаты переноса по сервисам и сущностям" tabindex="0">
   <table class="irlix-data-table mctrl-tree-table">
-   <colgroup><col class="mctrl-tree-col-name"/><col class="mctrl-tree-col-status"/><col class="mctrl-tree-col-progress"/><col class="mctrl-tree-col-errors"/><col class="mctrl-tree-col-extra"/><col class="mctrl-tree-col-action"/><col class="mctrl-tree-col-backups"/></colgroup>
+   <colgroup><col class="mctrl-tree-col-name"/><col class="mctrl-tree-col-status"/><col class="mctrl-tree-col-progress"/><col class="mctrl-tree-col-errors"/><col class="mctrl-tree-col-extra"/><col class="mctrl-tree-col-action"/></colgroup>
    <thead><tr>
     <th scope="col">Перенос / сервис / сущность</th>
     <th scope="col">Статус</th>
     <th scope="col">Обработано / всего</th>
     <th scope="col">Ошибки / предупреждения</th>
-    <th scope="col">Дополнительно</th><th scope="col">Действия</th><th scope="col">Точки отката</th>
+    <th scope="col">Дополнительно</th><th scope="col">Действия</th>
    </tr></thead>
    <tbody>
     <tr class="mctrl-tree-root">
@@ -105,6 +108,12 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
       <div class="mctrl-tree-node mctrl-tree-node--root">
        <UiTreeToggle :expanded="rootOpen" label="Развернуть весь перенос" @click="rootOpen=!rootOpen"/>
        <span class="mctrl-tree-title">Весь перенос <small>#{{operation.id}}</small></span>
+       <UiButton v-if="!operationIsActive" variant="ghost" compact class="mctrl-inline-icon" :disabled="busy"
+         aria-label="Запустить перенос: Все сервисы" @click="emit('start','all')"><UiIcon name="play"/></UiButton>
+       <UiButton v-else variant="ghost" compact class="mctrl-inline-icon" aria-label="Остановить перенос: Все сервисы"
+         @click="emit('stop')"><UiIcon name="square"/></UiButton>
+       <UiButton variant="ghost" compact class="mctrl-inline-icon" aria-label="Точки отката: Все сервисы"
+         @click="emit('backups','all')"><UiIcon name="save"/></UiButton>
       </div>
      </th>
      <td><UiButton variant="ghost" compact @click="open('overview')"><UiBadge :tone="tone(operation.status)">{{statusText(operation.status)}}</UiBadge></UiButton></td>
@@ -118,13 +127,20 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
         </UiButton>
        </td>
 
-     <td><div class="mctrl-tree-extra"><span v-if="tree.hidden_count">Скрыто сущностей: {{tree.hidden_count}}</span><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite('all').stale}" :title="lastWrite('all').title">{{lastWrite('all').label}}</span></div></td><td><div class="mctrl-tree-row-actions"><UiButton variant="ghost" compact @click="open('stages')">Этапы</UiButton></div></td><td><div class="mctrl-tree-backup-actions">
-  <UiButton variant="secondary" compact :disabled="busy" aria-label="Создать точку отката: Все сервисы" @click="emit('snapshot','all')">Создать</UiButton>
-  <UiButton variant="secondary" compact aria-label="Откат к точке: Все сервисы" @click="emit('restore','all')">Откат</UiButton>
- </div></td>
+     <td><div class="mctrl-tree-extra">
+       <span v-if="tree.hidden_count">Скрыто сущностей: {{tree.hidden_count}}</span>
+       <span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite('all').stale}" :title="lastWrite('all').title">{{lastWrite('all').label}}</span>
+     </div></td>
+     <td><div class="mctrl-tree-row-actions">
+       <UiButton variant="ghost" compact @click="open('stages')">Этапы</UiButton>
+       <UiButton variant="secondary" compact :disabled="unverifiedReport" aria-label="Отчёт: Все сервисы" @click="emit('report','all')">Отчёт</UiButton>
+       <UiButton v-if="tree.issue_groups?.some(g=>g.severity==='info')" variant="ghost" compact
+         aria-label="Сведения: Все сервисы" @click="open('issues',null,'info')">Сведения</UiButton>
+       <UiButton variant="ghost" compact :disabled="busy" @click="emit('reset')">Очистить Clients / Timesheets</UiButton>
+     </div></td>
     </tr>
     <tr class="mctrl-tree-stages-row mctrl-tree-snapshot-row">
-     <td colspan="7" class="mctrl-tree-stages-cell">
+     <td colspan="6" class="mctrl-tree-stages-cell">
       <div class="mctrl-tree-stages mctrl-tree-stages--global">
        <span class="mctrl-tree-stages-heading">Подготовка операции</span>
        <button v-if="globalSnapshotStage" type="button" class="mctrl-tree-stage"
@@ -146,8 +162,14 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
          <div class="mctrl-tree-node mctrl-tree-node--service">
           <UiTreeToggle :expanded="!!servicesOpen[svc.service]" :label="'Развернуть '+svc.label" @click="toggle(svc.service)"/>
           <strong class="mctrl-tree-title">{{svc.label}}</strong>
+          <UiButton v-if="!activeService(svc.service)" variant="ghost" compact class="mctrl-inline-icon" :disabled="busy"
+            :aria-label="'Запустить перенос: '+svc.label" @click="emit('start',svc.service)"><UiIcon name="play"/></UiButton>
+          <UiButton v-else variant="ghost" compact class="mctrl-inline-icon" :aria-label="'Остановить перенос: '+svc.label"
+            @click="emit('stop')"><UiIcon name="square"/></UiButton>
           <UiButton variant="ghost" compact class="mctrl-service-settings-trigger" :aria-label="'Настройки подключения: '+svc.label"
-            :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
+             :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
+          <UiButton variant="ghost" compact class="mctrl-inline-icon" :aria-label="'Точки отката: '+svc.label"
+            @click="emit('backups',svc.service)"><UiIcon name="save"/></UiButton>
          </div>
         <div class="mctrl-tree-status-stages" :aria-label="'Этапы переноса: '+svc.label">
           <div v-for="step in stageRows(operation,report,svc.service).filter(item=>item.mode!=='snapshot')"
@@ -176,12 +198,15 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
        </td>
 
        <td><div class="mctrl-tree-extra">
- <UiButton v-if="svc.issues.errors||svc.service==='timesheets'" variant="secondary" compact :aria-label="'Разобрать ошибки '+svc.label" @click="openWorkbench(svc.service)">Разобрать ошибки</UiButton>
  <UiButton v-if="svc.hidden_count" variant="ghost" compact :aria-label="'Скрытые строки: '+svc.label" @click="showHidden(svc.service)">Скрытые ({{svc.hidden_count}})</UiButton>
  <span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span>
- </div></td><td><div class="mctrl-tree-row-actions"><UiButton variant="secondary" compact :disabled="busy" :aria-label="'Запустить перенос: '+svc.label" @click="emit('retry-service',svc.service)">Запустить</UiButton></div></td><td><div class="mctrl-tree-backup-actions">
-  <UiButton variant="secondary" compact :disabled="busy" :aria-label="'Создать точку отката: '+svc.label" @click="emit('snapshot',svc.service)">Создать</UiButton>
-  <UiButton variant="secondary" compact :aria-label="'Откат к точке: '+svc.label" @click="emit('restore',svc.service)">Откат</UiButton>
+ </div></td><td><div class="mctrl-tree-row-actions">
+   <UiButton variant="secondary" compact :disabled="unverifiedReport" :aria-label="'Отчёт: '+svc.label"
+     @click="emit('report',svc.service)">Отчёт</UiButton>
+   <UiButton v-if="svc.issue_groups?.some(g=>g.severity==='info')" variant="ghost" compact
+     :aria-label="'Сведения: '+svc.label" @click="open('issues',svc,'info')">Сведения</UiButton>
+   <UiButton v-if="svc.issues.errors||svc.service==='timesheets'" variant="ghost" compact :aria-label="'Разобрать ошибки '+svc.label"
+     @click="openWorkbench(svc.service)">Разобрать ошибки</UiButton>
  </div></td>
       </tr>
       <template v-if="rootOpen&&servicesOpen[svc.service]">
@@ -203,25 +228,27 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
         </UiButton>
        </td>
 
-        <td><div class="mctrl-tree-extra"><span>{{statusText(entity.expectation?.status)}}</span><UiButton variant="ghost" compact @click="open('fields',entity)">Поля · {{entity.fields?.length??0}}</UiButton></div></td><td><div class="mctrl-tree-row-actions"><UiButton variant="ghost" compact :aria-label="'Скрыть строку '+svc.label+' / '+entity.label" @click="setHidden(svc.service,entity.table_name,true)">Скрыть</UiButton></div></td><td class="mctrl-tree-no-data">—</td>
+        <td><div class="mctrl-tree-extra"><span>{{statusText(entity.expectation?.status)}}</span><UiButton variant="ghost" compact @click="open('fields',entity)">Поля · {{entity.fields?.length??0}}</UiButton></div></td><td><div class="mctrl-tree-row-actions"><UiButton variant="ghost" compact :aria-label="'Скрыть строку '+svc.label+' / '+entity.label" @click="setHidden(svc.service,entity.table_name,true)">Скрыть</UiButton></div></td>
        </tr>
-       <tr v-if="!svc.entities.length" class="mctrl-tree-empty"><td colspan="7">{{svc.hidden_count?'Все '+svc.hidden_count+' строки скрыты. Откройте «Скрытые», чтобы вернуть их.':'Сущности сервиса '+svc.label+' не подтверждены отчётом.'}}</td></tr>
+       <tr v-if="!svc.entities.length" class="mctrl-tree-empty"><td colspan="6">{{svc.hidden_count?'Все '+svc.hidden_count+' строки скрыты. Откройте «Скрытые», чтобы вернуть их.':'Сущности сервиса '+svc.label+' не подтверждены отчётом.'}}</td></tr>
       </template>
      </template>
      <tr v-for="svc in missingServices" :key="'connection:'+svc.service" class="mctrl-tree-settings-only">
       <th scope="row" class="mctrl-tree-label"><div class="mctrl-tree-node mctrl-tree-node--service">
-       <strong class="mctrl-tree-title">{{svc.label}}</strong>
-       <UiButton variant="ghost" compact class="mctrl-service-settings-trigger" :aria-label="'Настройки подключения: '+svc.label"
-         :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
-      </div></th>
-      <td class="mctrl-tree-no-data" title="Не участвует в выбранной операции">Вне операции</td>
-      <td class="mctrl-tree-no-data">—</td>
-      <td class="mctrl-tree-no-data">— / —</td>
-      <td><div class="mctrl-tree-extra"><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span></div></td><td class="mctrl-tree-no-data">—</td><td><div class="mctrl-tree-backup-actions">
-  <UiButton variant="secondary" compact :disabled="busy" :aria-label="'Создать точку отката: '+svc.label" @click="emit('snapshot',svc.service)">Создать</UiButton>
-  <UiButton variant="secondary" compact :aria-label="'Откат к точке: '+svc.label" @click="emit('restore',svc.service)">Откат</UiButton>
- </div></td>
-     </tr>
+        <strong class="mctrl-tree-title">{{svc.label}}</strong>
+        <UiButton variant="ghost" compact class="mctrl-inline-icon" :disabled="busy"
+          :aria-label="'Запустить перенос: '+svc.label" @click="emit('start',svc.service)"><UiIcon name="play"/></UiButton>
+        <UiButton variant="ghost" compact class="mctrl-service-settings-trigger"
+          :aria-label="'Настройки подключения: '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
+        <UiButton variant="ghost" compact class="mctrl-inline-icon"
+          :aria-label="'Точки отката: '+svc.label" @click="emit('backups',svc.service)"><UiIcon name="save"/></UiButton>
+       </div></th>
+       <td class="mctrl-tree-no-data" title="Не участвует в выбранной операции">Вне операции</td>
+       <td class="mctrl-tree-no-data">—</td>
+       <td class="mctrl-tree-no-data">— / —</td>
+       <td><div class="mctrl-tree-extra"><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span></div></td>
+       <td class="mctrl-tree-no-data" title="Сервис не участвует в выбранной операции">—</td>
+</tr>
     </template>
    </tbody>
   </table>
@@ -308,9 +335,13 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
   <UiLoader v-if="loading" show-label label="Загружаем подробные события…"/>
   <p v-if="problem" role="alert">{{problem}}. Группы доступны ниже.</p>
   <UiPanel v-for="(r,i) in items" :key="'item-'+i" class="mctrl-tree-issue">
-   <header><strong>{{text(r.code)}} · {{text(r.table||r.entity_type)}}</strong><UiBadge :tone="r.severity==='error'?'danger':'warning'">{{text(r.severity)}}</UiBadge></header>
+   <header><strong>{{text(r.code)}} · {{text(r.table||r.entity_type)}}</strong><UiBadge :tone="r.severity==='error'?'danger':r.severity==='info'?'neutral':'warning'">{{text(r.severity)}}</UiBadge></header>
    <p>Источник #{{text(r.legacy_id)}} · {{serviceTitles[r.service]||r.service}} · {{stageTitles[r.stage]||text(r.stage)}} · run #{{text(r.run_id)}}</p>
    <p>{{text(r.message)}}</p>
+   <p v-if="r.code==='PROTECTED_TERM_CHANGE'&&protectedTermFieldLabels(r.context).length">
+     <strong>Защищённые различия:</strong> {{protectedTermFieldLabels(r.context).join(', ')}}.
+     Требуется сверка с уже отправленным отчётным периодом; автоматическое изменение запрещено.
+   </p>
    <UiButton v-if="r.id&&r.entity_type==='users'&&r.severity==='error'&&['vacations','clients'].includes(r.service)"
      variant="secondary" compact :disabled="busy" @click="identityConflict=r">Сопоставить пользователя</UiButton>
    <UiButton v-if="r.id&&r.entity_type==='employment'&&r.service==='employees'" variant="secondary" compact
@@ -319,8 +350,12 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
   </UiPanel>
   <p v-if="!loading&&!items.length">Построчные события недоступны. Ниже — сгруппированная диагностика.</p>
   <UiPanel v-for="(g,i) in groups" :key="'group-'+i" class="mctrl-tree-issue">
-   <header><strong>{{text(g.code)}} · {{text(g.table)}}</strong><UiBadge :tone="g.severity==='error'?'danger':'warning'">{{text(g.severity)}}</UiBadge></header>
+   <header><strong>{{text(g.code)}} · {{text(g.table)}}</strong><UiBadge :tone="g.severity==='error'?'danger':g.severity==='info'?'neutral':'warning'">{{text(g.severity)}}</UiBadge></header>
    <p>{{text(g.message)}} · событий {{text(g.count)}} · затронуто строк {{text(g.affected_rows)}}</p>
+   <p v-if="g.code==='PROTECTED_TERM_CHANGE'&&protectedTermFieldLabels(g.examples?.[0]?.context).length">
+     <strong>Защищённые различия:</strong> {{protectedTermFieldLabels(g.examples?.[0]?.context).join(', ')}}.
+     Сверьте исходное условие, целевой MemberTerms и снимок отчётного периода.
+   </p>
    <details v-if="g.examples?.length"><summary>Примеры</summary><pre>{{JSON.stringify(g.examples,null,2)}}</pre></details>
   </UiPanel>
   <p v-if="!groups.length">Диагностических групп нет. Это не является доказательством отсутствия проблем.</p>

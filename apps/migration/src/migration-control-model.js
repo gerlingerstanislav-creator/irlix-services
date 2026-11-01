@@ -46,6 +46,61 @@ export function lastMigrationAge(lastMigrations,scope,now=Date.now()) {
    title:(serviceTitles[oldest.service]||oldest.service)+' · '+dateText(Number(oldest.at))+' · '+statusText(oldest.status)};
 }
 export function reportRuns(report,service='all') { return (report?.runs || []).filter(run=>service==='all'||run.service===service); }
+/**
+ * A service report must come only from the selected immutable operation.
+ * Do not cut lines from the global chat summary: they may contain other services.
+ * Never include raw source records or unsanitized worker exception messages.
+ */
+export const changedTermFields = Object.freeze({
+ hourly_rate:'ставка за час',valid_to:'дата окончания условия',valid_from:'дата начала условия',
+ hours_per_day:'загрузка в часах за день',technology:'технология',level:'грейд',
+ client_member_id:'подключение',project_member_id:'проектное назначение',
+});
+export function protectedTermFieldLabels(context) {
+ const values=Array.isArray(context?.changed_fields)?context.changed_fields:[];
+ return values.filter(name=>Object.hasOwn(changedTermFields,name)).map(name=>changedTermFields[name]);
+}
+
+export function scopedReportText(report,operation,scope='all') {
+ if(!report||!operation||String(report.operation?.id)!==String(operation.id))return '';
+ if(scope==='all')return report.chat_summary||'';
+ if(!Object.hasOwn(serviceTitles,scope))return '';
+ const runs=reportRuns(report,scope);
+ const evidence=(report.service_evidence||[]).find(e=>e.service===scope);
+ if(!runs.length&&!evidence)return '';
+ const last=runs.at(-1);
+ const lines=[
+  'Отчёт переноса · '+(serviceTitles[scope]||scope),
+  'Операция #'+operation.id,
+  'Сервис: '+statusText(evidence?.status||last?.status||'unknown'),
+  'Результат записи: '+statusText(evidence?.write_state||last?.status||'unknown'),
+  'Этапы:',
+ ];
+ for(const run of runs){
+  const entry=run.run||run;
+  lines.push('· '+(stageTitles[run.mode]||run.mode)+' #'+text(run.run_id??entry.id??'—')+': '+statusText(run.status));
+ }
+ if(evidence){
+  lines.push('Доказательства: '+(evidence.evidence_status||'unknown'));
+  lines.push('Обработано: '+text(evidence.processed??evidence.processed_count)+' / '+text(evidence.total));
+ }
+ const groups=causeGroups(report,scope);
+ const actionable=groups.filter(g=>g.severity==='error');
+ const informational=groups.filter(g=>g.severity!=='error');
+ lines.push('Ошибки: '+actionable.length+' групп; записи по группам не суммируются.');
+ for(const group of actionable){
+  lines.push('· '+text(group.table||group.entity_type)+': '+text(group.code)+' — '+text(group.message||'Причина требует проверки')+' ('+text(group.affected_rows??group.count)+')');
+  const changed=(group.examples||[]).flatMap(example=>protectedTermFieldLabels(example.context));
+  if(changed.length)lines.push('  Изменились: '+[...new Set(changed)].join(', ')+'. Согласованный отчётный период менять нельзя без сверки.');
+ }
+ if(informational.length){
+  lines.push('Информационные события и предупреждения: '+informational.length+' групп (не означают успешного переноса сами по себе).');
+  for(const group of informational)lines.push('· '+text(group.table)+': '+text(group.code)+' ('+text(group.count)+')');
+ }
+ lines.push('Источник и защищённые суммы не меняются данным отчётом. Детали по конкретным строкам доступны в «Разобрать ошибки».');
+ return lines.join('\n');
+}
+
 export function entityRows(report,service='all') { return reportRuns(report,service).filter(run=>run.mode==='migrate').flatMap(run=>(run.tables||[]).map(table=>({...table,service:run.service,run_id:run.run_id??run.id}))); }
 export function inventoryRows(report,service='all') {
  const sources=(report?.inventory?.length ? report.inventory : reportRuns(report).map(run=>run.inventory)).filter(Boolean);
