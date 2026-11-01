@@ -51,6 +51,16 @@ export function reportRuns(report,service='all') { return (report?.runs || []).f
  * Do not cut lines from the global chat summary: they may contain other services.
  * Never include raw source records or unsanitized worker exception messages.
  */
+export const changedTermFields = Object.freeze({
+ hourly_rate:'ставка за час',valid_to:'дата окончания условия',valid_from:'дата начала условия',
+ hours_per_day:'загрузка в часах за день',technology:'технология',level:'грейд',
+ client_member_id:'подключение',project_member_id:'проектное назначение',
+});
+export function protectedTermFieldLabels(context) {
+ const values=Array.isArray(context?.changed_fields)?context.changed_fields:[];
+ return values.filter(name=>Object.hasOwn(changedTermFields,name)).map(name=>changedTermFields[name]);
+}
+
 export function scopedReportText(report,operation,scope='all') {
  if(!report||!operation||String(report.operation?.id)!==String(operation.id))return '';
  if(scope==='all')return report.chat_summary||'';
@@ -80,6 +90,8 @@ export function scopedReportText(report,operation,scope='all') {
  lines.push('Ошибки: '+actionable.length+' групп; записи по группам не суммируются.');
  for(const group of actionable){
   lines.push('· '+text(group.table||group.entity_type)+': '+text(group.code)+' — '+text(group.message||'Причина требует проверки')+' ('+text(group.affected_rows??group.count)+')');
+  const changed=(group.examples||[]).flatMap(example=>protectedTermFieldLabels(example.context));
+  if(changed.length)lines.push('  Изменились: '+[...new Set(changed)].join(', ')+'. Согласованный отчётный период менять нельзя без сверки.');
  }
  if(informational.length){
   lines.push('Информационные события и предупреждения: '+informational.length+' групп (не означают успешного переноса сами по себе).');
