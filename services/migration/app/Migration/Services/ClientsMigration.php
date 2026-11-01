@@ -342,8 +342,11 @@ class ClientsMigration extends SchemaMigration
      */
     private function isUnsealedLegacyPeriod(object $period): bool
     {
+        // Finance may issue invoices only once the act is approved. All
+        // earlier legacy-imported states, including a still-New period,
+        // can be reconciled only while their imported state remains intact.
         if (!in_array($period->status ?? null,
-            ['ТШ на согласовании', 'ТШ согласованы', 'Акт на согласовании'], true)) return false;
+            ['Новый', 'ТШ на согласовании', 'ТШ согласованы', 'Акт на согласовании'], true)) return false;
         foreach (['paid_at', 'timesheet_snapshot', 'timesheet_revision', 'timesheet_freeze_token'] as $field) {
             if (($period->$field ?? null) !== null) return false;
         }
@@ -691,10 +694,28 @@ class ClientsMigration extends SchemaMigration
                 ]);
             }
             $status = $r['paid_at'] ? 'Счет оплачен' : ($r['act_approved_at'] ? 'Акт согласован' : ($r['act_approval_at'] ? 'Акт на согласовании' : ($r['approved_at'] ? 'ТШ согласованы' : ($r['approval_at'] ? 'ТШ на согласовании' : 'Новый'))));
-            $this->write('reporting_periods', $id, 'reporting_periods', ['client_id' => $client, 'period_start' => $from, 'period_end' => $to,
+            $periodPayload = ['client_id' => $client, 'period_start' => $from, 'period_end' => $to,
                 'status' => $status, 'confirmed_hours' => $r['approved_hours'] === null ? null : $this->decimal($r['approved_hours'], 9999999999.99),
                 'timesheets_sent_at' => $r['approval_at'], 'timesheets_approved_at' => $r['approved_at'],
-                'act_sent_at' => $r['act_approval_at'], 'act_approved_at' => $r['act_approved_at'], 'paid_at' => $r['paid_at']], $r,
+                'act_sent_at' => $r['act_approval_at'], 'act_approved_at' => $r['act_approved_at'], 'paid_at' => $r['paid_at']];
+            $mappedPeriod = $this->store->mapping('clients', 'reporting_periods', $id);
+            if ($mappedPeriod !== null) {
+                $previous = DB::connection('target_clients')->table('reporting_periods')->find((int) $mappedPeriod);
+                if (!$previous) throw new SourceRowConflict('MAPPED_TARGET_MISSING',
+                    'Сопоставленный отчётный период отсутствует; автоматическое восстановление запрещено.');
+                $changes = [];
+                foreach ($periodPayload as $field => $value) {
+                    if (!TargetFieldComparison::matches($previous->$field ?? null, $value, $field)) $changes[] = $field;
+                }
+                if ($changes && !$this->isUnsealedLegacyPeriod($previous)) {
+                    throw new SourceRowConflict('PROTECTED_REPORTING_PERIOD_CHANGE',
+                        'Повторный перенос не может переписать оплаченную, согласованную в новой платформе '
+                        .'или изменённую вне миграции отчётность.',
+                        ['changed_fields' => $changes, 'target_status' => $previous->status,
+                         'reconciliation_type' => 'reporting_period_provenance']);
+                }
+            }
+            $this->write('reporting_periods', $id, 'reporting_periods', $periodPayload, $r,
                 ['client_id' => $client, 'period_start' => $from, 'period_end' => $to]);
         });
         foreach (['contacts','technologies','sectors','grades','grade_rates','departments','results','attempt_result','reporting_period_rate','feedback','interviews','notes','reviews','subcontracts','attachments','legal_documents','activity_log','settings','client_technology','user_technology'] as $table) {
