@@ -39,7 +39,7 @@ export function progressPercent(processed,total) {
  * An unclassified or uncounted group cannot be silently presented as zero.
  */
 export function summarizeIssues(groups) {
- const unknownSeverity=groups.some(g=>!['error','warning'].includes(g.severity));
+ const unknownSeverity=groups.some(g=>!['error','warning','info'].includes(g.severity));
  const count=severity=>{
   const matching=groups.filter(g=>g.severity===severity);
   if(unknownSeverity||matching.some(g=>valid(g.count)===null||!Number.isInteger(valid(g.count))))return null;

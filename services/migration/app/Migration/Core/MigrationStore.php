@@ -316,16 +316,19 @@ final class MigrationStore
             'updated_at' => now(),
         ]);
 
-        TableProgress::count($runId, $service, $entityType, $severity === 'warning' ? 'warning_count' : 'error_count', $legacyId);
-        $updates = [
-            'heartbeat_at' => now(),
-            'updated_at' => now(),
-        ];
+        if (! in_array($severity, ['error', 'warning', 'info'], true)) {
+            throw new \InvalidArgumentException('Unsupported migration diagnostic severity.');
+        }
+        if ($severity === 'info') {
+            TableProgress::recorded($runId, $service, $entityType, $legacyId);
+        } else {
+            TableProgress::count($runId, $service, $entityType, $severity === 'warning' ? 'warning_count' : 'error_count', $legacyId);
+        }
+        $updates = ['heartbeat_at'=>now(), 'updated_at'=>now()];
         if ($severity === 'warning') {
             $updates['warning_count'] = DB::raw('warning_count + 1');
-        } else {
-            // An error conflict represents a source entity that was processed but could not be
-            // migrated. Warnings belong to an already processed entity and must not double-count it.
+        } elseif ($severity === 'error') {
+            // Only a blocking source-row conflict increments failures.
             $updates['processed_count'] = DB::raw('processed_count + 1');
             $updates['conflict_count'] = DB::raw('conflict_count + 1');
         }

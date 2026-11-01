@@ -128,3 +128,13 @@ test('stale visibility preferences do not hide diagnostics or alter historical o
  assert.equal(history.filtered,false,'stale preference cannot force a derived aggregate');
  assert.equal(current.services[0].entities.length,2);
 });
+
+test('expected informational legacy preservation does not increase warning totals',()=>{
+ const groups=[{service:'clients',table:'activity_log',severity:'info',count:18630},
+  {service:'clients',table:'rates',severity:'error',count:1},
+  {service:'clients',table:'attempts',severity:'warning',count:2}];
+ assert.deepEqual(summarizeIssues(groups),{errors:1,warnings:2,groups:3});
+ assert.deepEqual(summarizeIssues(groups.slice(0,1)),{errors:0,warnings:0,groups:1});
+ assert.equal(summarizeIssues([...groups,{severity:'unexpected',count:1}]).errors,null,
+  'unknown severity still fails closed');
+});
