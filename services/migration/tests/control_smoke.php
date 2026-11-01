@@ -27,6 +27,29 @@ try {
     $target->statement('CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, status TEXT, created_at TEXT, updated_at TEXT)');
     $store = app(\App\Migration\Core\MigrationStore::class);
     $module = new ControlFixture($store);
+    // A deliberately preserved legacy row is evidenced but not a warning or
+    // domain success. Multiple facts on the same source ID count once.
+    $infoRun = $store->beginRun('clients','migrate');
+    $store->conflict($infoRun,'clients','notes','source-1','LEGACY_METADATA_ONLY',
+        'Synthetic metadata preserved',['source'=>['body'=>'private synthetic value']],'info');
+    $store->conflict($infoRun,'clients','notes','source-1','LEGACY_METADATA_ONLY',
+        'Another metadata fact',['source'=>['body'=>'another private value']],'info');
+    $infoTable = \Illuminate\Support\Facades\DB::table('migration_table_progress')
+        ->where('migration_run_id',$infoRun)->where('table_name','notes')->first();
+    $infoCounters = \Illuminate\Support\Facades\DB::table('migration_runs')->where('id',$infoRun)->first();
+    ensureControl((int)$infoTable->processed_count===1 && (int)$infoTable->warning_count===0
+        && (int)$infoTable->error_count===0 && (int)$infoTable->success_count===0,
+        'Informational preservation counts one source row without warnings, failures or domain success');
+    ensureControl((int)$infoCounters->warning_count===0 && (int)$infoCounters->conflict_count===0,
+        'Metadata preservation does not mark the worker run conflicting');
+    $protectedFields = \App\Migration\Core\ControlReport::safeContext([
+        'changed_fields'=>['hourly_rate','valid_to','secret','../../credentials'],
+        'source'=>['private'=>'never export'],
+    ]);
+    ensureControl(($protectedFields['changed_fields']??[])===['hourly_rate','valid_to']
+        && !isset($protectedFields['source']),
+        'Protected changes expose fixed field names, not source values');
+
     // The real legacy Clients source may have no attempts.status; only the
     // optional enum probe is suppressed, not the required domain fields.
     $missingAttemptStatus = ControlFixture::clientsEnumPlanForTest(['id', 'position_id', 'closed_at']);
