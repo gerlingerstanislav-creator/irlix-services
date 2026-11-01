@@ -225,25 +225,27 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
         </UiButton>
        </td>
 
-        <td><div class="mctrl-tree-extra"><span>{{statusText(entity.expectation?.status)}}</span><UiButton variant="ghost" compact @click="open('fields',entity)">Поля · {{entity.fields?.length??0}}</UiButton></div></td><td><div class="mctrl-tree-row-actions"><UiButton variant="ghost" compact :aria-label="'Скрыть строку '+svc.label+' / '+entity.label" @click="setHidden(svc.service,entity.table_name,true)">Скрыть</UiButton></div></td><td class="mctrl-tree-no-data">—</td>
+        <td><div class="mctrl-tree-extra"><span>{{statusText(entity.expectation?.status)}}</span><UiButton variant="ghost" compact @click="open('fields',entity)">Поля · {{entity.fields?.length??0}}</UiButton></div></td><td><div class="mctrl-tree-row-actions"><UiButton variant="ghost" compact :aria-label="'Скрыть строку '+svc.label+' / '+entity.label" @click="setHidden(svc.service,entity.table_name,true)">Скрыть</UiButton></div></td>
        </tr>
        <tr v-if="!svc.entities.length" class="mctrl-tree-empty"><td colspan="6">{{svc.hidden_count?'Все '+svc.hidden_count+' строки скрыты. Откройте «Скрытые», чтобы вернуть их.':'Сущности сервиса '+svc.label+' не подтверждены отчётом.'}}</td></tr>
       </template>
      </template>
      <tr v-for="svc in missingServices" :key="'connection:'+svc.service" class="mctrl-tree-settings-only">
       <th scope="row" class="mctrl-tree-label"><div class="mctrl-tree-node mctrl-tree-node--service">
-       <strong class="mctrl-tree-title">{{svc.label}}</strong>
-       <UiButton variant="ghost" compact class="mctrl-service-settings-trigger" :aria-label="'Настройки подключения: '+svc.label"
-         :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
-      </div></th>
-      <td class="mctrl-tree-no-data" title="Не участвует в выбранной операции">Вне операции</td>
-      <td class="mctrl-tree-no-data">—</td>
-      <td class="mctrl-tree-no-data">— / —</td>
-      <td><div class="mctrl-tree-extra"><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span></div></td><td class="mctrl-tree-no-data">—</td><td><div class="mctrl-tree-backup-actions">
-  <UiButton variant="secondary" compact :disabled="busy" :aria-label="'Создать точку отката: '+svc.label" @click="emit('snapshot',svc.service)">Создать</UiButton>
-  <UiButton variant="secondary" compact :aria-label="'Откат к точке: '+svc.label" @click="emit('restore',svc.service)">Откат</UiButton>
- </div></td>
-     </tr>
+        <strong class="mctrl-tree-title">{{svc.label}}</strong>
+        <UiButton variant="ghost" compact class="mctrl-inline-icon" :disabled="busy"
+          :aria-label="'Запустить перенос: '+svc.label" @click="emit('start',svc.service)"><UiIcon name="play"/></UiButton>
+        <UiButton variant="ghost" compact class="mctrl-service-settings-trigger"
+          :aria-label="'Настройки подключения: '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
+        <UiButton variant="ghost" compact class="mctrl-inline-icon"
+          :aria-label="'Точки отката: '+svc.label" @click="emit('backups',svc.service)"><UiIcon name="save"/></UiButton>
+       </div></th>
+       <td class="mctrl-tree-no-data" title="Не участвует в выбранной операции">Вне операции</td>
+       <td class="mctrl-tree-no-data">—</td>
+       <td class="mctrl-tree-no-data">— / —</td>
+       <td><div class="mctrl-tree-extra"><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span></div></td>
+       <td class="mctrl-tree-no-data" title="Сервис не участвует в выбранной операции">—</td>
+</tr>
     </template>
    </tbody>
   </table>
