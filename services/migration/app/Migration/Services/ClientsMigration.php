@@ -515,6 +515,19 @@ class ClientsMigration extends SchemaMigration
                 $missingAmountOnly = $old->hourly_rate === null
                     && $changedFields === ['hourly_rate']
                     && isset($termPayload['hourly_rate']);
+                // A target-side correction might already be an approved repair.
+                // Reconciliation V2 is diagnostic, not an authorization policy.
+                // Never overwrite this history with raw legacy while an
+                // independent approved-and-revalidated replay is unavailable.
+                if ($changedFields && !$missingAmountOnly
+                    && in_array($provenance['classification'],
+                        ['target_diverged', 'needs_evidence'], true)) {
+                    throw new SourceRowConflict('RECONCILIATION_EVIDENCE_REQUIRED',
+                        'Текущее условие отличается от предыдущего применённого плана. '
+                        .'Автоматическая перезапись исправлений без доказательной сверки запрещена.',
+                        ['reconciliation_provenance' => $provenance,
+                         'automatic_override_allowed' => false]);
+                }
                 if ($changedFields && !$missingAmountOnly) {
                     $clientId = DB::connection('target_clients')->table('client_members')
                         ->where('id', $member)->value('client_id');
