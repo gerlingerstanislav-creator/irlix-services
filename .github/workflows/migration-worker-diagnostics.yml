@@ -239,11 +239,14 @@ jobs:
                   if (!$host || !$dbname || !$user || $password === false) {
                       throw new RuntimeException('target_connection_unavailable');
                   }
-                  $pg=new PDO("pgsql:host=$host;port=$port;dbname=$dbname",$user,$password,
-                      [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+                  $pg=new PDO("pgsql:host=$host;port=$port;dbname=$dbname;connect_timeout=5",
+                      $user,$password,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
                   $pg->beginTransaction();
                   $pg->exec('SET TRANSACTION READ ONLY');
-                  $sql="SELECT p.status FROM clients.reporting_periods p "
+                  $pg->exec('SET LOCAL statement_timeout = 5000');
+                  $sql="SELECT p.id,p.status,p.paid_at,"
+                      ."p.timesheet_snapshot,p.timesheet_revision,p.timesheet_freeze_token "
+                      ."FROM clients.reporting_periods p "
                       ."JOIN clients.client_members m ON m.client_id=p.client_id "
                       ."JOIN clients.member_terms t ON t.client_member_id=m.id "
                       ."WHERE t.id=:id AND p.period_start::date=:from_date "
@@ -251,7 +254,21 @@ jobs:
                   $q=$pg->prepare($sql);
                   $q->execute(['id'=>$targetId,'from_date'=>$start,'to_date'=>$end]);
                   $counts=[];
-                  while (($status=$q->fetchColumn()) !== false) {
+                  $proof=[];
+                  $canon=$meta->prepare(
+                      "SELECT metadata FROM migration_mappings WHERE service='clients' "
+                      ."AND entity_type='reporting_periods' AND target_id=?"
+                  );
+                  $history=$pg->prepare(
+                      "SELECT EXISTS(SELECT 1 FROM clients.reporting_period_history "
+                      ."WHERE reporting_period_id=?)"
+                  );
+                  $approved=$pg->prepare(
+                      "SELECT EXISTS(SELECT 1 FROM clients.reporting_period_approved_hours "
+                      ."WHERE reporting_period_id=?)"
+                  );
+                  while ($row=$q->fetch(PDO::FETCH_ASSOC)) {
+                      $status=$row['status'];
                       $category=match($status) {
                           'Счет оплачен'=>'finance_paid',
                           'Акт согласован'=>'act_approved',
@@ -262,12 +279,34 @@ jobs:
                           default=>'unknown',
                       };
                       $counts[$category]=($counts[$category]??0)+1;
+                      $canon->execute([(string)$row['id']]);
+                      $mapping=$canon->fetchAll(PDO::FETCH_COLUMN);
+                      $matching=0;
+                      foreach ($mapping as $item) {
+                          $details=json_decode((string)$item,true);
+                          if (is_array($details) && !isset($details['alias_of'])
+                              && ($details['target_payload']['status']??null)===$status) {
+                              ++$matching;
+                          }
+                      }
+                      $history->execute([$row['id']]);
+                      $approved->execute([$row['id']]);
+                      $proof[]=[
+                          'paid_at_present'=>$row['paid_at']!==null,
+                          'native_timesheet_proof_present'=>($row['timesheet_snapshot']!==null
+                              || $row['timesheet_revision']!==null
+                              || $row['timesheet_freeze_token']!==null),
+                          'native_clients_history_present'=>(bool)$history->fetchColumn(),
+                          'native_approved_hours_present'=>(bool)$approved->fetchColumn(),
+                          'canonical_metadata_status_matches'=>($matching===1),
+                      ];
                   }
                   $pg->rollBack();
                   echo 'CLIENTS_PROTECTED_PERIOD_STATE '.json_encode([
                       'status_categories'=>$counts,
                       'matches'=>array_sum($counts),
-                      'metadata_conflict_present'=>true,
+                      'client_proof'=>$proof,
+                      'finance_ledger_checked'=>false,
                   ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
               }
           } catch (Throwable $e) {
