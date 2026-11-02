@@ -318,5 +318,119 @@ jobs:
             echo "PROBE_ERROR: protected period categorization unavailable"
             exit 3
           fi
+          # The paid status may have originated in legacy; verify whether
+          # Finance recorded independent invoice/settlement facts. Transfer the
+          # internal period ID only between containers; never print it in CI.
+          period_id="$($SUDO sh -c "$COMPOSE exec -T migration-worker php" <<'PHP'
+          <?php
+          try {
+              $meta=new PDO('sqlite:file:/data/migration.sqlite?mode=ro',null,null,
+                  [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+              $meta->exec('PRAGMA query_only=ON');
+              $conflict=$meta->query(
+                  "SELECT c.legacy_id,c.context FROM migration_conflicts c "
+                  ."JOIN migration_runs r ON r.id=c.migration_run_id "
+                  ."WHERE r.service='clients' AND r.mode='dry-run' "
+                  ."AND c.code='PROTECTED_TERM_CHANGE' AND c.severity='error' "
+                  ."ORDER BY c.migration_run_id DESC LIMIT 1"
+              )->fetch(PDO::FETCH_ASSOC);
+              if (!$conflict) throw new RuntimeException('missing_conflict');
+              $ctx=json_decode($conflict['context'],true);
+              $range=$ctx['protected_interval']??[];
+              $from=$range['from']??null; $to=$range['to']??null;
+              if (!is_string($from) || !is_string($to) ||
+                  !preg_match('/^\d{4}-\d{2}-\d{2}$/D',$from) ||
+                  !preg_match('/^\d{4}-\d{2}-\d{2}$/D',$to)) {
+                  throw new RuntimeException('missing_interval');
+              }
+              $q=$meta->prepare("SELECT target_id FROM migration_mappings "
+                  ."WHERE service='clients' AND entity_type='rates' AND legacy_id=?");
+              $q->execute([(string)$conflict['legacy_id']]);
+              $rate=$q->fetchColumn();
+              if (!is_string($rate) || !preg_match('/^\d+$/D',$rate)) {
+                  throw new RuntimeException('unmapped_rate');
+              }
+              $host=getenv('TARGET_CLIENTS_DB_HOST')?:getenv('TARGET_SHARED_DB_HOST');
+              $name=getenv('TARGET_CLIENTS_DB_DATABASE')?:getenv('TARGET_SHARED_DB_DATABASE');
+              $user=getenv('TARGET_CLIENTS_DB_USERNAME');
+              $pass=getenv('TARGET_CLIENTS_DB_PASSWORD');
+              if (!$host||!$name||!$user||$pass===false) throw new RuntimeException('unavailable');
+              $pg=new PDO("pgsql:host=$host;port=5432;dbname=$name;connect_timeout=5",
+                  $user,$pass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+              $pg->beginTransaction();
+              $pg->exec('SET TRANSACTION READ ONLY');
+              $pg->exec('SET LOCAL statement_timeout = 5000');
+              $q=$pg->prepare("SELECT p.id FROM clients.reporting_periods p "
+                  ."JOIN clients.client_members m ON m.client_id=p.client_id "
+                  ."JOIN clients.member_terms t ON t.client_member_id=m.id "
+                  ."WHERE t.id=? AND p.period_start::date=? AND p.period_end::date=?");
+              $q->execute([$rate,$from,$to]);
+              $ids=$q->fetchAll(PDO::FETCH_COLUMN);
+              $pg->rollBack();
+              if (count($ids)!==1 || !preg_match('/^\d+$/D',(string)$ids[0])) {
+                  throw new RuntimeException('ambiguous_target_period');
+              }
+              echo (string)$ids[0];
+          } catch (Throwable $e) {
+              echo 'UNAVAILABLE';
+              exit(2);
+          }
+          PHP
+          )" || {
+            echo "FINANCE_RECONCILIATION_PROBE_ERROR: target period lookup unavailable"
+            exit 3
+          }
+          case "$period_id" in
+            *[!0-9]*|"") echo "FINANCE_RECONCILIATION_PROBE_ERROR: invalid target reference"; exit 3;;
+          esac
+          if ! $SUDO sh -c "$COMPOSE exec -T -e RECONCILIATION_PERIOD_ID=$period_id finance php" <<'PHP'
+          <?php
+          try {
+              $id=getenv('RECONCILIATION_PERIOD_ID');
+              if (!$id || !preg_match('/^\d+$/D',$id)) throw new RuntimeException('no_period');
+              $host=getenv('DB_HOST');
+              $name=getenv('DB_DATABASE');
+              $user=getenv('DB_USERNAME');
+              $password=getenv('DB_PASSWORD');
+              $port=getenv('DB_PORT')?:'5432';
+              if (!$host||!$name||!$user||$password===false)
+                  throw new RuntimeException('finance_connection_unavailable');
+              $pg=new PDO("pgsql:host=$host;port=$port;dbname=$name;connect_timeout=5",
+                  $user,$password,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+              $pg->beginTransaction();
+              $pg->exec('SET TRANSACTION READ ONLY');
+              $pg->exec('SET LOCAL statement_timeout = 5000');
+              $q=$pg->prepare("SELECT COUNT(*) FROM finance.invoices WHERE reporting_period_id=?");
+              $q->execute([$id]);
+              $invoices=(int)$q->fetchColumn();
+              $q=$pg->prepare(
+                  "SELECT COUNT(*) FROM finance.payment_allocations a "
+                  ."JOIN finance.invoices i ON i.id=a.invoice_id "
+                  ."WHERE i.reporting_period_id=?"
+              );
+              $q->execute([$id]);
+              $allocations=(int)$q->fetchColumn();
+              $q=$pg->prepare(
+                  "SELECT status FROM finance.finance_period_settlements "
+                  ."WHERE reporting_period_id=? LIMIT 1"
+              );
+              $q->execute([$id]);
+              $status=$q->fetchColumn();
+              $pg->rollBack();
+              echo 'FINANCE_PROTECTED_PERIOD_EVIDENCE '.json_encode([
+                  'invoice_count'=>$invoices,'allocation_count'=>$allocations,
+                  'settlement_state'=>in_array($status,['open','pending','synced'],true)
+                      ?$status:'missing_or_unknown',
+                  'read_only'=>true,
+              ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          } catch(Throwable $e) {
+              echo 'FINANCE_RECONCILIATION_PROBE_ERROR '.get_class($e)."\n";
+              exit(2);
+          }
+          PHP
+          then
+            echo "PROBE_ERROR: Finance evidence check unavailable"
+            exit 3
+          fi
           echo "PROBE_FINISHED: no state changed"
           REMOTE
