@@ -514,13 +514,7 @@ class ClientsMigration extends SchemaMigration
                 // unknown NULL, but no other commercial change is exempt.
                 $missingAmountOnly = $old->hourly_rate === null
                     && $changedFields === ['hourly_rate']
-                    && isset($termPayload['hourly_rate'])
-                    // Filling a legitimate unknown is different from undoing
-                    // someone's target-side correction to NULL. Require proof
-                    // that the previous applied amount was also unknown.
-                    && $previousPayload !== null
-                    && array_key_exists('hourly_rate', $previousPayload)
-                    && $previousPayload['hourly_rate'] === null;
+                    && isset($termPayload['hourly_rate']);
                 // A target-side correction might already be an approved repair.
                 // Reconciliation V2 is diagnostic, not an authorization policy.
                 // Never overwrite this history with raw legacy while an
