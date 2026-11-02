@@ -280,5 +280,21 @@ class PlannerTests(unittest.TestCase):
                 p.previous_success()
 
 
+    def test_production_migration_ops_probe_uses_complete_release_stack(self):
+        """Smoke must discover overlay-only coordinator via the actual deploy Compose stack."""
+        script = (p.ROOT / "scripts/verify-stand.sh").read_text()
+        self.assertIn(
+            'python3 scripts/ci/service_plan.py compose-args --env-file .env',
+            script,
+        )
+        self.assertIn('sh -c "$migration_compose ps -q migration-ops"', script)
+        with patch.object(p.subprocess, "call", return_value=0):
+            command = p.compose_command(self.data, ".env")
+        self.assertIn("-f", command)
+        self.assertIn("docker-compose.migration.yml", command)
+        self.assertIn("--env-file", command)
+        self.assertEqual(command[-1], ".env")
+
+
 if __name__ == "__main__":
     unittest.main()
