@@ -4,6 +4,7 @@ namespace App\Migration\Services;
 
 use App\Migration\Core\SchemaMigration;
 use App\Migration\Core\TargetFieldComparison;
+use App\Migration\Core\ReconciliationProvenance;
 use App\Migration\Core\SourceRowConflict;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -491,11 +492,23 @@ class ClientsMigration extends SchemaMigration
                 if (!$old) throw new SourceRowConflict('MAPPED_TARGET_MISSING',
                     'Сопоставленное коммерческое условие отсутствует в целевой системе; нужна сверка mapping.',
                     ['target_mapping_present' => true]);
-                $changedFields = [];
-                foreach ($termPayload as $field => $value) {
-                    if (!TargetFieldComparison::matches($old->$field ?? null, $value, $field)) {
-                        $changedFields[] = $field;
-                    }
+                // Shadow-only V2 evidence: distinguish source change from
+                // previous target repair without guessing which one is correct.
+                // The accepted decisions ledger is not yet wired to mutations.
+                $mappingMetadataJson = DB::table('migration_mappings')
+                    ->where('service', 'clients')->where('entity_type', 'rates')
+                    ->where('legacy_id', (string) $id)->value('metadata');
+                $mappingMetadata = json_decode((string) ($mappingMetadataJson ?? ''), true);
+                $previousPayload = is_array($mappingMetadata)
+                    && is_array($mappingMetadata['target_payload'] ?? null)
+                    ? $mappingMetadata['target_payload'] : null;
+                $provenance = ReconciliationProvenance::compare($previousPayload, $old, $termPayload);
+                $changedFields = $provenance['changed_fields'];
+                if ($changedFields) {
+                    $this->warning('rates', $id, 'RECONCILIATION_V2_SHADOW',
+                        'Сверка старого применённого плана, нового источника и текущих коммерческих условий; '
+                        .'это диагностическое предупреждение, не разрешение на перезапись.',
+                        $provenance);
                 }
                 // A legacy encrypted amount can safely fill a previously
                 // unknown NULL, but no other commercial change is exempt.
@@ -568,7 +581,8 @@ class ClientsMigration extends SchemaMigration
                                  'protected_interval' => ['from' => $periodFrom, 'to' => $periodTo],
                                  'reconciliation_type' => 'protected_financial_period',
                                  'automatic_override_allowed' => false,
-                                 'protection_reason' => $protectionReason]);
+                                 'protection_reason' => $protectionReason,
+                                 'reconciliation_provenance' => $provenance]);
                         }
                     }
                     if ($unsealedLegacyPeriodCount > 0) {
