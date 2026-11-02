@@ -342,7 +342,7 @@ class ClientsMigration extends SchemaMigration
      * with intact migration provenance and no native approval facts qualify.
      */
     /** Null means eligible. Safe class codes explain every fail-closed case. */
-    private function unsealedLegacyProtectionReason(object $period): ?string
+    private function unsealedLegacyProtectionReason(object $period, bool $requireCanonicalProvenance = true): ?string
     {
         if (!in_array($period->status ?? null,
             ['Новый', 'ТШ на согласовании', 'ТШ согласованы', 'Акт на согласовании'], true)) {
@@ -360,6 +360,12 @@ class ClientsMigration extends SchemaMigration
                     ? 'NATIVE_CLIENTS_REPORTING_HISTORY' : 'NATIVE_APPROVED_HOURS';
             }
         }
+        // Recovered NULL ciphertext only supplies a previously unavailable
+        // amount, without moving an interval or rewriting an existing value.
+        // For that narrow case the previous period mapping may predate a
+        // submitted-looking legacy status; the same paid/native-proof guards
+        // above still apply, but canonical provenance isn't required.
+        if (!$requireCanonicalProvenance) return null;
         $mappings = DB::table('migration_mappings')
             ->where('service', 'clients')->where('entity_type', 'reporting_periods')
             ->where('target_id', (string) $period->id)->get(['metadata']);
@@ -544,7 +550,7 @@ class ClientsMigration extends SchemaMigration
                         $periods->whereDate('period_start', '<=', $backfillTo);
                     }
                     foreach ($periods->get() as $period) {
-                        $reason = $this->unsealedLegacyProtectionReason($period);
+                        $reason = $this->unsealedLegacyProtectionReason($period, false);
                         if ($reason !== null) {
                             throw new SourceRowConflict('PROTECTED_TERM_CHANGE',
                                 'Восстановленная ставка затрагивает защищённый или оплаченный период. '
