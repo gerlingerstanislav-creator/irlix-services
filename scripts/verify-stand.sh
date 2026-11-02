@@ -69,7 +69,12 @@ ensure_platform_nginx_site
 # The deployed migration_daily.enabled() is false whenever this independent
 # approval flag is false, even if MIGRATION_DAILY_ENABLED remains true.
 echo "[verify] Migration daily write approval disabled in deployed container"
-ops_container="$($SUDO $COMPOSE ps -q migration-ops)" || fail "Migration ops container lookup failed"
+# migration-ops lives in a compose overlay. Use the same complete stack as
+# deployment; the default compose file alone reports "No such service".
+migration_compose="$(python3 scripts/ci/service_plan.py compose-args --env-file .env)" \
+  || fail "Migration ops Compose configuration unavailable"
+ops_container="$($SUDO sh -c "$migration_compose ps -q migration-ops")" \
+  || fail "Migration ops container lookup failed"
 [ -n "$ops_container" ] || fail "Migration ops container absent"
 [ "$($SUDO docker inspect -f '{{.State.Running}}' "$ops_container")" = "true" ] || fail "Migration ops container is not running"
 $SUDO docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$ops_container" \
