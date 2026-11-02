@@ -21,7 +21,11 @@ WINDOW_MINUTES = 5
 
 
 def enabled():
-    return os.environ.get('MIGRATION_DAILY_ENABLED', 'false').lower() == 'true'
+    # A daily legacy-to-target write is deliberately paused while the V2
+    # three-way reconciliation is being verified. The old switch alone must
+    # not silently reactivate a financial/history-changing nightly import.
+    return (os.environ.get('MIGRATION_DAILY_ENABLED', 'false').lower() == 'true'
+            and os.environ.get('MIGRATION_DAILY_WRITE_APPROVED', 'false').lower() == 'true')
 
 
 def read():
