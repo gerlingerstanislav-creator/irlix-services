@@ -2,6 +2,8 @@
 // Synthetic integration: control mode is additive, partial and repeatable; exports are full and safe.
 $path = '/tmp/migration-control-'.getmypid().'.sqlite'; touch($path);
 putenv('MIGRATION_METADATA_DATABASE='.$path);
+$decisionPath = '/tmp/migration-decisions-'.getmypid().'.sqlite';
+putenv('MIGRATION_RECONCILIATION_DATABASE='.$decisionPath);
 require __DIR__.'/../vendor/autoload.php';
 $app = require __DIR__.'/../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
@@ -97,21 +99,22 @@ try {
     try {
         $ledger->append($approved);
         throw new RuntimeException('Duplicate reconciliation approval unexpectedly accepted');
-    } catch (\Illuminate\Database\QueryException|\DomainException $expected) {
+    } catch (\PDOException|\DomainException $expected) {
         // A rule revision cannot silently replace its earlier decision.
     }
+    $directLedger = new \PDO('sqlite:'.$decisionPath);
+    $directLedger->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
     try {
-        \Illuminate\Support\Facades\DB::table('migration_reconciliation_decisions')
-            ->where('id',$decisionId)->update(['decision'=>'canonicalize_source']);
+        $directLedger->exec("UPDATE reconciliation_decisions SET decision = 'canonicalize_source' WHERE id = ".$decisionId);
         throw new RuntimeException('Existing ledger decision unexpectedly editable');
-    } catch (\Illuminate\Database\QueryException $expected) {
-        // SQLite trigger enforces immutability even if a future caller bypasses the store.
+    } catch (\PDOException $expected) {
+        // Private SQLite trigger denies edits even when callers bypass the store.
     }
     try {
-        \Illuminate\Support\Facades\DB::table('migration_reconciliation_decisions')
-            ->where('id',$decisionId)->delete();
+        $directLedger->exec('DELETE FROM reconciliation_decisions WHERE id = '.$decisionId);
         throw new RuntimeException('Existing ledger decision unexpectedly deletable');
-    } catch (\Illuminate\Database\QueryException $expected) {}
+    } catch (\PDOException $expected) {}
+    $directLedger = null;
     $revisionId = $ledger->append(array_replace($approved, [
         'rule_version'=>2, 'decision'=>'no_automatic_action',
         'supersedes_id'=>$decisionId,
@@ -374,5 +377,6 @@ try {
     \App\Migration\Core\ControlMode::$enabled = false;
     \App\Migration\Core\TableProgress::$activeRun = null;
     \Illuminate\Support\Facades\DB::disconnect('sqlite');
-    foreach ([$path,$path.'-wal',$path.'-shm',$path.'.restore.json'] as $file) @unlink($file);
+    foreach ([$path,$path.'-wal',$path.'-shm',$path.'.restore.json',
+              $decisionPath,$decisionPath.'-wal',$decisionPath.'-shm'] as $file) @unlink($file);
 }
