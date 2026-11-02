@@ -81,6 +81,45 @@ try {
         && !str_contains(json_encode($provenanceContext),'999999'),
         'V2 provenance exposes only safe reasons, dates and field names');
 
+    $ledger = new \App\Migration\Core\ReconciliationDecisionStore();
+    $approved = [
+        'service'=>'clients', 'entity_type'=>'rates','legacy_id'=>'synthetic-11',
+        'rule_code'=>'SOURCE_PERIOD_CORRECTION', 'rule_version'=>1,
+        'decision'=>'preserve_corrected_target',
+        'source_sha256'=>hash('sha256','synthetic-source'),
+        'evidence_sha256'=>hash('sha256','synthetic-evidence'),
+        'approved_by'=>'synthetic-operator',
+    ];
+    $decisionId = $ledger->append($approved);
+    ensureControl(($ledger->latest('clients','rates','synthetic-11',
+        'SOURCE_PERIOD_CORRECTION')['decision']??null)==='preserve_corrected_target',
+        'Approved synthetic decision saved in private append-only ledger');
+    try {
+        $ledger->append($approved);
+        throw new RuntimeException('Duplicate reconciliation approval unexpectedly accepted');
+    } catch (\Illuminate\Database\QueryException|\DomainException $expected) {
+        // A rule revision cannot silently replace its earlier decision.
+    }
+    try {
+        \Illuminate\Support\Facades\DB::table('migration_reconciliation_decisions')
+            ->where('id',$decisionId)->update(['decision'=>'canonicalize_source']);
+        throw new RuntimeException('Existing ledger decision unexpectedly editable');
+    } catch (\Illuminate\Database\QueryException $expected) {
+        // SQLite trigger enforces immutability even if a future caller bypasses the store.
+    }
+    try {
+        \Illuminate\Support\Facades\DB::table('migration_reconciliation_decisions')
+            ->where('id',$decisionId)->delete();
+        throw new RuntimeException('Existing ledger decision unexpectedly deletable');
+    } catch (\Illuminate\Database\QueryException $expected) {}
+    $revisionId = $ledger->append(array_replace($approved, [
+        'rule_version'=>2, 'decision'=>'no_automatic_action',
+        'supersedes_id'=>$decisionId,
+        'evidence_sha256'=>hash('sha256','synthetic-revised-evidence'),
+    ]));
+    ensureControl($revisionId > $decisionId && 
+        ($ledger->latest('clients','rates','synthetic-11','SOURCE_PERIOD_CORRECTION')['decision']??null)==='no_automatic_action',
+        'Approved rule change must append a new version, not mutate the old one');
     // The real legacy Clients source may have no attempts.status; only the
     // optional enum probe is suppressed, not the required domain fields.
     $missingAttemptStatus = ControlFixture::clientsEnumPlanForTest(['id', 'position_id', 'closed_at']);
