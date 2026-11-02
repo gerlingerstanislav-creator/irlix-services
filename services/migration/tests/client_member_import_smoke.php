@@ -247,6 +247,21 @@ try {
     $originalIds = target('clients')->table('member_terms')->orderBy('id')->pluck('id')->all();
     target('clients')->table('member_terms')->update(['hourly_rate'=>null]);
     $beforeBackfill = target('clients')->table('member_terms')->orderBy('id')->get()->toArray();
+    // A previously NULL encrypted rate is still immutable if the associated
+    // legacy-imported period is paid; an unsealed submitted period is different.
+    target('clients')->table('reporting_periods')->update([
+        'status'=>'Счет оплачен', 'paid_at'=>'2026-03-01',
+    ]);
+    check(runFixture($clients, true)['conflicts']>0,
+        'NULL encrypted amount must not alter a previously imported paid period');
+    target('clients')->table('reporting_periods')->update([
+        'status'=>'ТШ согласованы', 'paid_at'=>null,
+        'timesheet_snapshot'=>'{"revision":"native"}',
+    ]);
+    check(runFixture($clients, true)['conflicts']>0,
+        'NULL encrypted amount must not bypass native Timesheets freeze');
+    target('clients')->table('reporting_periods')
+        ->update(['timesheet_snapshot'=>null]);
     $dryBackfill = runFixture($clients, true);
     check($dryBackfill['conflicts']===0, 'Encrypted legacy amount can fill NULL in a submitted reporting period');
     check(target('clients')->table('member_terms')->whereNotNull('hourly_rate')->count()===0,
