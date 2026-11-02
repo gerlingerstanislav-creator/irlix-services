@@ -34,8 +34,15 @@ final class ReconciliationDecisionStore
         if (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory)) {
             throw new \RuntimeException('Reconciliation decision directory cannot be created');
         }
+        // An unexpected symlink could redirect confidential decision evidence
+        // outside the dedicated identity volume. Reject it before opening SQLite.
+        if (is_link($path)) {
+            throw new \DomainException('Reconciliation decision store must not be a symlink');
+        }
         $db = new PDO('sqlite:'.$path, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-        chmod($path, 0600);
+        if (!chmod($path, 0600)) {
+            throw new \RuntimeException('Reconciliation decision store permissions cannot be secured');
+        }
         $db->exec('PRAGMA busy_timeout=5000');
         $db->exec('CREATE TABLE IF NOT EXISTS reconciliation_decisions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -105,8 +112,10 @@ final class ReconciliationDecisionStore
             if ($last === false && $parent !== null) {
                 throw new \DomainException('Superseded decision does not exist');
             }
+            // A later approval must name the exact previous decision and
+            // advance by exactly one. Gaps hide missing evidence revisions.
             if ($last !== false && ((int) $last['id'] !== $parent
-                || $decision['rule_version'] <= (int) $last['rule_version'])) {
+                || $decision['rule_version'] !== (int) $last['rule_version'] + 1)) {
                 throw new \DomainException('Stale or unversioned reconciliation decision');
             }
             $stmt = $db->prepare('INSERT INTO reconciliation_decisions
