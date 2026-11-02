@@ -33,6 +33,13 @@ try {
         'evidence_sha256' => hash('sha256', 'synthetic-proof'),
         'approved_by' => 'synthetic-operator',
     ];
+    // Initial evidence must start at version one, even without a parent.
+    try {
+        $store->append(array_replace($evidence, [
+            'rule_version'=>3,
+        ]));
+        throw new RuntimeException('Initial decision accepted an invalid revision');
+    } catch (DomainException $expected) {}
     $id = $store->append($evidence);
     checkReconciliation($id > 0, 'First decision must be stored');
     file_put_contents($metadataPath, 'metadata-restored-to-earlier-checkpoint');
