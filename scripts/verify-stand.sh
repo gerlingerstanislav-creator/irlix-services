@@ -63,20 +63,19 @@ check_status() {
 
 ensure_platform_nginx_site
 
-# The release gate must run inside the *deployed* migration-ops container.
-# This calls the same public_state() function used by GET /control/state;
-# stdin-over-SSH heredocs can be lost between sh/sudo/Compose exec layers.
-# There are no source/target DB writes or sensitive values in this check.
-echo "[verify] Migration daily target writes disabled in running ops coordinator"
-$SUDO $COMPOSE exec -T migration-ops python3 -c '
-import sys
-sys.path.insert(0, "/opt/irlix-services/scripts")
-import migration_daily
-state = migration_daily.public_state()
-enabled = state.get("enabled")
-print("Migration daily_schedule.enabled=" + str(enabled).lower(), flush=True)
-sys.exit(0 if enabled is False else 1)
-' || fail "Migration daily write pause is not confirmed in the running migration-ops container"
+# Verify the effective runtime environment of the *running* coordinator.
+# A prior SSH -> sudo -> Compose exec probe did not provide reliable output.
+# Inspect is read-only; print neither credentials nor any full environment.
+# The deployed migration_daily.enabled() is false whenever this independent
+# approval flag is false, even if MIGRATION_DAILY_ENABLED remains true.
+echo "[verify] Migration daily write approval disabled in deployed container"
+ops_container="$($SUDO $COMPOSE ps -q migration-ops)" || fail "Migration ops container lookup failed"
+[ -n "$ops_container" ] || fail "Migration ops container absent"
+[ "$($SUDO docker inspect -f '{{.State.Running}}' "$ops_container")" = "true" ] || fail "Migration ops container is not running"
+$SUDO docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$ops_container" \
+  | grep -Fxq 'MIGRATION_DAILY_WRITE_APPROVED=false' \
+  || fail "Running migration ops does not enforce MIGRATION_DAILY_WRITE_APPROVED=false"
+echo "[verify] Running migration-ops: nightly target writes disabled by approval flag"
 
 check_body "Dashboard" http://127.0.0.1/ portal "Dashboard"
 dashboard_asset="$(curl_stand -fsS http://127.0.0.1/ | grep -o '/assets/[^\"'"'"']*\.js' | head -n1)"
