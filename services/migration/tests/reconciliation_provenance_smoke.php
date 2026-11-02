@@ -39,6 +39,16 @@ verify($both['classification']==='needs_evidence'
     && $both['field_reasons']['valid_to']==='both_changed',
     'Concurrent source and target history requires evidence');
 
+$mixedFields = ReconciliationProvenance::compare(
+    ['valid_to'=>'2026-01-31', 'hourly_rate'=>'1500.00'],
+    (object) ['valid_to'=>'2026-02-15', 'hourly_rate'=>'1500.00'],
+    ['valid_to'=>'2026-01-31', 'hourly_rate'=>'1700.00']
+);
+verify($mixedFields['classification']==='needs_evidence'
+    && $mixedFields['field_reasons']['valid_to']==='target_changed'
+    && $mixedFields['field_reasons']['hourly_rate']==='source_changed',
+    'Different source and target fields must not be labelled as a target-only divergence');
+
 $missing = ReconciliationProvenance::compare(null, $target,
     ['valid_to'=>'2026-02-28']);
 verify($missing['classification']==='needs_evidence'
