@@ -134,6 +134,53 @@ jobs:
                       },sort_keys=True))
               except (sqlite3.Error,ValueError) as e:
                   print('CLIENTS_RECONCILIATION_ERROR',type(e).__name__)
+              try:
+                  latest=con.execute(
+                      "SELECT id FROM migration_runs WHERE service='clients' "
+                      "AND mode='dry-run' ORDER BY id DESC LIMIT 1"
+                  ).fetchone()
+                  if latest:
+                      allowed_fields={'hourly_rate','valid_from','valid_to',
+                          'client_member_id','technology','level','hours_per_day'}
+                      allowed_reasons={'source_changed','target_changed','both_changed',
+                          'baseline_missing','target_field_missing','equal'}
+                      allowed_protection={'FINAL_OR_UNKNOWN_REPORTING_STATUS',
+                          'PAID_REPORTING_PERIOD','NATIVE_TIMESHEETS_FREEZE',
+                          'APPROVAL_PROOF_TABLE_MISSING','NATIVE_CLIENTS_REPORTING_HISTORY',
+                          'NATIVE_APPROVED_HOURS','INVALID_REPORTING_MAPPING_METADATA',
+                          'REPORTING_MAPPING_PROVENANCE_MISSING',
+                          'TARGET_REPORTING_PERIOD_CHANGED',
+                          'CANONICAL_REPORTING_MAPPING_NOT_UNIQUE',
+                          'LEGACY_FINAL_STATUS_CHANGE'}
+                      for (raw,) in con.execute(
+                          "SELECT context FROM migration_conflicts WHERE "
+                          "migration_run_id=? AND code='PROTECTED_TERM_CHANGE' "
+                          "AND severity='error' LIMIT 3",(int(latest['id']),)
+                      ):
+                          context=json.loads(raw or '{}')
+                          if not isinstance(context,dict): continue
+                          provenance=context.get('reconciliation_provenance') or {}
+                          if not isinstance(provenance,dict): provenance={}
+                          reason=context.get('protection_reason')
+                          classification=provenance.get('classification')
+                          reasons=provenance.get('field_reasons') or {}
+                          if not isinstance(reasons,dict): reasons={}
+                          fields=context.get('changed_fields') or []
+                          if not isinstance(fields,list): fields=[]
+                          print('CLIENTS_PROTECTED_REASON',json.dumps({
+                              'run_id':int(latest['id']),
+                              'protection_reason':reason if reason in allowed_protection
+                                  else 'UNKNOWN_OR_MISSING',
+                              'changed_fields':sorted(x for x in fields
+                                  if isinstance(x,str) and x in allowed_fields),
+                              'classification':classification if classification in
+                                  {'source_delta','target_diverged','needs_evidence','unchanged'}
+                                  else 'UNKNOWN_OR_UNAVAILABLE',
+                              'field_reasons':{k:v for k,v in reasons.items()
+                                  if k in allowed_fields and v in allowed_reasons},
+                          },sort_keys=True))
+              except (sqlite3.Error,ValueError,TypeError) as e:
+                  print('CLIENTS_PROTECTION_REASON_ERROR',type(e).__name__)
               con.close()
           except Exception as e:
               print('WORKER_RUN_ERROR',type(e).__name__)
