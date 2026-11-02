@@ -53,6 +53,33 @@ try {
     ensureControl(($protectedFields['changed_fields']??[])===['hourly_rate','valid_to']
         && !isset($protectedFields['source']),
         'Protected changes expose fixed field names, not source values');
+    $provenanceContext = \App\Migration\Core\ControlReport::safeContext([
+        'classification'=>'target_diverged',
+        'changed_fields'=>['hourly_rate','valid_to','password'],
+        'field_reasons'=>[
+            'hourly_rate'=>'target_changed', 'valid_to'=>'source_changed',
+            'email'=>'private@company.test', 'level'=>'secret_value'],
+        'reconciliation_provenance'=>[
+            'classification'=>'needs_evidence',
+            'changed_fields'=>['valid_to'],
+            'field_reasons'=>['valid_to'=>'both_changed'],
+            'source'=>['hourly_rate'=>'999999'],
+        ],
+        'source_interval'=>['from'=>'2026-01-01','to'=>'2026-01-31','rate'=>'1234'],
+        'protection_reason'=>'NATIVE_CLIENTS_REPORTING_HISTORY',
+        'source'=>['rate'=>'private'],
+        'raw_secret'=>'private',
+    ]);
+    ensureControl(($provenanceContext['classification']??null)==='target_diverged'
+        && ($provenanceContext['field_reasons']??[])===[
+            'hourly_rate'=>'target_changed','valid_to'=>'source_changed']
+        && ($provenanceContext['reconciliation_provenance']['field_reasons']['valid_to']??null)==='both_changed'
+        && ($provenanceContext['protection_reason']??null)==='NATIVE_CLIENTS_REPORTING_HISTORY'
+        && ($provenanceContext['source_interval']??[])===[
+            'from'=>'2026-01-01','to'=>'2026-01-31']
+        && !str_contains(json_encode($provenanceContext),'private')
+        && !str_contains(json_encode($provenanceContext),'999999'),
+        'V2 provenance exposes only safe reasons, dates and field names');
 
     // The real legacy Clients source may have no attempts.status; only the
     // optional enum probe is suppressed, not the required domain fields.
