@@ -63,31 +63,20 @@ check_status() {
 
 ensure_platform_nginx_site
 
-# The daily legacy-write pause must be verified against the *running*
-# migration-ops server, not only the Compose YAML or image. This gate is
-# deliberately temporary until the accepted V2 reconciliation release.
+# The release gate must run inside the *deployed* migration-ops container.
+# This calls the same public_state() function used by GET /control/state;
+# stdin-over-SSH heredocs can be lost between sh/sudo/Compose exec layers.
+# There are no source/target DB writes or sensitive values in this check.
 echo "[verify] Migration daily target writes disabled in running ops coordinator"
-$SUDO $COMPOSE exec -T migration-ops python3 - <<'PY' || fail "Migration daily writer is enabled or running ops schedule cannot be verified"
-import http.client
-import json
-import socket
-
-class LocalOps(http.client.HTTPConnection):
-    def connect(self):
-        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.sock.settimeout(5)
-        self.sock.connect('/ops/migration-ops.sock')
-
-conn = LocalOps('migration-ops', timeout=5)
-conn.request('GET', '/control/state')
-response = conn.getresponse()
-if response.status != 200:
-    raise SystemExit('Migration ops schedule health unavailable')
-body = json.loads(response.read())
-if (body.get('daily_schedule') or {}).get('enabled') is not False:
-    raise SystemExit('Migration nightly writes are not disabled')
-print('Migration nightly auto-write disabled: verified')
-PY
+$SUDO $COMPOSE exec -T migration-ops python3 -c '
+import sys
+sys.path.insert(0, "/opt/irlix-services/scripts")
+import migration_daily
+state = migration_daily.public_state()
+enabled = state.get("enabled")
+print("Migration daily_schedule.enabled=" + str(enabled).lower(), flush=True)
+sys.exit(0 if enabled is False else 1)
+' || fail "Migration daily write pause is not confirmed in the running migration-ops container"
 
 check_body "Dashboard" http://127.0.0.1/ portal "Dashboard"
 dashboard_asset="$(curl_stand -fsS http://127.0.0.1/ | grep -o '/assets/[^\"'"'"']*\.js' | head -n1)"
