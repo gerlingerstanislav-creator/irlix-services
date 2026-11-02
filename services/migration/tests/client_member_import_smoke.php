@@ -254,12 +254,20 @@ try {
     ]);
     check(runFixture($clients, true)['conflicts']>0,
         'NULL encrypted amount must not alter a previously imported paid period');
+    check(\Illuminate\Support\Facades\DB::table('migration_conflicts')
+        ->where('code','PROTECTED_TERM_CHANGE')
+        ->where('context','like','%paid_or_native_approved_backfill%')->exists(),
+        'Paid-period backfill must be blocked at the rate guard, not by an unrelated period mismatch');
     target('clients')->table('reporting_periods')->update([
         'status'=>'ТШ согласованы', 'paid_at'=>null,
         'timesheet_snapshot'=>'{"revision":"native"}',
     ]);
     check(runFixture($clients, true)['conflicts']>0,
         'NULL encrypted amount must not bypass native Timesheets freeze');
+    check(\Illuminate\Support\Facades\DB::table('migration_conflicts')
+        ->where('code','PROTECTED_TERM_CHANGE')
+        ->where('context','like','%NATIVE_TIMESHEETS_FREEZE%')->exists(),
+        'Native freeze must reject the targeted NULL-only amount backfill');
     target('clients')->table('reporting_periods')
         ->update(['timesheet_snapshot'=>null]);
     $dryBackfill = runFixture($clients, true);
