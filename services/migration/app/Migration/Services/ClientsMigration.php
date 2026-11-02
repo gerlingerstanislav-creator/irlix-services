@@ -515,6 +515,47 @@ class ClientsMigration extends SchemaMigration
                 $missingAmountOnly = $old->hourly_rate === null
                     && $changedFields === ['hourly_rate']
                     && isset($termPayload['hourly_rate']);
+                // Backfilling an unknown legacy ciphertext is not a license to
+                // alter a paid/approved/newly frozen reporting period. The
+                // narrow historical NULL exception only applies while every
+                // overlapping period is proved to be unsealed legacy import.
+                // In particular, a legacy-imported "Счет оплачен" is still
+                // immutable even if Finance has not yet imported its invoices.
+                if ($missingAmountOnly) {
+                    $backfillClientId = DB::connection('target_clients')
+                        ->table('client_members')->where('id', $member)->value('client_id');
+                    if ($backfillClientId === null) {
+                        throw new SourceRowConflict('MAPPED_CLIENT_MEMBER_MISSING',
+                            'Невозможно доказать клиентскую принадлежность дозаполняемой ставки.');
+                    }
+                    $backfillFrom = substr((string) $old->valid_from, 0, 10);
+                    $backfillTo = $old->valid_to === null ? null
+                        : substr((string) $old->valid_to, 0, 10);
+                    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/D', $backfillFrom)
+                        || ($backfillTo !== null
+                            && !preg_match('/^\d{4}-\d{2}-\d{2}$/D', $backfillTo))) {
+                        throw new SourceRowConflict('MAPPED_TERM_DATES_INVALID',
+                            'Даты дозаполняемого условия невозможно достоверно проверить.');
+                    }
+                    $periods = DB::connection('target_clients')->table('reporting_periods')
+                        ->where('client_id', $backfillClientId)
+                        ->whereDate('period_end', '>=', $backfillFrom);
+                    if ($backfillTo !== null) {
+                        $periods->whereDate('period_start', '<=', $backfillTo);
+                    }
+                    foreach ($periods->get() as $period) {
+                        $reason = $this->unsealedLegacyProtectionReason($period);
+                        if ($reason !== null) {
+                            throw new SourceRowConflict('PROTECTED_TERM_CHANGE',
+                                'Восстановленная ставка затрагивает защищённый или оплаченный период. '
+                                .'Изменять финансовую историю через дозаполнение NULL запрещено.',
+                                ['changed_fields' => ['hourly_rate'],
+                                 'reconciliation_type' => 'paid_or_native_approved_backfill',
+                                 'automatic_override_allowed' => false,
+                                 'protection_reason' => $reason]);
+                        }
+                    }
+                }
                 // A target-side correction might already be an approved repair.
                 // Reconciliation V2 is diagnostic, not an authorization policy.
                 // Never overwrite this history with raw legacy while an
