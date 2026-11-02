@@ -432,5 +432,19 @@ jobs:
             echo "PROBE_ERROR: Finance evidence check unavailable"
             exit 3
           fi
+          # The main production smoke previously failed during this lookup,
+          # so re-check the actual running container's independent write gate.
+          ops_id="$($SUDO sh -c "$COMPOSE ps -q migration-ops")"
+          if [ -z "$ops_id" ]; then
+            echo "MIGRATION_DAILY_WRITE_GATE unknown_no_running_ops_container"
+            exit 4
+          fi
+          if $SUDO docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$ops_id" |
+            grep -Fxq 'MIGRATION_DAILY_WRITE_APPROVED=false'; then
+            echo "MIGRATION_DAILY_WRITE_GATE disabled_confirmed"
+          else
+            echo "MIGRATION_DAILY_WRITE_GATE unsafe_or_unverified"
+            exit 4
+          fi
           echo "PROBE_FINISHED: no state changed"
           REMOTE
