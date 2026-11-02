@@ -108,6 +108,25 @@ class PlannerTests(unittest.TestCase):
         self.assertIn("http://127.0.0.1:8104/api/health", deploy)
         self.assertIn('location /system/ { proxy_pass http://127.0.0.1:8102/;', routing)
 
+    def test_migration_ops_registry_covers_every_copied_python_source(self):
+        # If any source copied by Dockerfile is absent from image paths,
+        # CI can reuse a stale migration-ops image after a scheduler change.
+        component = next(c for c in self.data['components'] if c['id'] == 'migration-ops')
+        dockerfile = (p.ROOT / 'services/migration-ops/Dockerfile').read_text()
+        covered = []
+        for line in dockerfile.splitlines():
+            if not line.startswith('COPY scripts/'):
+                continue
+            for source in line.split()[1:-1]:
+                if not source.endswith('.py'):
+                    continue
+                self.assertTrue(any(source.startswith(prefix) for prefix in component['paths']),
+                    'migration-ops source omitted from CI fingerprint: ' + source)
+                covered.append(source)
+        self.assertIn('scripts/migration_daily.py', covered)
+        self.assertIn('migration-ops', self.ids(self.plan(['scripts/migration_daily.py'])))
+        self.assertIn('migration-ops', self.ids(self.plan(['scripts/tests/test_migration_daily.py'])))
+
     def test_nginx_is_configuration_only(self):
         plan = self.plan(["infra/nginx/irlix-services.conf"])
         self.assertTrue(plan["deploy"])
