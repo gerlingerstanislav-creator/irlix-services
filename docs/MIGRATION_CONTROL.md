@@ -735,3 +735,5 @@ PROTECTED_TERM_CHANGE обозначает реальный конфликт ф�
 **Подтверждение на production:** одного merge/релиза недостаточно; необходимо проверить, что `migration-ops` реально обновлён и `GET /control/state` показывает `daily_schedule.enabled=false`. До этого старый контейнер может продолжать выполнять ночной импорт.
 
 **Проверка корректности релиза:** `infra/ci/services.json` теперь включает все Python-файлы, копируемые `services/migration-ops/Dockerfile`, включая `scripts/migration_daily.py`. `scripts/ci/tests/test_service_plan.py` проверяет этот инвариант: изменение планировщика должно пересобирать и перевыкатывать именно `migration-ops`, а не повторно использовать старый образ.
+
+**Production runtime gate:** `scripts/verify-stand.sh` читает `/control/state` **через Unix socket работающего `migration-ops`**; при отсутствии ответа или `daily_schedule.enabled != false` smoke завершается ошибкой. Проверка действует на время приостановки ночных записей и должна быть сознательно пересмотрена только при принятии и выпуске V2 с доказанной безопасной синхронизацией.

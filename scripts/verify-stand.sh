@@ -63,6 +63,32 @@ check_status() {
 
 ensure_platform_nginx_site
 
+# The daily legacy-write pause must be verified against the *running*
+# migration-ops server, not only the Compose YAML or image. This gate is
+# deliberately temporary until the accepted V2 reconciliation release.
+echo "[verify] Migration daily target writes disabled in running ops coordinator"
+$SUDO $COMPOSE exec -T migration-ops python3 - <<'PY' || fail "Migration daily writer is enabled or running ops schedule cannot be verified"
+import http.client
+import json
+import socket
+
+class LocalOps(http.client.HTTPConnection):
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(5)
+        self.sock.connect('/ops/migration-ops.sock')
+
+conn = LocalOps('migration-ops', timeout=5)
+conn.request('GET', '/control/state')
+response = conn.getresponse()
+if response.status != 200:
+    raise SystemExit('Migration ops schedule health unavailable')
+body = json.loads(response.read())
+if (body.get('daily_schedule') or {}).get('enabled') is not False:
+    raise SystemExit('Migration nightly writes are not disabled')
+print('Migration nightly auto-write disabled: verified')
+PY
+
 check_body "Dashboard" http://127.0.0.1/ portal "Dashboard"
 dashboard_asset="$(curl_stand -fsS http://127.0.0.1/ | grep -o '/assets/[^\"'"'"']*\.js' | head -n1)"
 [ -n "$dashboard_asset" ] || fail "Dashboard JS asset was not found in HTML"
