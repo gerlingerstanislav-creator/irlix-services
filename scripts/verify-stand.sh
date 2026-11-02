@@ -63,6 +63,25 @@ check_status() {
 
 ensure_platform_nginx_site
 
+# Verify the effective runtime environment of the *running* coordinator.
+# A prior SSH -> sudo -> Compose exec probe did not provide reliable output.
+# Inspect is read-only; print neither credentials nor any full environment.
+# The deployed migration_daily.enabled() is false whenever this independent
+# approval flag is false, even if MIGRATION_DAILY_ENABLED remains true.
+echo "[verify] Migration daily write approval disabled in deployed container"
+# migration-ops lives in a compose overlay. Use the same complete stack as
+# deployment; the default compose file alone reports "No such service".
+migration_compose="$(python3 scripts/ci/service_plan.py compose-args --env-file .env)" \
+  || fail "Migration ops Compose configuration unavailable"
+ops_container="$($SUDO sh -c "$migration_compose ps -q migration-ops")" \
+  || fail "Migration ops container lookup failed"
+[ -n "$ops_container" ] || fail "Migration ops container absent"
+[ "$($SUDO docker inspect -f '{{.State.Running}}' "$ops_container")" = "true" ] || fail "Migration ops container is not running"
+$SUDO docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$ops_container" \
+  | grep -Fxq 'MIGRATION_DAILY_WRITE_APPROVED=false' \
+  || fail "Running migration ops does not enforce MIGRATION_DAILY_WRITE_APPROVED=false"
+echo "[verify] Running migration-ops: nightly target writes disabled by approval flag"
+
 check_body "Dashboard" http://127.0.0.1/ portal "Dashboard"
 dashboard_asset="$(curl_stand -fsS http://127.0.0.1/ | grep -o '/assets/[^\"'"'"']*\.js' | head -n1)"
 [ -n "$dashboard_asset" ] || fail "Dashboard JS asset was not found in HTML"
