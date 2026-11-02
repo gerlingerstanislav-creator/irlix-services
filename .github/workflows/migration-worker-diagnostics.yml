@@ -196,5 +196,88 @@ jobs:
           else
             echo "WORKER_PHP_PROCESSES=unknown_no_container"
           fi
+          # Read protected status by canonical migration mapping. Only categorical
+          # status reaches CI logs; never export client/employee IDs or amounts.
+          if ! $SUDO sh -c "$COMPOSE exec -T migration-worker php" <<'PHP'
+          <?php
+          try {
+              $meta = new PDO('sqlite:file:/data/migration.sqlite?mode=ro');
+              $meta->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+              $meta->exec('PRAGMA query_only=ON');
+              $conflict = $meta->query(
+                  "SELECT c.legacy_id,c.context FROM migration_conflicts c "
+                  ."JOIN migration_runs r ON r.id=c.migration_run_id "
+                  ."WHERE r.service='clients' AND r.mode='dry-run' "
+                  ."AND c.code='PROTECTED_TERM_CHANGE' AND c.severity='error' "
+                  ."ORDER BY c.migration_run_id DESC LIMIT 1"
+              )->fetch(PDO::FETCH_ASSOC);
+              if (!$conflict) {
+                  echo "CLIENTS_PROTECTED_PERIOD_STATE not_found\n";
+              } else {
+                  $ctx=json_decode($conflict['context'] ?? '{}',true);
+                  $period=is_array($ctx) ? ($ctx['protected_interval'] ?? []) : [];
+                  $start=$period['from'] ?? null;
+                  $end=$period['to'] ?? null;
+                  if (!is_string($start) || !preg_match('/^\d{4}-\d{2}-\d{2}$/D',$start)
+                      || !is_string($end) || !preg_match('/^\d{4}-\d{2}-\d{2}$/D',$end)) {
+                      throw new RuntimeException('period_not_available');
+                  }
+                  $q=$meta->prepare(
+                      "SELECT target_id FROM migration_mappings WHERE service='clients' "
+                      ."AND entity_type='rates' AND legacy_id=? LIMIT 1"
+                  );
+                  $q->execute([(string)$conflict['legacy_id']]);
+                  $targetId=$q->fetchColumn();
+                  if (!is_string($targetId) || !preg_match('/^\d+$/D',$targetId)) {
+                      throw new RuntimeException('mapping_unavailable');
+                  }
+                  $host=getenv('TARGET_CLIENTS_DB_HOST') ?: getenv('TARGET_SHARED_DB_HOST');
+                  $dbname=getenv('TARGET_CLIENTS_DB_DATABASE') ?: getenv('TARGET_SHARED_DB_DATABASE');
+                  $port=getenv('TARGET_CLIENTS_DB_PORT') ?: '5432';
+                  $user=getenv('TARGET_CLIENTS_DB_USERNAME');
+                  $password=getenv('TARGET_CLIENTS_DB_PASSWORD');
+                  if (!$host || !$dbname || !$user || $password === false) {
+                      throw new RuntimeException('target_connection_unavailable');
+                  }
+                  $pg=new PDO("pgsql:host=$host;port=$port;dbname=$dbname",$user,$password,
+                      [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+                  $pg->beginTransaction();
+                  $pg->exec('SET TRANSACTION READ ONLY');
+                  $sql="SELECT p.status FROM clients.reporting_periods p "
+                      ."JOIN clients.client_members m ON m.client_id=p.client_id "
+                      ."JOIN clients.member_terms t ON t.client_member_id=m.id "
+                      ."WHERE t.id=:id AND p.period_start::date=:from_date "
+                      ."AND p.period_end::date=:to_date";
+                  $q=$pg->prepare($sql);
+                  $q->execute(['id'=>$targetId,'from_date'=>$start,'to_date'=>$end]);
+                  $counts=[];
+                  while (($status=$q->fetchColumn()) !== false) {
+                      $category=match($status) {
+                          'Счет оплачен'=>'finance_paid',
+                          'Акт согласован'=>'act_approved',
+                          'Акт на согласовании'=>'act_pending',
+                          'ТШ согласованы'=>'timesheets_approved',
+                          'ТШ на согласовании'=>'timesheets_pending',
+                          'Новый'=>'new',
+                          default=>'unknown',
+                      };
+                      $counts[$category]=($counts[$category]??0)+1;
+                  }
+                  $pg->rollBack();
+                  echo 'CLIENTS_PROTECTED_PERIOD_STATE '.json_encode([
+                      'status_categories'=>$counts,
+                      'matches'=>array_sum($counts),
+                      'metadata_conflict_present'=>true,
+                  ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+              }
+          } catch (Throwable $e) {
+              echo 'CLIENTS_PROTECTED_PERIOD_PROBE_ERROR '.get_class($e)."\n";
+              exit(2);
+          }
+          PHP
+          then
+            echo "PROBE_ERROR: protected period categorization unavailable"
+            exit 3
+          fi
           echo "PROBE_FINISHED: no state changed"
           REMOTE
