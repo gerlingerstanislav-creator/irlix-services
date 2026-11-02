@@ -17,7 +17,8 @@ class DailyMigrationTests(unittest.TestCase):
         self.state_path = Path(self.temp.name) / 'daily.json'
         self.patches = [
             patch.object(daily, 'STATE', self.state_path),
-            patch.dict(os.environ, {'MIGRATION_DAILY_ENABLED': 'true'}),
+            patch.dict(os.environ, {'MIGRATION_DAILY_ENABLED': 'true',
+                                     'MIGRATION_DAILY_WRITE_APPROVED': 'true'}),
             patch.object(daily.console, 'active', return_value=False),
         ]
         for item in self.patches:
@@ -39,6 +40,23 @@ class DailyMigrationTests(unittest.TestCase):
         self.assertIsNone(daily.reserve(self.due(hour=22), factory))
         self.assertIsNone(daily.reserve(self.due(minute=5), factory))
         self.assertEqual(invoked, [])
+        self.assertFalse(self.state_path.exists())
+
+    def test_legacy_enabled_flag_alone_cannot_resume_unsafe_nightly_writes(self):
+        operations = []
+        factory = lambda: operations.append(1) or {'id': '123'}
+        with patch.dict(os.environ, {'MIGRATION_DAILY_ENABLED': 'true',
+                                     'MIGRATION_DAILY_WRITE_APPROVED': 'false'}):
+            self.assertFalse(daily.enabled())
+            self.assertIsNone(daily.reserve(self.due(), factory))
+            self.assertFalse(daily.public_state()['enabled'])
+        with patch.dict(os.environ, {'MIGRATION_DAILY_ENABLED': 'true',
+                                     'MIGRATION_DAILY_WRITE_APPROVED': ''}):
+            self.assertIsNone(daily.reserve(self.due(), factory))
+        with patch.dict(os.environ, {'MIGRATION_DAILY_ENABLED': 'true'}):
+            with patch.dict(os.environ, {}, clear=True):
+                self.assertIsNone(daily.reserve(self.due(), factory))
+        self.assertEqual(operations, [])
         self.assertFalse(self.state_path.exists())
 
     def test_single_durable_reservation_prevents_restart_replay(self):

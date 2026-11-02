@@ -105,6 +105,9 @@ services:
       MIGRATION_SNAPSHOT_BASE: /snapshots
       MIGRATION_DATA_PATH: /data
       MIGRATION_DAILY_ENABLED: ${MIGRATION_DAILY_ENABLED:-true}
+      # Read-only reconciliation remains possible; nightly target writes
+      # require an independent deliberate opt-in after V2 acceptance.
+      MIGRATION_DAILY_WRITE_APPROVED: ${MIGRATION_DAILY_WRITE_APPROVED:-false}
       MIGRATION_VACATIONS_FILES_PATH: /vacation-files
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
