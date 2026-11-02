@@ -109,8 +109,8 @@ final class ReconciliationDecisionStore
                 $decision['legacy_id'], $decision['rule_code']];
             $lookup->execute($scope);
             $last = $lookup->fetch(PDO::FETCH_ASSOC);
-            if ($last === false && $parent !== null) {
-                throw new \DomainException('Superseded decision does not exist');
+            if ($last === false && ($parent !== null || $decision['rule_version'] !== 1)) {
+                throw new \DomainException('First reconciliation decision must start at version one');
             }
             // A later approval must name the exact previous decision and
             // advance by exactly one. Gaps hide missing evidence revisions.
