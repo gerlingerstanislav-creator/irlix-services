@@ -99,6 +99,41 @@ jobs:
                           recent=con.execute('SELECT max(updated_at) FROM migration_table_progress WHERE migration_run_id=?',(row['id'],)).fetchone()
                           print('TABLE_LAST_UPDATE',json.dumps({'updated_at':safe(recent[0])}))
               else: print('WORKER_RUN not_found')
+              # This diagnostic reveals only bounded enum counts for recent
+              # Clients runs. No source IDs, raw context, financial amounts,
+              # names, connection credentials, or SQL values leave the host.
+              known_codes={
+                  'PROTECTED_TERM_CHANGE','RECONCILIATION_EVIDENCE_REQUIRED',
+                  'SOURCE_PERIOD_OVERLAP','CLIENTS_LEGACY_MAPPINGS_INCOMPATIBLE',
+                  'MAPPED_TARGET_MISSING','MAPPED_CLIENT_MEMBER_MISSING',
+                  'MAPPED_TERM_DATES_INVALID','PROTECTED_PERIOD_DATES_INVALID',
+                  'IDENTITY_MAPPING_COLLISION','UNSAFE_PRIOR_WRITE',
+                  'UNSEALED_LEGACY_PERIOD_CORRECTION',
+              }
+              try:
+                  for item in con.execute(
+                      "SELECT id,mode,status FROM migration_runs "
+                      "WHERE service='clients' ORDER BY id DESC LIMIT 8"
+                  ):
+                      rid=int(item['id'])
+                      counts={}
+                      others=0
+                      for code,count in con.execute(
+                          "SELECT code,COUNT(*) FROM migration_conflicts "
+                          "WHERE migration_run_id=? AND severity='error' "
+                          "GROUP BY code",(rid,)
+                      ):
+                          if code in known_codes:
+                              counts[code]=count
+                          else:
+                              others+=count
+                      print('CLIENTS_READONLY_RECONCILIATION',json.dumps({
+                          'run_id':rid,'mode':safe(item['mode']),
+                          'status':safe(item['status']),
+                          'blocked_codes':counts,'other_errors':others,
+                      },sort_keys=True))
+              except (sqlite3.Error,ValueError) as e:
+                  print('CLIENTS_RECONCILIATION_ERROR',type(e).__name__)
               con.close()
           except Exception as e:
               print('WORKER_RUN_ERROR',type(e).__name__)
