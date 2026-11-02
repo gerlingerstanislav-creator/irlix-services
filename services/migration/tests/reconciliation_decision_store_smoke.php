@@ -59,6 +59,16 @@ try {
         throw new RuntimeException('Invalid approval parent accepted');
     } catch (DomainException $expected) {}
 
+    // A revision gap must never masquerade as an unbroken audit trail.
+    try {
+        $store->append(array_replace($evidence, [
+            'rule_version' => 4,
+            'decision' => 'no_automatic_action',
+            'supersedes_id' => $id,
+        ]));
+        throw new RuntimeException('Missing ledger revisions accepted');
+    } catch (DomainException $expected) {}
+
     $revision = $store->append(array_replace($evidence, [
         'rule_version' => 2,
         'decision' => 'no_automatic_action',
@@ -86,6 +96,16 @@ try {
     checkReconciliation((new ReconciliationDecisionStore())->latest(
         'clients','rates','different-source','PRESERVE_HISTORY') === null,
         'Unknown entity must not inherit an operator decision');
+    // A private ledger filename must not be redirected by a symlink.
+    $linkPath = $dir.'/linked.sqlite';
+    if (!symlink($ledgerPath, $linkPath)) throw new RuntimeException('Fixture symlink failed');
+    putenv('MIGRATION_RECONCILIATION_DATABASE='.$linkPath);
+    try {
+        (new ReconciliationDecisionStore())->latest('clients','rates','synthetic-rate-7','PRESERVE_HISTORY');
+        throw new RuntimeException('Symlinked reconciliation ledger accepted');
+    } catch (DomainException $expected) {}
+    putenv('MIGRATION_RECONCILIATION_DATABASE='.$ledgerPath);
+    unlink($linkPath);
     echo "Durable reconciliation decisions: PASS\n";
 } finally {
     foreach ([$ledgerPath, $ledgerPath.'-journal', $metadataPath] as $path) @unlink($path);
