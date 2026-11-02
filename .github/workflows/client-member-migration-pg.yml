@@ -71,6 +71,10 @@ jobs:
         run: |
           docker run --rm --network none irlix-migration-rehearsal \
             php /app/tests/reconciliation_provenance_smoke.php
+      - name: Verify append-only reconciliation ledger and private report safety
+        run: |
+          docker run --rm --network none irlix-migration-rehearsal \
+            php /app/tests/control_smoke.php
       - name: Stress 64k synthetic ClientMember facts and idempotent retry
         run: |
           docker run --rm --network none --memory 1g \
