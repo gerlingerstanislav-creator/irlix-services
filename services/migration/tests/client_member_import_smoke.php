@@ -334,6 +334,20 @@ try {
     check(runFixture($clients, false)['conflicts']===0,
         'Safe historical correction remains idempotent on rerun');
 
+    // Even without a native approval, a target-owned correction must not be
+    // silently reverted by re-importing unchanged legacy data.
+    target('clients')->table('member_terms')->where('id',$canonicalTermId)
+        ->update(['hourly_rate'=>'1550.50']);
+    check(runFixture($clients, true)['conflicts']>0,
+        'Target-side rate correction requires V2 reconciliation evidence');
+    check((float)target('clients')->table('member_terms')
+        ->where('id',$canonicalTermId)->value('hourly_rate')===1550.5,
+        'Dry run must preserve target-side correction');
+    target('clients')->table('member_terms')->where('id',$canonicalTermId)
+        ->update(['hourly_rate'=>'1600.50']);
+    check(runFixture($clients, true)['conflicts']===0,
+        'Restored target baseline remains eligible for idempotent dry run');
+
     $clients->fixture['rates'][0]['rate']='1700.50';
     $clients->fixture['rates'][1]['rate']='1700.50';
     target('clients')->table('reporting_period_history')->insert([
