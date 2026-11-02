@@ -54,6 +54,11 @@ final class ReconciliationProvenance
         $values = array_values(array_unique(array_values($reasons)));
         if (!$changed) $classification = 'unchanged';
         elseif (count(array_intersect($values, $blocked)) > 0) $classification = 'needs_evidence';
+        // Independent source and target changes in *different* fields still
+        // require a combined dependency review. "target_diverged" is only
+        // a reliable description if the source has no other changed field.
+        elseif (in_array('target_changed', $values, true)
+            && in_array('source_changed', $values, true)) $classification = 'needs_evidence';
         elseif (in_array('target_changed', $values, true)) $classification = 'target_diverged';
         else $classification = 'source_delta';
 
