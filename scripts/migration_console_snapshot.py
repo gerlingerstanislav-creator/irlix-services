@@ -48,20 +48,24 @@ def target_fingerprint(scope):
     return result
 
 
-def identity_volume():
-    """Find the private identity mount without printing its host path or data."""
-    # Snapshot stops the Migration API first. Docker inspect still works on
-    # its stopped container, but the running-only common.container() does not.
-    stopped_or_running = common.compose('ps', '-a', '-q', 'migration')
-    if not stopped_or_running:
-        raise RuntimeError('Migration container is missing during identity backup')
-    mount = common.run(['docker', 'inspect', '--format',
-        '{{range .Mounts}}{{if eq .Destination "/identity"}}{{.Source}}{{end}}{{end}}',
-        stopped_or_running])
-    path = Path(mount)
-    if not mount or not path.is_dir() or path.is_symlink():
-        raise RuntimeError('Migration identity volume is unavailable or unsafe')
-    return path
+def identity_container():
+    """Use the Docker socket without granting migration-ops the identity mount.
+
+    A checkpoint already stopped Migration API/worker. Resolving the stopped
+    container (not the running-only helper) gives a safe, consistent copy source.
+    """
+    container = common.compose('ps', '-a', '-q', 'migration')
+    if not container or len(container.splitlines()) != 1:
+        raise RuntimeError('Stopped Migration container is unavailable')
+    if common.run(['docker', 'inspect', '--format', '{{.State.Running}}', container]) != 'false':
+        raise RuntimeError('Identity snapshot requires a stopped Migration container')
+    mounts = json.loads(common.run(['docker', 'inspect', '--format', '{{json .Mounts}}', container]))
+    if not isinstance(mounts, list) or not any(
+        isinstance(mount, dict) and mount.get('Destination') == '/identity'
+        for mount in mounts
+    ):
+        raise RuntimeError('Migration identity volume is not mounted')
+    return container
 
 
 def verify_identity_backup(archive):
@@ -78,6 +82,8 @@ def verify_identity_backup(archive):
                 names.add(name)
                 with source.extractfile(member) as stored, (root / name).open('xb') as output:
                     shutil.copyfileobj(stored, output)
+        if not names:
+            raise RuntimeError('Identity backup is unexpectedly empty')
         for name in names:
             if name.endswith('.sqlite'):
                 with sqlite3.connect('file:' + str(root / name) + '?mode=ro', uri=True) as db:
@@ -87,36 +93,56 @@ def verify_identity_backup(archive):
 
 
 def backup_identity_volume(destination):
-    """Keep an independent, verified copy; never roll identity back with /data.
+    """Archive a consistent private /identity snapshot with no new volume grants.
 
-    Both identity mappings and the append-only reconciliation decisions live in
-    /identity. Migration API and worker are stopped by the checkpoint caller,
-    so SQLite backup can capture consistent commits without copying WAL files.
-    This private archive stays on the host and is subject to checkpoint retention.
+    Docker cp streams stopped Migration's volume over the already-authorized
+    Docker socket into the private checkpoint directory; no host Source path,
+    identity payload or credentials enter CI. Original SQLite WALs are read
+    alongside the database then sealed into clean sqlite backups. The archive
+    is NOT automatically restored alongside business data/metadata.
     """
-    root = identity_volume()
+    container = identity_container()
     with tempfile.TemporaryDirectory(prefix='identity-copy-', dir=destination) as work:
-        staging = Path(work)
-        for entry in sorted(root.iterdir()):
-            if (entry.is_symlink() or not entry.is_file()
-                    or entry.stat().st_nlink != 1):
-                raise RuntimeError('Unsafe identity volume content')
+        temp = Path(work)
+        raw = temp / 'identity.tar'
+        with raw.open('wb') as output:
+            common.run(['docker', 'cp', container + ':/identity/.', '-'], stdout=output)
+        incoming = temp / 'incoming'
+        clean = temp / 'clean'
+        incoming.mkdir(mode=0o700)
+        clean.mkdir(mode=0o700)
+        names = set()
+        with tarfile.open(raw, 'r:') as source:
+            for member in source:
+                name = member.name[2:] if member.name.startswith('./') else member.name
+                if name == '.' and member.isdir():
+                    continue
+                if (not member.isfile() or not name or name in names
+                        or name in ('.', '..') or name != Path(name).name
+                        or '/' in name or '\\' in name):
+                    raise RuntimeError('Unsafe identity volume entry')
+                names.add(name)
+                with source.extractfile(member) as stored, (incoming / name).open('xb') as output:
+                    shutil.copyfileobj(stored, output)
+        if not names or not any(name.endswith('.sqlite') for name in names):
+            raise RuntimeError('Identity volume has no verifiable SQLite database')
+        for entry in sorted(incoming.iterdir()):
             if entry.name.endswith(('-wal', '-shm', '-journal')):
                 continue
-            destination_file = staging / entry.name
+            output = clean / entry.name
             if entry.name.endswith('.sqlite'):
                 with sqlite3.connect('file:' + str(entry) + '?mode=ro', uri=True) as source, \
-                     sqlite3.connect(destination_file) as target:
+                     sqlite3.connect(output) as target:
                     source.execute('PRAGMA query_only=ON')
                     if source.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
                         raise RuntimeError('Identity source database integrity check failed')
                     source.backup(target)
             else:
-                shutil.copyfile(entry, destination_file)
-            destination_file.chmod(0o600)
+                shutil.copyfile(entry, output)
+            output.chmod(0o600)
         archive = destination / 'identity-backup.tar.gz'
         with tarfile.open(archive, 'w:gz') as output:
-            for entry in sorted(staging.iterdir()):
+            for entry in sorted(clean.iterdir()):
                 output.add(entry, arcname=entry.name, recursive=False)
     verify_identity_backup(archive)
     archive.chmod(0o600)
