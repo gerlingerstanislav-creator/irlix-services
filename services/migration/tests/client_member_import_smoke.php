@@ -479,6 +479,45 @@ try {
         'Human-confirmed paid reporting period cannot be downgraded');
     check($clients->validate(1)['ok'],
         'Accepted frozen historical rate is accounted for in full Clients validation');
+
+    // New production run #416 also exposed source-only deltas in finalized
+    // reporting periods. The original human-approved target must be retained,
+    // with only mapping provenance refreshed, and must remain idempotent.
+    $clients->fixture['reporting_periods'][0]['approved_hours'] = '12.50';
+    $frozenPeriod = target('clients')->table('reporting_periods')
+        ->where('id', $legacyPeriodId)->first();
+    check(runFixture($clients, true)['conflicts']===0
+        && \Illuminate\Support\Facades\DB::table('migration_conflicts')
+            ->where('code','CONFIRMED_HISTORICAL_REPORTING_PRESERVED')->exists(),
+        'Final reporting period with proven source-only drift is safe for audit-only reconciliation');
+    check(runFixture($clients, false)['conflicts']===0 && $clients->validate(1)['ok'],
+        'Final reporting period provenance is updated without changing confirmed hours');
+    $afterPeriod = target('clients')->table('reporting_periods')
+        ->where('id', $legacyPeriodId)->first();
+    foreach (['period_start','period_end','status','confirmed_hours','paid_at','updated_at'] as $field) {
+        check($afterPeriod->$field === $frozenPeriod->$field,
+            'Audit-only source reconciliation must not change target period '.$field);
+    }
+    check(runFixture($clients, false)['conflicts']===0 && $clients->validate(1)['ok'],
+        'Reconciled historical reporting source drift must remain idempotent');
+    target('clients')->table('reporting_periods')->where('id', $legacyPeriodId)
+        ->update(['confirmed_hours'=>'11.00']);
+    check(runFixture($clients, true)['conflicts']>0
+        && \Illuminate\Support\Facades\DB::table('migration_conflicts')
+            ->where('code','PROTECTED_REPORTING_PERIOD_CHANGE')->exists(),
+        'Independent edit to confirmed reporting hours must block the source-drift exception');
+    target('clients')->table('reporting_periods')->where('id', $legacyPeriodId)
+        ->update(['confirmed_hours'=>null, 'timesheet_snapshot'=>'native-snapshot']);
+    check(runFixture($clients, true)['conflicts']>0
+        && \Illuminate\Support\Facades\DB::table('migration_conflicts')
+            ->where('code','PROTECTED_REPORTING_PERIOD_CHANGE')->exists(),
+        'Native timesheet freeze must block reporting source-only reconciliation');
+    target('clients')->table('reporting_periods')->where('id', $legacyPeriodId)
+        ->update(['timesheet_snapshot'=>null]);
+    $clients->fixture['reporting_periods'][0]['approved_hours'] = null;
+    check(runFixture($clients, false)['conflicts']===0 && $clients->validate(1)['ok'],
+        'Restored unchanged final source remains valid after provenance-only correction');
+
     check(runFixture($clients,false)['conflicts']===0,
         'Repeated frozen reconciliation must remain idempotent');
     target('clients')->table('member_terms')->where('id',$canonicalTermId)
