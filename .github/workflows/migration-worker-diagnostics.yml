@@ -114,5 +114,129 @@ jobs:
           else
             echo "WORKER_PHP_PROCESSES=unknown_no_container"
           fi
+          # Private run #416. Report only fixed enum codes, allowlisted field
+          # names and booleans. No source/target IDs or monetary values.
+          if ! $SUDO sh -c "$COMPOSE exec -T migration-worker php" <<'PHP'
+          <?php
+          try {
+              require_once '/app/app/Migration/Core/TargetFieldComparison.php';
+              $metadata=new PDO('sqlite:file:/data/migration.sqlite?mode=ro', null, null,
+                  [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+              $metadata->exec('PRAGMA query_only=ON');
+              $query=$metadata->prepare(
+                  "SELECT entity_type,legacy_id,code,context FROM migration_conflicts "
+                  ."WHERE migration_run_id=? AND code IN "
+                  ."('PROTECTED_REPORTING_PERIOD_CHANGE','RECONCILIATION_EVIDENCE_REQUIRED') "
+                  ."AND severity='error' ORDER BY id LIMIT 10"
+              );
+              $query->execute([416]);
+              $conflicts=$query->fetchAll(PDO::FETCH_ASSOC);
+              if (count($conflicts)!==5) {
+                  echo 'CLIENTS416_PROOF count_unexpected=' . count($conflicts) . "\n";
+                  exit(2);
+              }
+              $host=getenv('TARGET_CLIENTS_DB_HOST')?:getenv('TARGET_SHARED_DB_HOST');
+              $dbname=getenv('TARGET_CLIENTS_DB_DATABASE')?:getenv('TARGET_SHARED_DB_DATABASE');
+              $port=getenv('TARGET_CLIENTS_DB_PORT')?:'5432';
+              $user=getenv('TARGET_CLIENTS_DB_USERNAME');
+              $password=getenv('TARGET_CLIENTS_DB_PASSWORD');
+              if (!$host||!$dbname||!$user||$password===false) {
+                  throw new RuntimeException('connection_unavailable');
+              }
+              $pg=new PDO("pgsql:host=$host;port=$port;dbname=$dbname;connect_timeout=5",
+                  $user,$password,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+              $pg->beginTransaction();
+              $pg->exec('SET TRANSACTION READ ONLY');
+              $pg->exec('SET LOCAL statement_timeout = 5000');
+              $allowedFields=[
+                  'client_id','period_start','period_end','status','confirmed_hours',
+                  'timesheets_sent_at','timesheets_approved_at','act_sent_at',
+                  'act_approved_at','paid_at','hourly_rate','valid_from','valid_to',
+                  'technology','level','hours_per_day','client_member_id'
+              ];
+              $allowedClasses=['source_delta','unchanged','needs_evidence','target_diverged'];
+              $allowedReasons=['source_changed','target_changed','both_changed',
+                  'baseline_missing','target_field_missing','equal'];
+              $mappingQuery=$metadata->prepare(
+                  "SELECT target_id,metadata FROM migration_mappings "
+                  ."WHERE service='clients' AND entity_type=? AND legacy_id=?"
+              );
+              foreach ($conflicts as $item) {
+                  $type=$item['entity_type'];
+                  if (!in_array($type,['rates','reporting_periods'],true)) exit(3);
+                  $context=json_decode((string)$item['context'],true) ?: [];
+                  $mappingQuery->execute([$type,(string)$item['legacy_id']]);
+                  $mapping=$mappingQuery->fetch(PDO::FETCH_ASSOC);
+                  $meta=$mapping ? json_decode((string)$mapping['metadata'],true) : null;
+                  $baseline=is_array($meta) && is_array($meta['target_payload']??null)
+                      ?$meta['target_payload']:null;
+                  $table=$type==='rates'?'clients.member_terms':'clients.reporting_periods';
+                  $target=false;
+                  if ($mapping && preg_match('/^\d+$/D',(string)$mapping['target_id'])) {
+                      $row=$pg->prepare('SELECT * FROM '.$table.' WHERE id=?');
+                      $row->execute([(string)$mapping['target_id']]);
+                      $target=$row->fetch(PDO::FETCH_ASSOC);
+                  }
+                  $match=is_array($baseline) && $target!==false && count($baseline)>0;
+                  $changedTargetFields=[];
+                  if ($match) {
+                      foreach ($baseline as $field=>$expected) {
+                          if (!array_key_exists($field,$target) ||
+                              !\App\Migration\Core\TargetFieldComparison::matches(
+                                  $target[$field],$expected,$field)) {
+                              $match=false;
+                              if (in_array($field,$allowedFields,true)) $changedTargetFields[]=$field;
+                          }
+                      }
+                  }
+                  $sourceFields=array_values(array_filter($context['changed_fields']??[],
+                      static fn($f)=>is_string($f) && in_array($f,$allowedFields,true)));
+                  $provenance=$context['reconciliation_provenance']??[];
+                  $class=$provenance['classification']??null;
+                  $reasons=[];
+                  foreach (($provenance['field_reasons']??[]) as $field=>$reason) {
+                      if (in_array($field,$allowedFields,true)
+                          && in_array($reason,$allowedReasons,true)) $reasons[$field]=$reason;
+                  }
+                  $freeze=false;
+                  if ($type==='reporting_periods' && $target!==false) {
+                      foreach (['timesheet_snapshot','timesheet_revision','timesheet_freeze_token'] as $field) {
+                          if (($target[$field]??null)!==null) $freeze=true;
+                      }
+                      foreach (['reporting_period_history','reporting_period_approved_hours'] as $tableName) {
+                          $lookup=$pg->prepare('SELECT EXISTS (SELECT 1 FROM clients.'.$tableName
+                              .' WHERE reporting_period_id=?)');
+                          $lookup->execute([(string)$mapping['target_id']]);
+                          if ((bool)$lookup->fetchColumn()) $freeze=true;
+                      }
+                  }
+                  echo 'CLIENTS416_PROOF '.json_encode([
+                      'entity'=>$type,
+                      'mapping_present'=>$mapping!==false,
+                      'canonical_mapping'=>is_array($meta) && !isset($meta['alias_of']),
+                      'target_present'=>$target!==false,
+                      'baseline_present'=>$baseline!==null,
+                      'baseline_field_count'=>$baseline===null?0:count($baseline),
+                      'baseline_matches_target'=>$match,
+                      'target_changed_fields'=>$changedTargetFields,
+                      'candidate_changed_fields'=>$sourceFields,
+                      'target_final'=>$type==='reporting_periods' && $target!==false
+                          && in_array($target['status']??null,['Акт согласован','Счет оплачен'],true),
+                      'native_approval_or_freeze'=>$freeze,
+                      'provenance_class'=>in_array($class,$allowedClasses,true)?$class:null,
+                      'provenance_field_reasons'=>$reasons
+                  ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+              }
+              $pg->rollBack();
+              echo "CLIENTS416_READONLY_DONE\n";
+          } catch(Throwable $e) {
+              echo 'CLIENTS416_READONLY_FAILED '.get_class($e)."\n";
+              exit(5);
+          }
+          PHP
+          then
+            echo 'CLIENTS416_READONLY_BLOCKED'
+            exit 6
+          fi
           echo "PROBE_FINISHED: no state changed"
           REMOTE
