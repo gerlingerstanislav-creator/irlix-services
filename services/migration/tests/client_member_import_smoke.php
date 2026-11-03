@@ -517,6 +517,12 @@ try {
     $clients->fixture['reporting_periods'][0]['approved_hours'] = null;
     check(runFixture($clients, false)['conflicts']===0 && $clients->validate(1)['ok'],
         'Restored unchanged final source remains valid after provenance-only correction');
+    $clients->fixture['reporting_periods'][0]['paid_at'] = '2026-03-02';
+    check(runFixture($clients, true)['conflicts']>0
+        && \Illuminate\Support\Facades\DB::table('migration_conflicts')
+            ->where('code', 'PROTECTED_REPORTING_PERIOD_CHANGE')->exists(),
+        'Changed legacy payment date cannot be dismissed as audit-only source drift');
+    $clients->fixture['reporting_periods'][0]['paid_at'] = '2026-03-01';
 
     check(runFixture($clients,false)['conflicts']===0,
         'Repeated frozen reconciliation must remain idempotent');
