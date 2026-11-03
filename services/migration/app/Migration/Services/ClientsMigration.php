@@ -690,10 +690,12 @@ class ClientsMigration extends SchemaMigration
     private function historicalSourceFinalizationEvidence(
         string $legacyId, object $previous, array $candidate
     ): ?array {
-        if (!in_array($candidate['status'] ?? null,['Акт согласован','Счет оплачен'],true)
+        // Late historical ACT approval is proven in the old system; it is
+        // not an authorization to invent a payment while Finance is not live.
+        if (($candidate['status'] ?? null) !== 'Акт согласован'
+            || ($candidate['paid_at'] ?? null) !== null
             || !in_array($previous->status ?? null,
                 ['Новый','ТШ на согласовании','ТШ согласованы','Акт на согласовании'],true)
-            || (($candidate['status'] === 'Счет оплачен') && ($candidate['paid_at'] ?? null) === null)
             || (int)$previous->client_id !== (int)$candidate['client_id']
             || !TargetFieldComparison::matches($previous->period_start,$candidate['period_start'],'period_start')
             || !TargetFieldComparison::matches($previous->period_end,$candidate['period_end'],'period_end')
