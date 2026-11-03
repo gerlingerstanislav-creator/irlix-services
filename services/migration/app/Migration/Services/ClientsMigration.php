@@ -571,12 +571,15 @@ class ClientsMigration extends SchemaMigration
             || (string) ($metadata['source']['id'] ?? '') !== $legacyId) {
             return false;
         }
-        // An incomplete baseline is not proof that an unrecorded target field
-        // has never been changed independently of the migration.
+        // Both directions matter: a new candidate field without a baseline
+        // is unknown, and an older baseline field omitted by this release
+        // might have been edited independently in the target.
         foreach ($candidate as $field => $value) {
-            if (!array_key_exists($field, $baseline)
-                || !property_exists($previous, $field)
-                || !TargetFieldComparison::matches($previous->$field, $baseline[$field], $field)) {
+            if (!array_key_exists($field, $baseline)) return false;
+        }
+        foreach ($baseline as $field => $value) {
+            if (!property_exists($previous, $field)
+                || !TargetFieldComparison::matches($previous->$field, $value, $field)) {
                 return false;
             }
         }
