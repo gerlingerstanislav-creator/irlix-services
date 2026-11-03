@@ -50,9 +50,14 @@ def target_fingerprint(scope):
 
 def identity_volume():
     """Find the private identity mount without printing its host path or data."""
+    # Snapshot stops the Migration API first. Docker inspect still works on
+    # its stopped container, but the running-only common.container() does not.
+    stopped_or_running = common.compose('ps', '-a', '-q', 'migration')
+    if not stopped_or_running:
+        raise RuntimeError('Migration container is missing during identity backup')
     mount = common.run(['docker', 'inspect', '--format',
         '{{range .Mounts}}{{if eq .Destination "/identity"}}{{.Source}}{{end}}{{end}}',
-        common.container('migration')])
+        stopped_or_running])
     path = Path(mount)
     if not mount or not path.is_dir() or path.is_symlink():
         raise RuntimeError('Migration identity volume is unavailable or unsafe')
