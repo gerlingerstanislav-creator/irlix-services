@@ -122,7 +122,11 @@ jobs:
           if ! $SUDO sh -c "$COMPOSE exec -T migration-worker php" <<'PHP'
           <?php
           try {
-              require_once '/app/app/Migration/Core/TargetFieldComparison.php';
+              require_once '/app/vendor/autoload.php';
+              $app=require '/app/bootstrap/app.php';
+              $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+              $legacy=new \App\Migration\Core\LegacyReader('clients');
+              $legacy->assertSafe();
               $metadata=new PDO('sqlite:file:/data/migration.sqlite?mode=ro', null, null,
                   [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
               $metadata->exec('PRAGMA query_only=ON');
@@ -213,6 +217,21 @@ jobs:
                           if ((bool)$lookup->fetchColumn()) $freeze=true;
                       }
                   }
+                  $humanProof=null;
+                  if ($type==='reporting_periods') {
+                      $historical=$legacy->selectOne(
+                          'SELECT approved_at,act_approval_at,act_approved_at,paid_at '
+                          .'FROM public.reporting_periods WHERE id=?',
+                          [(string)$item['legacy_id']]);
+                      $humanProof=$historical ? [
+                          'source_timesheets_approved'=>($historical->approved_at??null)!==null,
+                          'source_act_sent'=>($historical->act_approval_at??null)!==null,
+                          'source_act_approved'=>($historical->act_approved_at??null)!==null,
+                          'source_paid'=>($historical->paid_at??null)!==null,
+                          'previously_act_approved'=>is_array($meta)
+                              && ($meta['source']['act_approved_at']??null)!==null,
+                      ] : ['source_present'=>false];
+                  }
                   echo 'CLIENTS416_PROOF '.json_encode([
                       'entity'=>$type,
                       'mapping_present'=>$mapping!==false,
@@ -227,7 +246,8 @@ jobs:
                           && in_array($target['status']??null,['Акт согласован','Счет оплачен'],true),
                       'native_approval_or_freeze'=>$freeze,
                       'provenance_class'=>in_array($class,$allowedClasses,true)?$class:null,
-                      'provenance_field_reasons'=>$reasons
+                      'provenance_field_reasons'=>$reasons,
+                      'legacy_human_proof'=>$humanProof
                   ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
               }
               $pg->rollBack();
