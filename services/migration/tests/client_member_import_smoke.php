@@ -846,8 +846,13 @@ try {
     $clients->fixture['rates'][1]['end_date'] = '2026-01-29';
     $clients->fixture['reporting_periods'][0]['act_approval_at'] = '2026-02-03';
     $clients->fixture['reporting_periods'][0]['act_approved_at'] = '2026-02-04';
-    $clients->fixture['reporting_periods'][0]['paid_at'] = '2026-02-05';
     $clients->fixture['reporting_periods'][0]['approved_hours'] = '11.25';
+    // A later paid marker must still require a separate Finance-backed proof,
+    // even when the historical act itself is independently evidenced.
+    $clients->fixture['reporting_periods'][0]['paid_at']='2026-02-05';
+    check(runFixture($clients,true)['conflicts']>0,
+        'Legacy paid status cannot be manufactured by act-only reconciliation');
+    $clients->fixture['reporting_periods'][0]['paid_at']=null;
     config(['migration.clients_defer_rate_amounts'=>true]);
     $historicalTerm = target('clients')->table('member_terms')
         ->where('id',$canonicalTermId)->first();
@@ -864,8 +869,8 @@ try {
         'Proven late historical finalization and deferred historical term reconcile together');
     $finalized=target('clients')->table('reporting_periods')
         ->where('id',$legacyPeriodId)->first();
-    check($finalized->status==='Счет оплачен'
-        && $finalized->paid_at==='2026-02-05'
+    check($finalized->status==='Акт согласован'
+        && $finalized->paid_at===null
         && (float)$finalized->confirmed_hours===11.25
         && $finalized->period_start===$historicalPeriod->period_start
         && $finalized->period_end===$historicalPeriod->period_end,
