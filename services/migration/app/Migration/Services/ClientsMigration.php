@@ -508,6 +508,11 @@ class ClientsMigration extends SchemaMigration
             $this->store->saveMapping($this->runId, 'clients', 'rates', $legacyId,
                 (int)$old->id, array_replace($mappingMetadata, [
                     'source' => $row,
+                    // The canonical source identity follows today's grouped
+                    // legacy interval so rate aliases validate. The target
+                    // interval itself is deliberately left untouched.
+                    'identity_key' => $candidate['client_member_id'].':'
+                        .$candidate['valid_from'].':'.($candidate['valid_to'] ?? ''),
                     'target_payload' => $baseline,
                     'rate_reconciliation' => $details,
                 ]));
