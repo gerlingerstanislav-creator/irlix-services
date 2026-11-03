@@ -363,6 +363,14 @@ class CheckpointSafetyTests(unittest.TestCase):
 
 
 class IdentityBackupTests(unittest.TestCase):
+    def test_identity_mount_can_be_discovered_while_migration_container_stopped(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with patch.object(snapshot.common,'compose',return_value='stopped-container-id') as compose, \
+                 patch.object(snapshot.common,'run',return_value=temp) as run:
+                self.assertEqual(snapshot.identity_volume(),Path(temp))
+            compose.assert_called_once_with('ps','-a','-q','migration')
+            self.assertEqual(run.call_args.args[0][-1],'stopped-container-id')
+
     def test_private_ledger_is_backed_up_and_survives_metadata_rollback(self):
         import tarfile
         with tempfile.TemporaryDirectory() as temp:
