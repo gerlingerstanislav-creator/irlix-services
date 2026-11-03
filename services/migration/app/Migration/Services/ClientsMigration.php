@@ -395,8 +395,11 @@ class ClientsMigration extends SchemaMigration
      * rather than rewriting its monetary history or pretending the new legacy
      * term was applied. This does NOT authorize arbitrary target divergence.
      *
-     * Only the known hourly_rate + valid_to conflict is eligible. Broader
-     * changes or incomplete/altered provenance remain blocking conflicts.
+     * Only valid_to with an optional hourly_rate change is eligible.
+     * Production may defer encrypted rate amounts entirely (seven-field
+     * baseline); that must not turn a verified date-only source delta into
+     * an unresolvable paid-history conflict. Broader changes or incomplete
+     * provenance remain blocking conflicts.
      */
     private function preserveConfirmedHistoricalRate(
         string $legacyId, object $old, array $row, array $candidate,
@@ -404,9 +407,12 @@ class ClientsMigration extends SchemaMigration
     ): bool {
         $changed = $provenance['changed_fields'];
         sort($changed);
-        if ($changed !== ['hourly_rate', 'valid_to']
+        $eligibleFields = $changed === ['valid_to']
+            || ($changed === ['hourly_rate', 'valid_to']
+                && $old->hourly_rate !== null
+                && array_key_exists('hourly_rate', $candidate));
+        if (!$eligibleFields
             || ($provenance['classification'] ?? null) !== 'source_delta'
-            || $old->hourly_rate === null
             || !is_array($mappingMetadata['target_payload'] ?? null)
             || ($mappingMetadata['target_table'] ?? null) !== 'member_terms') {
             return false;
