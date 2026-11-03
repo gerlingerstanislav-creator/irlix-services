@@ -59,6 +59,19 @@ class RetentionTests(unittest.TestCase):
         for scope in retention.SCOPES:
             self.assertEqual(sorted(p.name for p in (self.snapshots / scope).iterdir()), ['3', '4'])
 
+    def test_private_identity_archives_follow_verified_checkpoint_retention(self):
+        for i in range(1, 5):
+            point = self.point('clients', i)
+            (point/'identity-backup.tar.gz').write_bytes(b'synthetic private backup')
+            manifest = json.loads((point/'manifest.json').read_text())
+            manifest['checksums']['identity-backup.tar.gz'] = 'synthetic-sha'
+            (point/'manifest.json').write_text(json.dumps(manifest))
+        result = retention.cleanup()
+        self.assertEqual(result['removed_by_scope']['clients'],2)
+        self.assertEqual(sorted(p.name for p in (self.snapshots/'clients').iterdir()),['3','4'])
+        for i in (3,4):
+            self.assertTrue((self.snapshots/'clients'/str(i)/'identity-backup.tar.gz').is_file())
+
     def test_custom_limit_persists_and_prunes_immediately(self):
         for i in range(1, 6):
             self.point('timesheets', i)
