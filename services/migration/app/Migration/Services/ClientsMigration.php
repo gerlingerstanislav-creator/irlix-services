@@ -551,6 +551,11 @@ class ClientsMigration extends SchemaMigration
     ): bool {
         if (!in_array($previous->status ?? null, ['Акт согласован', 'Счет оплачен'], true)
             || ($previous->status === 'Счет оплачен' && $previous->paid_at === null)
+            // A new legacy payment/approval transition cannot be dismissed
+            // as harmless source drift, even if the target baseline is intact.
+            || ($candidate['status'] ?? null) !== $previous->status
+            || !TargetFieldComparison::matches($previous->paid_at ?? null,
+                $candidate['paid_at'] ?? null, 'paid_at')
             || (int) $previous->client_id !== (int) $candidate['client_id']) {
             return false;
         }
