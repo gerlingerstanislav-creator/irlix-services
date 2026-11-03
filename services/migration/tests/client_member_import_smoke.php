@@ -487,6 +487,18 @@ try {
         'A later independent target rate change must invalidate the frozen-rate exemption');
     target('clients')->table('member_terms')->where('id',$canonicalTermId)
         ->update(['hourly_rate'=>$originalTerm->hourly_rate]);
+    // Production can defer source hourly_rate, leaving a seven-field
+    // previous mapping and a valid_to-only delta. Its human-confirmed
+    // period must remain protected without demanding an active Finance.
+    config(['migration.clients_defer_rate_amounts'=>true]);
+    check(runFixture($clients,true)['conflicts']===0,
+        'Deferred amount must not block an otherwise verified historical valid_to exception');
+    check(runFixture($clients,false)['conflicts']===0 && $clients->validate(1)['ok'],
+        'Deferred date-only source delta preserves paid term and remains validatable');
+    check(target('clients')->table('member_terms')->where('id',$canonicalTermId)
+        ->value('valid_to')===$originalTerm->valid_to,
+        'Date-only historic exception must not rewrite the protected end date');
+    config(['migration.clients_defer_rate_amounts'=>false]);
     $clients->fixture['rates'] = $originalRates;
     $clients->fixture['reporting_periods'][0] = $originalReportingRow;
     target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
