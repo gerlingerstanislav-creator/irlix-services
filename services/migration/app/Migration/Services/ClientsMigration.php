@@ -4,6 +4,7 @@ namespace App\Migration\Services;
 
 use App\Migration\Core\SchemaMigration;
 use App\Migration\Core\TargetFieldComparison;
+use App\Migration\Core\ReconciliationProvenance;
 use App\Migration\Core\SourceRowConflict;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -341,7 +342,7 @@ class ClientsMigration extends SchemaMigration
      * with intact migration provenance and no native approval facts qualify.
      */
     /** Null means eligible. Safe class codes explain every fail-closed case. */
-    private function unsealedLegacyProtectionReason(object $period): ?string
+    private function unsealedLegacyProtectionReason(object $period, bool $requireCanonicalProvenance = true): ?string
     {
         if (!in_array($period->status ?? null,
             ['Новый', 'ТШ на согласовании', 'ТШ согласованы', 'Акт на согласовании'], true)) {
@@ -359,6 +360,12 @@ class ClientsMigration extends SchemaMigration
                     ? 'NATIVE_CLIENTS_REPORTING_HISTORY' : 'NATIVE_APPROVED_HOURS';
             }
         }
+        // Recovered NULL ciphertext only supplies a previously unavailable
+        // amount, without moving an interval or rewriting an existing value.
+        // For that narrow case the previous period mapping may predate a
+        // submitted-looking legacy status; the same paid/native-proof guards
+        // above still apply, but canonical provenance isn't required.
+        if (!$requireCanonicalProvenance) return null;
         $mappings = DB::table('migration_mappings')
             ->where('service', 'clients')->where('entity_type', 'reporting_periods')
             ->where('target_id', (string) $period->id)->get(['metadata']);
@@ -379,6 +386,154 @@ class ClientsMigration extends SchemaMigration
             ++$canonical;
         }
         return $canonical === 1 ? null : 'CANONICAL_REPORTING_MAPPING_NOT_UNIQUE';
+    }
+
+    /**
+     * A historical reporting period paid and confirmed by people is authoritative
+     * even while Finance is not yet operational. For an exact, auditable source
+     * delta to an already mapped rate, preserve the existing term and its period,
+     * rather than rewriting its monetary history or pretending the new legacy
+     * term was applied. This does NOT authorize arbitrary target divergence.
+     *
+     * Only valid_to with an optional hourly_rate change is eligible.
+     * Production may defer encrypted rate amounts entirely (seven-field
+     * baseline); that must not turn a verified date-only source delta into
+     * an unresolvable paid-history conflict. Broader changes or incomplete
+     * provenance remain blocking conflicts.
+     */
+    private function preserveConfirmedHistoricalRate(
+        string $legacyId, object $old, array $row, array $candidate,
+        array $mappingMetadata, array $provenance
+    ): bool {
+        $changed = $provenance['changed_fields'];
+        sort($changed);
+        $eligibleFields = $changed === ['valid_to']
+            || ($changed === ['hourly_rate', 'valid_to']
+                && $old->hourly_rate !== null
+                && array_key_exists('hourly_rate', $candidate));
+        if (!$eligibleFields
+            || ($provenance['classification'] ?? null) !== 'source_delta'
+            || !is_array($mappingMetadata['target_payload'] ?? null)
+            || ($mappingMetadata['target_table'] ?? null) !== 'member_terms') {
+            return false;
+        }
+        $baseline = $mappingMetadata['target_payload'];
+        foreach ($baseline as $field => $value) {
+            if (!property_exists($old, $field)
+                || !TargetFieldComparison::matches($old->$field, $value, $field)) {
+                return false;
+            }
+        }
+        $oldFrom = substr((string)$old->valid_from, 0, 10);
+        $oldTo = $old->valid_to === null ? null : substr((string)$old->valid_to, 0, 10);
+        $nextFrom = $candidate['valid_from'] ?? null;
+        $nextTo = $candidate['valid_to'] ?? null;
+        foreach ([$oldFrom, $oldTo, $nextFrom, $nextTo] as $date) {
+            if ($date !== null && (!is_string($date)
+                || !preg_match('/^\d{4}-\d{2}-\d{2}$/D', $date))) return false;
+        }
+        if ($nextFrom === null) return false;
+        $clientId = DB::connection('target_clients')->table('client_members')
+            ->where('id', $candidate['client_member_id'])->value('client_id');
+        if ($clientId === null || (int)$old->client_member_id !== (int)$candidate['client_member_id']) {
+            return false;
+        }
+        $from = min($oldFrom, $nextFrom);
+        $to = $oldTo === null || $nextTo === null ? null : max($oldTo, $nextTo);
+        $periods = DB::connection('target_clients')->table('reporting_periods')
+            ->where('client_id', $clientId)->whereDate('period_end', '>=', $from);
+        if ($to !== null) $periods->whereDate('period_start', '<=', $to);
+        $affected = 0;
+        foreach ($periods->get() as $period) {
+            $start = substr((string)$period->period_start, 0, 10);
+            $end = substr((string)$period->period_end, 0, 10);
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/D', $start)
+                || !preg_match('/^\d{4}-\d{2}-\d{2}$/D', $end)) return false;
+            $clip = static function (string $a, ?string $b) use ($start, $end): ?array {
+                $first = max($a, $start);
+                $last = min($b ?? '9999-12-31', $end);
+                return $first <= $last ? [$first, $last] : null;
+            };
+            $before = $clip($oldFrom, $oldTo);
+            $after = $clip($nextFrom, $nextTo);
+            if ($before === null && $after === null) continue;
+            // Monetary terms changed. No amount or covered-day update is
+            // allowed for any overlapping period outside verified final status.
+            if (!in_array($period->status, ['Акт согласован', 'Счет оплачен'], true)) {
+                return false;
+            }
+            if ($period->status === 'Счет оплачен' && $period->paid_at === null) {
+                return false;
+            }
+            foreach (['timesheet_snapshot','timesheet_revision','timesheet_freeze_token'] as $field) {
+                // Native approvals need their own independent reconciliation.
+                if (($period->$field ?? null) !== null) return false;
+            }
+            foreach (['reporting_period_history','reporting_period_approved_hours'] as $table) {
+                if (!Schema::connection('target_clients')->hasTable($table)
+                    || DB::connection('target_clients')->table($table)
+                        ->where('reporting_period_id', $period->id)->exists()) return false;
+            }
+            $mappings = DB::table('migration_mappings')
+                ->where('service', 'clients')->where('entity_type', 'reporting_periods')
+                ->where('target_id', (string)$period->id)->get(['metadata']);
+            $canonical = 0;
+            foreach ($mappings as $mapping) {
+                $meta = json_decode((string)$mapping->metadata, true);
+                if (!is_array($meta)) return false;
+                if (isset($meta['alias_of'])) continue;
+                if (($meta['target_table'] ?? null) !== 'reporting_periods'
+                    || !is_array($meta['target_payload'] ?? null)) return false;
+                foreach ($meta['target_payload'] as $field => $expected) {
+                    if (!property_exists($period, $field)
+                        || !TargetFieldComparison::matches($period->$field, $expected, $field)) {
+                        return false;
+                    }
+                }
+                ++$canonical;
+            }
+            if ($canonical !== 1) return false;
+            ++$affected;
+        }
+        if ($affected === 0) return false;
+        $candidateFingerprint = hash('sha256', json_encode($candidate, JSON_THROW_ON_ERROR));
+        $targetFingerprint = hash('sha256', json_encode($baseline, JSON_THROW_ON_ERROR));
+        $details = [
+            'policy' => 'human_confirmed_historical_period_v1',
+            'changed_fields' => $changed,
+            'protected_periods' => $affected,
+            'source_sha256' => $candidateFingerprint,
+            'target_sha256' => $targetFingerprint,
+            'target_unchanged' => true,
+            'finances_verified' => false,
+        ];
+        if (!$this->dryRun) {
+            // Save what source was examined, but keep the actual committed
+            // target payload as baseline. Validate can prove source/target
+            // consistency without falsely claiming to have applied the delta.
+            $this->store->saveMapping($this->runId, 'clients', 'rates', $legacyId,
+                (int)$old->id, array_replace($mappingMetadata, [
+                    'source' => $row,
+                    // The canonical source identity follows today's grouped
+                    // legacy interval so rate aliases validate. The target
+                    // interval itself is deliberately left untouched.
+                    'identity_key' => $candidate['client_member_id'].':'
+                        .$candidate['valid_from'].':'.($candidate['valid_to'] ?? ''),
+                    'target_payload' => $baseline,
+                    'rate_reconciliation' => $details,
+                ]));
+        } elseif (!$this->isPreflight()) {
+            \App\Migration\Core\TableProgress::count(
+                $this->runId, 'clients', 'rates', 'ready_count', $legacyId
+            );
+        }
+        $this->ids['rates'][$legacyId] = (int)$old->id;
+        $this->summary['tables']['rates'] = ($this->summary['tables']['rates'] ?? 0) + 1;
+        $this->warning('rates', $legacyId, 'CONFIRMED_HISTORICAL_RATE_PRESERVED',
+            'Подтверждённый исторический отчётный период и его условия оставлены без изменения; '
+            .'отличие legacy сохранено для аудита, Finance не используется как критерий.',
+            $details);
+        return true;
     }
 
     private function isUnsealedLegacyPeriod(object $period): bool
@@ -491,17 +646,87 @@ class ClientsMigration extends SchemaMigration
                 if (!$old) throw new SourceRowConflict('MAPPED_TARGET_MISSING',
                     'Сопоставленное коммерческое условие отсутствует в целевой системе; нужна сверка mapping.',
                     ['target_mapping_present' => true]);
-                $changedFields = [];
-                foreach ($termPayload as $field => $value) {
-                    if (!TargetFieldComparison::matches($old->$field ?? null, $value, $field)) {
-                        $changedFields[] = $field;
-                    }
+                // Shadow-only V2 evidence: distinguish source change from
+                // previous target repair without guessing which one is correct.
+                // The accepted decisions ledger is not yet wired to mutations.
+                $mappingMetadataJson = DB::table('migration_mappings')
+                    ->where('service', 'clients')->where('entity_type', 'rates')
+                    ->where('legacy_id', (string) $id)->value('metadata');
+                $mappingMetadata = json_decode((string) ($mappingMetadataJson ?? ''), true);
+                $previousPayload = is_array($mappingMetadata)
+                    && is_array($mappingMetadata['target_payload'] ?? null)
+                    ? $mappingMetadata['target_payload'] : null;
+                $provenance = ReconciliationProvenance::compare($previousPayload, $old, $termPayload);
+                $changedFields = $provenance['changed_fields'];
+                if ($changedFields) {
+                    $this->warning('rates', $id, 'RECONCILIATION_V2_SHADOW',
+                        'Сверка старого применённого плана, нового источника и текущих коммерческих условий; '
+                        .'это диагностическое предупреждение, не разрешение на перезапись.',
+                        $provenance);
                 }
+                if ($changedFields && $this->preserveConfirmedHistoricalRate(
+                    $id, $old, $r, $termPayload, is_array($mappingMetadata) ? $mappingMetadata : [],
+                    $provenance
+                )) return;
                 // A legacy encrypted amount can safely fill a previously
                 // unknown NULL, but no other commercial change is exempt.
                 $missingAmountOnly = $old->hourly_rate === null
                     && $changedFields === ['hourly_rate']
                     && isset($termPayload['hourly_rate']);
+                // Backfilling an unknown legacy ciphertext is not a license to
+                // alter a paid/approved/newly frozen reporting period. The
+                // narrow historical NULL exception only applies while every
+                // overlapping period is proved to be unsealed legacy import.
+                // In particular, a legacy-imported "Счет оплачен" is still
+                // immutable even if Finance has not yet imported its invoices.
+                if ($missingAmountOnly) {
+                    $backfillClientId = DB::connection('target_clients')
+                        ->table('client_members')->where('id', $member)->value('client_id');
+                    if ($backfillClientId === null) {
+                        throw new SourceRowConflict('MAPPED_CLIENT_MEMBER_MISSING',
+                            'Невозможно доказать клиентскую принадлежность дозаполняемой ставки.');
+                    }
+                    $backfillFrom = substr((string) $old->valid_from, 0, 10);
+                    $backfillTo = $old->valid_to === null ? null
+                        : substr((string) $old->valid_to, 0, 10);
+                    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/D', $backfillFrom)
+                        || ($backfillTo !== null
+                            && !preg_match('/^\d{4}-\d{2}-\d{2}$/D', $backfillTo))) {
+                        throw new SourceRowConflict('MAPPED_TERM_DATES_INVALID',
+                            'Даты дозаполняемого условия невозможно достоверно проверить.');
+                    }
+                    $periods = DB::connection('target_clients')->table('reporting_periods')
+                        ->where('client_id', $backfillClientId)
+                        ->whereDate('period_end', '>=', $backfillFrom);
+                    if ($backfillTo !== null) {
+                        $periods->whereDate('period_start', '<=', $backfillTo);
+                    }
+                    foreach ($periods->get() as $period) {
+                        $reason = $this->unsealedLegacyProtectionReason($period, false);
+                        if ($reason !== null) {
+                            throw new SourceRowConflict('PROTECTED_TERM_CHANGE',
+                                'Восстановленная ставка затрагивает защищённый или оплаченный период. '
+                                .'Изменять финансовую историю через дозаполнение NULL запрещено.',
+                                ['changed_fields' => ['hourly_rate'],
+                                 'reconciliation_type' => 'paid_or_native_approved_backfill',
+                                 'automatic_override_allowed' => false,
+                                 'protection_reason' => $reason]);
+                        }
+                    }
+                }
+                // A target-side correction might already be an approved repair.
+                // Reconciliation V2 is diagnostic, not an authorization policy.
+                // Never overwrite this history with raw legacy while an
+                // independent approved-and-revalidated replay is unavailable.
+                if ($changedFields && !$missingAmountOnly
+                    && in_array($provenance['classification'],
+                        ['target_diverged', 'needs_evidence'], true)) {
+                    throw new SourceRowConflict('RECONCILIATION_EVIDENCE_REQUIRED',
+                        'Текущее условие отличается от предыдущего применённого плана. '
+                        .'Автоматическая перезапись исправлений без доказательной сверки запрещена.',
+                        ['reconciliation_provenance' => $provenance,
+                         'automatic_override_allowed' => false]);
+                }
                 if ($changedFields && !$missingAmountOnly) {
                     $clientId = DB::connection('target_clients')->table('client_members')
                         ->where('id', $member)->value('client_id');
@@ -568,7 +793,8 @@ class ClientsMigration extends SchemaMigration
                                  'protected_interval' => ['from' => $periodFrom, 'to' => $periodTo],
                                  'reconciliation_type' => 'protected_financial_period',
                                  'automatic_override_allowed' => false,
-                                 'protection_reason' => $protectionReason]);
+                                 'protection_reason' => $protectionReason,
+                                 'reconciliation_provenance' => $provenance]);
                         }
                     }
                     if ($unsealedLegacyPeriodCount > 0) {

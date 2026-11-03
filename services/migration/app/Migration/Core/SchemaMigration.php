@@ -543,11 +543,11 @@ abstract class SchemaMigration implements ServiceMigration
                     $aliases++;
                 }
                 foreach ($metadata['target_payload'] ?? [] as $field => $expected) {
-                    $actual = $target?->$field;
-                    if ($expected === null ? $actual !== null : ($actual === null || (string) $actual !== (string) $expected)) {
-                        // PostgreSQL decimal output has trailing zeros and booleans differ across drivers.
-                        if ($actual !== null && is_numeric($actual) && is_numeric($expected) && abs((float) $actual - (float) $expected) < 0.000001) continue;
-                        if (is_bool($expected) && filter_var($actual, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) === $expected) continue;
+                    // The exact same semantic comparison must be used at
+                    // planning, physical UPDATE and Validate. Previously the
+                    // validator had its own float/DATE rules, which could
+                    // disagree about an already accepted historical field.
+                    if (!TargetFieldComparison::matches($target?->$field, $expected, $field)) {
                         $changed++; break;
                     }
                 }

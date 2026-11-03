@@ -48,6 +48,107 @@ def target_fingerprint(scope):
     return result
 
 
+def identity_container():
+    """Use the Docker socket without granting migration-ops the identity mount.
+
+    A checkpoint already stopped Migration API/worker. Resolving the stopped
+    container (not the running-only helper) gives a safe, consistent copy source.
+    """
+    container = common.compose('ps', '-a', '-q', 'migration')
+    if not container or len(container.splitlines()) != 1:
+        raise RuntimeError('Stopped Migration container is unavailable')
+    if common.run(['docker', 'inspect', '--format', '{{.State.Running}}', container]) != 'false':
+        raise RuntimeError('Identity snapshot requires a stopped Migration container')
+    mounts = json.loads(common.run(['docker', 'inspect', '--format', '{{json .Mounts}}', container]))
+    if not isinstance(mounts, list) or not any(
+        isinstance(mount, dict) and mount.get('Destination') == '/identity'
+        for mount in mounts
+    ):
+        raise RuntimeError('Migration identity volume is not mounted')
+    return container
+
+
+def verify_identity_backup(archive):
+    """Prove an on-host recovery archive can be read, without restoring it."""
+    with tempfile.TemporaryDirectory(prefix='identity-verify-') as root:
+        root = Path(root)
+        names = set()
+        with tarfile.open(archive, 'r:gz') as source:
+            for member in source:
+                name = member.name
+                if (not member.isfile() or name in names or name in ('', '.', '..')
+                        or name != Path(name).name or '/' in name or '\\' in name):
+                    raise RuntimeError('Unsafe identity backup member')
+                names.add(name)
+                with source.extractfile(member) as stored, (root / name).open('xb') as output:
+                    shutil.copyfileobj(stored, output)
+        if not names:
+            raise RuntimeError('Identity backup is unexpectedly empty')
+        for name in names:
+            if name.endswith('.sqlite'):
+                with sqlite3.connect('file:' + str(root / name) + '?mode=ro', uri=True) as db:
+                    if db.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
+                        raise RuntimeError('Identity backup database integrity check failed')
+    return sorted(names)
+
+
+def backup_identity_volume(destination):
+    """Archive a consistent private /identity snapshot with no new volume grants.
+
+    Docker cp streams stopped Migration's volume over the already-authorized
+    Docker socket into the private checkpoint directory; no host Source path,
+    identity payload or credentials enter CI. Original SQLite WALs are read
+    alongside the database then sealed into clean sqlite backups. The archive
+    is NOT automatically restored alongside business data/metadata.
+    """
+    container = identity_container()
+    with tempfile.TemporaryDirectory(prefix='identity-copy-', dir=destination) as work:
+        temp = Path(work)
+        raw = temp / 'identity.tar'
+        with raw.open('wb') as output:
+            common.run(['docker', 'cp', container + ':/identity/.', '-'], stdout=output)
+        incoming = temp / 'incoming'
+        clean = temp / 'clean'
+        incoming.mkdir(mode=0o700)
+        clean.mkdir(mode=0o700)
+        names = set()
+        with tarfile.open(raw, 'r:') as source:
+            for member in source:
+                name = member.name[2:] if member.name.startswith('./') else member.name
+                if name == '.' and member.isdir():
+                    continue
+                if (not member.isfile() or not name or name in names
+                        or name in ('.', '..') or name != Path(name).name
+                        or '/' in name or '\\' in name):
+                    raise RuntimeError('Unsafe identity volume entry')
+                names.add(name)
+                with source.extractfile(member) as stored, (incoming / name).open('xb') as output:
+                    shutil.copyfileobj(stored, output)
+        if not names or not any(name.endswith('.sqlite') for name in names):
+            raise RuntimeError('Identity volume has no verifiable SQLite database')
+        for entry in sorted(incoming.iterdir()):
+            if entry.name.endswith(('-wal', '-shm', '-journal')):
+                continue
+            output = clean / entry.name
+            if entry.name.endswith('.sqlite'):
+                with sqlite3.connect('file:' + str(entry) + '?mode=ro', uri=True) as source, \
+                     sqlite3.connect(output) as target:
+                    source.execute('PRAGMA query_only=ON')
+                    if source.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
+                        raise RuntimeError('Identity source database integrity check failed')
+                    source.backup(target)
+            else:
+                shutil.copyfile(entry, output)
+            output.chmod(0o600)
+        archive = destination / 'identity-backup.tar.gz'
+        with tarfile.open(archive, 'w:gz') as output:
+            for entry in sorted(clean.iterdir()):
+                output.add(entry, arcname=entry.name, recursive=False)
+    verify_identity_backup(archive)
+    archive.chmod(0o600)
+    return archive
+
+
 def document_fingerprint(root):
     result = {}
     for path in sorted(root.rglob('*')):
@@ -405,6 +506,7 @@ def _main(action, scope, sid):
                 with sqlite3.connect(f'file:{volume / "migration.sqlite"}?mode=ro', uri=True) as source, \
                      sqlite3.connect(destination / 'metadata.sqlite') as target:
                     source.backup(target)
+                backup_identity_volume(destination)
                 target_state = target_fingerprint(scope)
                 key = volume / 'migration-credential.key'
                 if key.exists():
@@ -440,9 +542,14 @@ def _main(action, scope, sid):
                 checksums = manifest.get('checksums', {})
                 if not {'target.dump', 'metadata.sqlite'}.issubset(checksums):
                     raise RuntimeError('Incomplete checkpoint')
-                allowed = {'target.dump', 'metadata.sqlite', 'migration-credential.key', 'vacations-files.tar.gz'}
+                allowed = {'target.dump', 'metadata.sqlite', 'migration-credential.key',
+                           'vacations-files.tar.gz', 'identity-backup.tar.gz'}
                 if any(f not in allowed or common.digest(destination / f) != sha for f, sha in checksums.items()):
                     raise RuntimeError('Checkpoint checksum mismatch')
+                if 'identity-backup.tar.gz' in checksums:
+                    # The archive is checked but deliberately never restored:
+                    # /identity is an append-only audit/identity continuity boundary.
+                    verify_identity_backup(destination / 'identity-backup.tar.gz')
                 if tuple(manifest.get('schemas', ())) != SCOPES[scope]:
                     raise RuntimeError('Checkpoint schema set differs from current scope; restore refused')
                 assert_idle(volume, scope, manifest['last_migration_run_id'], destination)

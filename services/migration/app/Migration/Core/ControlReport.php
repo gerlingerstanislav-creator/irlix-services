@@ -11,6 +11,55 @@ final class ControlReport
         $allowed = ['service','table','field','reference_table','reference_id','source_id','legacy_id','employee_id','target_id','dependency','cause','period','overlapping_period','from','to','operation_id','snapshot_id','count','counts','reason','format','sqlstate','category','reconstructed','alias_of','target_table','target_matches','source_key'];
         $out = [];
         foreach ($context as $key=>$value) {
+            // Reconciliation evidence is intentionally an enum-only projection.
+            // Raw source/current/baseline values must stay in private metadata.
+            if ($key === 'reconciliation_provenance' && is_array($value)) {
+                $out[$key] = self::safeContext($value);
+                continue;
+            }
+            if ($key === 'classification' && is_string($value)
+                && in_array($value, ['unchanged','source_delta','target_diverged','needs_evidence'], true)) {
+                $out[$key] = $value;
+                continue;
+            }
+            if ($key === 'field_reasons' && is_array($value)) {
+                $allowedFields = ['hourly_rate','valid_from','valid_to','client_member_id',
+                    'technology','level','hours_per_day','project_member_id'];
+                $allowedReasons = ['equal','source_changed','target_changed','both_changed',
+                    'baseline_missing','target_field_missing'];
+                $out[$key] = [];
+                foreach ($value as $field => $reason) {
+                    if (is_string($field) && in_array($field,$allowedFields,true)
+                        && is_string($reason) && in_array($reason,$allowedReasons,true)) {
+                        $out[$key][$field] = $reason;
+                    }
+                }
+                continue;
+            }
+            if ($key === 'protection_reason' && is_string($value)
+                && in_array($value, ['FINAL_OR_UNKNOWN_REPORTING_STATUS','PAID_REPORTING_PERIOD',
+                    'NATIVE_TIMESHEETS_FREEZE','APPROVAL_PROOF_TABLE_MISSING',
+                    'NATIVE_CLIENTS_REPORTING_HISTORY','NATIVE_APPROVED_HOURS',
+                    'INVALID_REPORTING_MAPPING_METADATA','REPORTING_MAPPING_PROVENANCE_MISSING',
+                    'TARGET_REPORTING_PERIOD_CHANGED','CANONICAL_REPORTING_MAPPING_NOT_UNIQUE',
+                    'LEGACY_FINAL_STATUS_CHANGE'], true)) {
+                $out[$key] = $value;
+                continue;
+            }
+            if (in_array($key,['source_interval','target_interval','protected_interval'],true)
+                && is_array($value)) {
+                $dates = [];
+                foreach (['from','to'] as $boundary) {
+                    if (!array_key_exists($boundary,$value)) continue;
+                    $date = $value[$boundary];
+                    if ($date === null || (is_string($date)
+                        && preg_match('/^\\d{4}-\\d{2}-\\d{2}$/D',$date))) {
+                        $dates[$boundary] = $date;
+                    }
+                }
+                $out[$key] = $dates;
+                continue;
+            }
             if ($key === 'changed_fields' && is_array($value)) {
                 // Identifiers are application-defined, not source values.
                 // Publish only these fixed non-sensitive field names so an

@@ -67,6 +67,18 @@ jobs:
           context: services/migration
           tag: irlix-migration-rehearsal
           pull: 'true'
+      - name: Verify read-only three-way migration provenance classifications
+        run: |
+          docker run --rm --network none irlix-migration-rehearsal \
+            php /app/tests/reconciliation_provenance_smoke.php
+      - name: Verify append-only reconciliation ledger and private report safety
+        run: |
+          docker run --rm --network none irlix-migration-rehearsal \
+            php /app/tests/control_smoke.php
+      - name: Verify reconciliation approvals survive metadata rollback
+        run: |
+          docker run --rm --network none irlix-migration-rehearsal \
+            php /app/tests/reconciliation_decision_store_smoke.php
       - name: Stress 64k synthetic ClientMember facts and idempotent retry
         run: |
           docker run --rm --network none --memory 1g \

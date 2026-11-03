@@ -2,6 +2,8 @@
 // Synthetic integration: control mode is additive, partial and repeatable; exports are full and safe.
 $path = '/tmp/migration-control-'.getmypid().'.sqlite'; touch($path);
 putenv('MIGRATION_METADATA_DATABASE='.$path);
+$decisionPath = '/tmp/migration-decisions-'.getmypid().'.sqlite';
+putenv('MIGRATION_RECONCILIATION_DATABASE='.$decisionPath);
 require __DIR__.'/../vendor/autoload.php';
 $app = require __DIR__.'/../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
@@ -53,7 +55,74 @@ try {
     ensureControl(($protectedFields['changed_fields']??[])===['hourly_rate','valid_to']
         && !isset($protectedFields['source']),
         'Protected changes expose fixed field names, not source values');
+    $provenanceContext = \App\Migration\Core\ControlReport::safeContext([
+        'classification'=>'target_diverged',
+        'changed_fields'=>['hourly_rate','valid_to','password'],
+        'field_reasons'=>[
+            'hourly_rate'=>'target_changed', 'valid_to'=>'source_changed',
+            'email'=>'private@company.test', 'level'=>'secret_value'],
+        'reconciliation_provenance'=>[
+            'classification'=>'needs_evidence',
+            'changed_fields'=>['valid_to'],
+            'field_reasons'=>['valid_to'=>'both_changed'],
+            'source'=>['hourly_rate'=>'999999'],
+        ],
+        'source_interval'=>['from'=>'2026-01-01','to'=>'2026-01-31','rate'=>'1234'],
+        'protection_reason'=>'NATIVE_CLIENTS_REPORTING_HISTORY',
+        'source'=>['rate'=>'private'],
+        'raw_secret'=>'private',
+    ]);
+    ensureControl(($provenanceContext['classification']??null)==='target_diverged'
+        && ($provenanceContext['field_reasons']??[])===[
+            'hourly_rate'=>'target_changed','valid_to'=>'source_changed']
+        && ($provenanceContext['reconciliation_provenance']['field_reasons']['valid_to']??null)==='both_changed'
+        && ($provenanceContext['protection_reason']??null)==='NATIVE_CLIENTS_REPORTING_HISTORY'
+        && ($provenanceContext['source_interval']??[])===[
+            'from'=>'2026-01-01','to'=>'2026-01-31']
+        && !str_contains(json_encode($provenanceContext),'private')
+        && !str_contains(json_encode($provenanceContext),'999999'),
+        'V2 provenance exposes only safe reasons, dates and field names');
 
+    $ledger = new \App\Migration\Core\ReconciliationDecisionStore();
+    $approved = [
+        'service'=>'clients', 'entity_type'=>'rates','legacy_id'=>'synthetic-11',
+        'rule_code'=>'SOURCE_PERIOD_CORRECTION', 'rule_version'=>1,
+        'decision'=>'preserve_corrected_target',
+        'source_sha256'=>hash('sha256','synthetic-source'),
+        'evidence_sha256'=>hash('sha256','synthetic-evidence'),
+        'approved_by'=>'synthetic-operator',
+    ];
+    $decisionId = $ledger->append($approved);
+    ensureControl(($ledger->latest('clients','rates','synthetic-11',
+        'SOURCE_PERIOD_CORRECTION')['decision']??null)==='preserve_corrected_target',
+        'Approved synthetic decision saved in private append-only ledger');
+    try {
+        $ledger->append($approved);
+        throw new RuntimeException('Duplicate reconciliation approval unexpectedly accepted');
+    } catch (\PDOException|\DomainException $expected) {
+        // A rule revision cannot silently replace its earlier decision.
+    }
+    $directLedger = new \PDO('sqlite:'.$decisionPath);
+    $directLedger->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+    try {
+        $directLedger->exec("UPDATE reconciliation_decisions SET decision = 'canonicalize_source' WHERE id = ".$decisionId);
+        throw new RuntimeException('Existing ledger decision unexpectedly editable');
+    } catch (\PDOException $expected) {
+        // Private SQLite trigger denies edits even when callers bypass the store.
+    }
+    try {
+        $directLedger->exec('DELETE FROM reconciliation_decisions WHERE id = '.$decisionId);
+        throw new RuntimeException('Existing ledger decision unexpectedly deletable');
+    } catch (\PDOException $expected) {}
+    $directLedger = null;
+    $revisionId = $ledger->append(array_replace($approved, [
+        'rule_version'=>2, 'decision'=>'no_automatic_action',
+        'supersedes_id'=>$decisionId,
+        'evidence_sha256'=>hash('sha256','synthetic-revised-evidence'),
+    ]));
+    ensureControl($revisionId > $decisionId && 
+        ($ledger->latest('clients','rates','synthetic-11','SOURCE_PERIOD_CORRECTION')['decision']??null)==='no_automatic_action',
+        'Approved rule change must append a new version, not mutate the old one');
     // The real legacy Clients source may have no attempts.status; only the
     // optional enum probe is suppressed, not the required domain fields.
     $missingAttemptStatus = ControlFixture::clientsEnumPlanForTest(['id', 'position_id', 'closed_at']);
@@ -308,5 +377,6 @@ try {
     \App\Migration\Core\ControlMode::$enabled = false;
     \App\Migration\Core\TableProgress::$activeRun = null;
     \Illuminate\Support\Facades\DB::disconnect('sqlite');
-    foreach ([$path,$path.'-wal',$path.'-shm',$path.'.restore.json'] as $file) @unlink($file);
+    foreach ([$path,$path.'-wal',$path.'-shm',$path.'.restore.json',
+              $decisionPath,$decisionPath.'-wal',$decisionPath.'-shm'] as $file) @unlink($file);
 }

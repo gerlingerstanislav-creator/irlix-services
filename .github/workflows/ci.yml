@@ -170,6 +170,7 @@ jobs:
       - name: Offline migration and infrastructure regressions
         run: |
           python3 -m unittest discover -s scripts/tests -p 'test_migration_control.py' -v
+          python3 -m unittest discover -s scripts/tests -p 'test_migration_console.py' -v
           python3 -m unittest discover -s scripts/tests -p 'test_migration_daily.py' -v
           python3 -m unittest discover -s scripts/tests -p 'test_migration_retention.py' -v
           python3 -m unittest discover -s scripts/tests -p 'test_keycloak_authz_rollout.py' -v
