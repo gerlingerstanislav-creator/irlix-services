@@ -364,15 +364,15 @@ class CheckpointSafetyTests(unittest.TestCase):
 
 class IdentityBackupTests(unittest.TestCase):
     def test_identity_mount_can_be_discovered_while_migration_container_stopped(self):
-        with tempfile.TemporaryDirectory() as temp:
-            with patch.object(snapshot.common,'compose',return_value='stopped-container-id') as compose, \
-                 patch.object(snapshot.common,'run',return_value=temp) as run:
-                self.assertEqual(snapshot.identity_volume(),Path(temp))
-            compose.assert_called_once_with('ps','-a','-q','migration')
-            self.assertEqual(run.call_args.args[0][-1],'stopped-container-id')
+        with patch.object(snapshot.common,'compose',return_value='stopped-container-id') as compose, \
+             patch.object(snapshot.common,'run',side_effect=['false','[{"Destination":"/identity","Type":"volume"}]']) as run:
+            self.assertEqual(snapshot.identity_container(),'stopped-container-id')
+        compose.assert_called_once_with('ps','-a','-q','migration')
+        self.assertEqual(run.call_count,2)
+        self.assertEqual(run.call_args_list[0].args[0][-1],'stopped-container-id')
 
     def test_private_ledger_is_backed_up_and_survives_metadata_rollback(self):
-        import tarfile
+        import tarfile,shutil
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp)
             identity=root/'identity';identity.mkdir()
@@ -381,15 +381,23 @@ class IdentityBackupTests(unittest.TestCase):
                 with sqlite3.connect(identity/name) as db:
                     db.execute('CREATE TABLE proof(value TEXT NOT NULL)')
                     db.execute('INSERT INTO proof VALUES (?)',(name,))
-            with patch.object(snapshot,'identity_volume',return_value=identity):
+            incoming=root/'synthetic-docker-copy.tar'
+            with tarfile.open(incoming,'w:') as archive:
+                for entry in identity.iterdir():
+                    archive.add(entry,arcname='./'+entry.name)
+            def docker_copy(args,**kwargs):
+                self.assertEqual(args[:2],['docker','cp'])
+                with incoming.open('rb') as source:
+                    shutil.copyfileobj(source,kwargs['stdout'])
+            with patch.object(snapshot,'identity_container',return_value='synthetic-stopped'), \
+                 patch.object(snapshot.common,'run',side_effect=docker_copy):
                 archive=snapshot.backup_identity_volume(point)
             names=snapshot.verify_identity_backup(archive)
             self.assertEqual(names,['employee-logins.sqlite','reconciliation-decisions.sqlite'])
             self.assertEqual(archive.stat().st_mode & 0o777,0o600)
             with sqlite3.connect(identity/'reconciliation-decisions.sqlite') as db:
-                db.execute("DELETE FROM proof")
-            # This archive is only ever a separate operator recovery point;
-            # metadata restore must not silently rewind the live decisions.
+                db.execute('DELETE FROM proof')
+            # Metadata restore never overwrites the live decision ledger.
             with tarfile.open(archive,'r:gz') as source:
                 entry=source.extractfile('reconciliation-decisions.sqlite')
                 target=root/'recovered.sqlite'
@@ -400,13 +408,21 @@ class IdentityBackupTests(unittest.TestCase):
             with sqlite3.connect(identity/'reconciliation-decisions.sqlite') as db:
                 self.assertEqual(db.execute('SELECT count(*) FROM proof').fetchone()[0],0)
 
-    def test_symlink_in_identity_volume_is_rejected_without_creating_archive(self):
+    def test_symlink_in_docker_identity_archive_is_rejected(self):
+        import tarfile,shutil
         with tempfile.TemporaryDirectory() as temp:
-            root=Path(temp)
-            identity=root/'identity';identity.mkdir()
-            point=root/'point';point.mkdir()
-            (identity/'unsafe').symlink_to(root/'missing')
-            with patch.object(snapshot,'identity_volume',return_value=identity):
+            root=Path(temp);point=root/'point';point.mkdir()
+            incoming=root/'symlink.tar'
+            with tarfile.open(incoming,'w:') as archive:
+                entry=tarfile.TarInfo('./unsafe')
+                entry.type=tarfile.SYMTYPE
+                entry.linkname='/etc/passwd'
+                archive.addfile(entry)
+            def docker_copy(args,**kwargs):
+                with incoming.open('rb') as source:
+                    shutil.copyfileobj(source,kwargs['stdout'])
+            with patch.object(snapshot,'identity_container',return_value='synthetic-stopped'), \
+                 patch.object(snapshot.common,'run',side_effect=docker_copy):
                 with self.assertRaisesRegex(RuntimeError,'Unsafe identity'):
                     snapshot.backup_identity_volume(point)
             self.assertFalse((point/'identity-backup.tar.gz').exists())
