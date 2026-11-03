@@ -536,6 +536,93 @@ class ClientsMigration extends SchemaMigration
         return true;
     }
 
+    /**
+     * A final human-confirmed historical period is immutable even when the
+     * legacy source later changes. Accept an audit-only refresh only when the
+     * current period still matches the *entire* previously imported baseline:
+     * neither a target edit nor a native approval can be mistaken for legacy
+     * drift. No change to hours, dates, status or payment is authorized here.
+     *
+     * This is intentionally narrower than a generic reconciliation approval.
+     * An imported mapping and proof of source-only change are mandatory.
+     */
+    private function preserveConfirmedHistoricalReportingPeriod(
+        string $legacyId, object $previous, array $sourceRow, array $candidate
+    ): bool {
+        if (!in_array($previous->status ?? null, ['Акт согласован', 'Счет оплачен'], true)
+            || ($previous->status === 'Счет оплачен' && $previous->paid_at === null)
+            || (int) $previous->client_id !== (int) $candidate['client_id']) {
+            return false;
+        }
+
+        $json = DB::table('migration_mappings')
+            ->where('service', 'clients')->where('entity_type', 'reporting_periods')
+            ->where('legacy_id', $legacyId)->value('metadata');
+        $metadata = json_decode((string) ($json ?? ''), true);
+        $baseline = is_array($metadata) ? ($metadata['target_payload'] ?? null) : null;
+        if (!is_array($metadata) || isset($metadata['alias_of'])
+            || ($metadata['target_table'] ?? null) !== 'reporting_periods'
+            || !is_array($baseline) || !is_array($metadata['source'] ?? null)
+            || (string) ($metadata['source']['id'] ?? '') !== $legacyId) {
+            return false;
+        }
+        // An incomplete baseline is not proof that an unrecorded target field
+        // has never been changed independently of the migration.
+        foreach ($candidate as $field => $value) {
+            if (!array_key_exists($field, $baseline)
+                || !property_exists($previous, $field)
+                || !TargetFieldComparison::matches($previous->$field, $baseline[$field], $field)) {
+                return false;
+            }
+        }
+
+        foreach (['timesheet_snapshot', 'timesheet_revision', 'timesheet_freeze_token'] as $field) {
+            if (($previous->$field ?? null) !== null) return false;
+        }
+        foreach (['reporting_period_history', 'reporting_period_approved_hours'] as $table) {
+            if (!Schema::connection('target_clients')->hasTable($table)
+                || DB::connection('target_clients')->table($table)
+                    ->where('reporting_period_id', $previous->id)->exists()) return false;
+        }
+
+        $provenance = ReconciliationProvenance::compare($baseline, $previous, $candidate);
+        if ($provenance['classification'] !== 'source_delta'
+            || !$provenance['changed_fields']) return false;
+
+        $details = [
+            'policy' => 'human_confirmed_historical_reporting_v1',
+            'changed_fields' => $provenance['changed_fields'],
+            'reconciliation_provenance' => $provenance,
+            'source_sha256' => hash('sha256', json_encode($candidate, JSON_THROW_ON_ERROR)),
+            'target_sha256' => hash('sha256', json_encode($baseline, JSON_THROW_ON_ERROR)),
+            'target_unchanged' => true,
+            'finances_verified' => false,
+        ];
+        if (!$this->dryRun) {
+            // Only the source/evidence side of the mapping advances; the
+            // actual historical target payload remains the immutable baseline.
+            $this->store->saveMapping($this->runId, 'clients', 'reporting_periods',
+                $legacyId, (int) $previous->id, array_replace($metadata, [
+                    'source' => $sourceRow,
+                    'target_payload' => $baseline,
+                    'reporting_reconciliation' => $details,
+                ]));
+        } elseif (!$this->isPreflight()) {
+            \App\Migration\Core\TableProgress::count(
+                $this->runId, 'clients', 'reporting_periods', 'ready_count', $legacyId
+            );
+        }
+        $this->ids['reporting_periods'][$legacyId] = (int) $previous->id;
+        $this->summary['tables']['reporting_periods'] =
+            ($this->summary['tables']['reporting_periods'] ?? 0) + 1;
+        $this->warning('reporting_periods', $legacyId,
+            'CONFIRMED_HISTORICAL_REPORTING_PRESERVED',
+            'Подтверждённый исторический период и его часы, даты, статус и оплата '
+                .'сохранены без изменения; расхождение legacy зафиксировано для аудита.',
+            $details);
+        return true;
+    }
+
     private function isUnsealedLegacyPeriod(object $period): bool
     {
         return $this->unsealedLegacyProtectionReason($period) === null;
@@ -947,9 +1034,14 @@ class ClientsMigration extends SchemaMigration
                 foreach ($periodPayload as $field => $value) {
                     if (!TargetFieldComparison::matches($previous->$field ?? null, $value, $field)) $changes[] = $field;
                 }
-                // The old system may supply initial historical terminal
-                // states, but a later delta must never approve an act or
-                // mark a period paid in place of Clients/Finance.
+                // Human-confirmed imported history stays authoritative. A
+                // mapped, source-only delta may update audit metadata, never
+                // the target period or its final hours/payment/status.
+                if ($changes && $this->preserveConfirmedHistoricalReportingPeriod(
+                    $id, $previous, $r, $periodPayload
+                )) return;
+                // Legacy may import initial terminal states, but a later delta
+                // cannot approve an act or mark a period paid for Clients/Finance.
                 $protectionReason = $this->unsealedLegacyProtectionReason($previous);
                 if ($changes && (in_array($status, ['Акт согласован', 'Счет оплачен'], true)
                     || $protectionReason !== null)) {
