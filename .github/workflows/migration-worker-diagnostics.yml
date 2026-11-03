@@ -114,5 +114,84 @@ jobs:
           else
             echo "WORKER_PHP_PROCESSES=unknown_no_container"
           fi
+          # One-time, privacy-safe proof for the previously observed paid
+          # reporting-period rate conflict. No source IDs, names or sums leave
+          # the worker; every database connection is read-only.
+          if ! $SUDO sh -c "$COMPOSE exec -T migration-worker php" <<'PHP'
+          <?php
+          try {
+              $metadata = new PDO('sqlite:file:/data/migration.sqlite?mode=ro', null, null,
+                  [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+              $metadata->exec('PRAGMA query_only=ON');
+              $conflict=$metadata->query(
+                  "SELECT c.legacy_id FROM migration_conflicts c "
+                  ."JOIN migration_runs r ON r.id=c.migration_run_id "
+                  ."WHERE r.service='clients' AND r.mode='dry-run' "
+                  ."AND c.code='PROTECTED_TERM_CHANGE' AND c.severity='error' "
+                  ."ORDER BY c.migration_run_id DESC LIMIT 1"
+              )->fetch(PDO::FETCH_ASSOC);
+              if (!$conflict) {
+                  echo "CONFIRMED_HISTORICAL_RATE_PROOF not_found\n";
+                  exit(0);
+              }
+              $q=$metadata->prepare(
+                  "SELECT target_id,metadata FROM migration_mappings "
+                  ."WHERE service='clients' AND entity_type='rates' AND legacy_id=?"
+              );
+              $q->execute([(string)$conflict['legacy_id']]);
+              $mapping=$q->fetch(PDO::FETCH_ASSOC);
+              if (!$mapping || !preg_match('/^\d+$/D',(string)$mapping['target_id'])) {
+                  echo "CONFIRMED_HISTORICAL_RATE_PROOF mapping_missing\n";
+                  exit(0);
+              }
+              $meta=json_decode((string)$mapping['metadata'],true);
+              $payload=is_array($meta) && is_array($meta['target_payload']??null)
+                  ?$meta['target_payload']:null;
+              $host=getenv('TARGET_CLIENTS_DB_HOST')?:getenv('TARGET_SHARED_DB_HOST');
+              $dbname=getenv('TARGET_CLIENTS_DB_DATABASE')?:getenv('TARGET_SHARED_DB_DATABASE');
+              $port=getenv('TARGET_CLIENTS_DB_PORT')?:'5432';
+              $user=getenv('TARGET_CLIENTS_DB_USERNAME');
+              $password=getenv('TARGET_CLIENTS_DB_PASSWORD');
+              if (!$host||!$dbname||!$user||$password===false)
+                  throw new RuntimeException('unavailable_connection');
+              $pg=new PDO("pgsql:host=$host;port=$port;dbname=$dbname;connect_timeout=5",
+                  $user,$password,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+              $pg->beginTransaction();
+              $pg->exec('SET TRANSACTION READ ONLY');
+              $pg->exec('SET LOCAL statement_timeout = 5000');
+              $q=$pg->prepare('SELECT * FROM clients.member_terms WHERE id=?');
+              $q->execute([$mapping['target_id']]);
+              $target=$q->fetch(PDO::FETCH_ASSOC);
+              $same=($payload!==null && $target!==false && count($payload)>0);
+              if ($same) {
+                  require_once '/app/app/Migration/Core/TargetFieldComparison.php';
+                  foreach ($payload as $field=>$expected) {
+                      if (!array_key_exists($field,$target)
+                          || !\App\Migration\Core\TargetFieldComparison::matches(
+                              $target[$field],$expected,$field)) {
+                          $same=false;
+                          break;
+                      }
+                  }
+              }
+              $pg->rollBack();
+              echo 'CONFIRMED_HISTORICAL_RATE_PROOF '.json_encode([
+                  'mapped'=>true,
+                  'baseline_present'=>$payload!==null,
+                  'baseline_field_count'=>$payload===null?0:count($payload),
+                  'target_present'=>$target!==false,
+                  'target_matches_baseline'=>$same,
+                  'source_metadata_present'=>is_array($meta['source']??null),
+                  'target_table_verified'=>($meta['target_table']??null)==='member_terms'
+              ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          } catch(Throwable $e) {
+              echo 'CONFIRMED_HISTORICAL_RATE_PROOF_ERROR '.get_class($e)."\n";
+              exit(2);
+          }
+          PHP
+          then
+            echo "PROBE_ERROR: historical rate proof unavailable"
+            exit 4
+          fi
           echo "PROBE_FINISHED: no state changed"
           REMOTE
