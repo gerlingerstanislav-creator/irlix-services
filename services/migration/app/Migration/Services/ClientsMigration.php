@@ -459,9 +459,8 @@ class ClientsMigration extends SchemaMigration
             if ($before === null && $after === null) continue;
             // Monetary terms changed. No amount or covered-day update is
             // allowed for any overlapping period outside verified final status.
-            if (!in_array($period->status, ['Акт согласован', 'Счет оплачен'], true)) {
-                return false;
-            }
+            if (!in_array($period->status, ['Акт согласован', 'Счет оплачен'], true)
+                && !$this->legacyHumanFinalizationProof($period)) return false;
             if ($period->status === 'Счет оплачен' && $period->paid_at === null) {
                 return false;
             }
@@ -629,6 +628,99 @@ class ClientsMigration extends SchemaMigration
                 .'сохранены без изменения; расхождение legacy зафиксировано для аудита.',
             $details);
         return true;
+    }
+
+    /**
+     * A late human approval made in the historical Clients source after an
+     * earlier import is not a native Clients/Finance approval. It may be
+     * replayed only if the target has never diverged from its complete last
+     * imported payload, the historical source retained its client and service
+     * dates, and the source now has an actual approval chain. Never infer
+     * payment from an empty, not-yet-live Finance database.
+     */
+    private function legacyHumanFinalizationProof(object $period): bool
+    {
+        if (!in_array($period->status ?? null,
+            ['Новый','ТШ на согласовании','ТШ согласованы','Акт на согласовании'], true)
+            || ($period->paid_at ?? null) !== null) return false;
+        foreach (['timesheet_snapshot','timesheet_revision','timesheet_freeze_token'] as $field) {
+            if (($period->$field ?? null) !== null) return false;
+        }
+        foreach (['reporting_period_history','reporting_period_approved_hours'] as $table) {
+            if (!Schema::connection('target_clients')->hasTable($table)
+                || DB::connection('target_clients')->table($table)
+                    ->where('reporting_period_id',$period->id)->exists()) return false;
+        }
+        $mappings = DB::table('migration_mappings')
+            ->where('service','clients')->where('entity_type','reporting_periods')
+            ->where('target_id',(string)$period->id)->get(['legacy_id','metadata']);
+        $canonical = [];
+        foreach ($mappings as $mapping) {
+            $meta = json_decode((string)$mapping->metadata,true);
+            if (!is_array($meta)) return false;
+            if (isset($meta['alias_of'])) continue;
+            if (($meta['target_table'] ?? null) !== 'reporting_periods'
+                || !is_array($meta['target_payload'] ?? null)
+                || !is_array($meta['source'] ?? null)) return false;
+            foreach ($meta['target_payload'] as $field=>$expected) {
+                if (!property_exists($period,$field)
+                    || !TargetFieldComparison::matches($period->$field,$expected,$field)) return false;
+            }
+            $canonical[] = ['legacy_id'=>(string)$mapping->legacy_id,'source'=>$meta['source']];
+        }
+        if (count($canonical) !== 1) return false;
+        $original = $canonical[0]['source'];
+        $matches = array_values(array_filter($this->source['reporting_periods'] ?? [],
+            static fn(array $r): bool => (string)($r['id'] ?? '') === $canonical[0]['legacy_id']));
+        if (count($matches) !== 1) return false;
+        $current = $matches[0];
+        foreach (['client_id','from','to'] as $field) {
+            if (!array_key_exists($field,$original)
+                || !array_key_exists($field,$current)
+                || (string)$original[$field] !== (string)$current[$field]) return false;
+        }
+        // The old workflow's human act submission/approval is evidence of
+        // completion. A naked paid_at or act_approved_at is not sufficient.
+        if (empty($current['approved_at']) || empty($current['act_approval_at'])
+            || empty($current['act_approved_at'])) return false;
+        return true;
+    }
+
+    /** Return the verified metadata marker, or null to retain the normal block. */
+    private function historicalSourceFinalizationEvidence(
+        string $legacyId, object $previous, array $candidate
+    ): ?array {
+        if (!in_array($candidate['status'] ?? null,['Акт согласован','Счет оплачен'],true)
+            || !in_array($previous->status ?? null,
+                ['Новый','ТШ на согласовании','ТШ согласованы','Акт на согласовании'],true)
+            || (($candidate['status'] === 'Счет оплачен') && ($candidate['paid_at'] ?? null) === null)
+            || (int)$previous->client_id !== (int)$candidate['client_id']
+            || !TargetFieldComparison::matches($previous->period_start,$candidate['period_start'],'period_start')
+            || !TargetFieldComparison::matches($previous->period_end,$candidate['period_end'],'period_end')
+            || !$this->legacyHumanFinalizationProof($previous)) return null;
+        $metaRaw = DB::table('migration_mappings')
+            ->where('service','clients')->where('entity_type','reporting_periods')
+            ->where('legacy_id',$legacyId)
+            ->where('target_id',(string)$previous->id)->value('metadata');
+        $meta=json_decode((string)($metaRaw ?? ''),true);
+        $baseline=is_array($meta) ? ($meta['target_payload'] ?? null) : null;
+        if (!is_array($meta) || isset($meta['alias_of']) || !is_array($baseline)
+            || ($meta['target_table'] ?? null) !== 'reporting_periods') return null;
+        $provenance=ReconciliationProvenance::compare($baseline,$previous,$candidate);
+        if ($provenance['classification'] !== 'source_delta'
+            || !$provenance['changed_fields']
+            || array_diff($provenance['changed_fields'],[
+                'status','confirmed_hours','timesheets_sent_at','timesheets_approved_at',
+                'act_sent_at','act_approved_at','paid_at'])) return null;
+        return ['historical_reconciliation'=>[
+            'policy'=>'legacy_human_finalization_v1',
+            'changed_fields'=>$provenance['changed_fields'],
+            'source_sha256'=>hash('sha256',json_encode($candidate,JSON_THROW_ON_ERROR)),
+            'target_sha256'=>hash('sha256',json_encode($baseline,JSON_THROW_ON_ERROR)),
+            'target_unchanged_at_plan'=>true,
+            'native_approval_absent'=>true,
+            'finance_operational'=>false,
+        ]];
     }
 
     private function isUnsealedLegacyPeriod(object $period): bool
@@ -1034,6 +1126,7 @@ class ClientsMigration extends SchemaMigration
                 'timesheets_sent_at' => $r['approval_at'], 'timesheets_approved_at' => $r['approved_at'],
                 'act_sent_at' => $r['act_approval_at'], 'act_approved_at' => $r['act_approved_at'], 'paid_at' => $r['paid_at']];
             $mappedPeriod = $this->store->mapping('clients', 'reporting_periods', $id);
+            $historicalFinalization = null;
             if ($mappedPeriod !== null) {
                 $previous = DB::connection('target_clients')->table('reporting_periods')->find((int) $mappedPeriod);
                 if (!$previous) throw new SourceRowConflict('MAPPED_TARGET_MISSING',
@@ -1042,16 +1135,26 @@ class ClientsMigration extends SchemaMigration
                 foreach ($periodPayload as $field => $value) {
                     if (!TargetFieldComparison::matches($previous->$field ?? null, $value, $field)) $changes[] = $field;
                 }
-                // Human-confirmed imported history stays authoritative. A
-                // mapped, source-only delta may update audit metadata, never
-                // the target period or its final hours/payment/status.
+                // Preserve an already final historical target, but allow
+                // late HUMAN confirmation from the old system to be imported
+                // into a proven untouched legacy-origin target. This does not
+                // authorize ordinary Clients or Finance workflow transitions.
                 if ($changes && $this->preserveConfirmedHistoricalReportingPeriod(
                     $id, $previous, $r, $periodPayload
                 )) return;
-                // Legacy may import initial terminal states, but a later delta
-                // cannot approve an act or mark a period paid for Clients/Finance.
+                $historicalFinalization = $changes
+                    ? $this->historicalSourceFinalizationEvidence($id,$previous,$periodPayload)
+                    : null;
+                if ($historicalFinalization !== null) {
+                    $this->warning('reporting_periods',$id,'LEGACY_HUMAN_FINALIZATION_REPLAYED',
+                        'Доказанное позднее подтверждение из исторической системы '
+                            .'восстановлено в ранее неизменённом периоде; независимая новая '
+                            .'финансовая операция не создаётся.',
+                        $historicalFinalization['historical_reconciliation']);
+                }
                 $protectionReason = $this->unsealedLegacyProtectionReason($previous);
-                if ($changes && (in_array($status, ['Акт согласован', 'Счет оплачен'], true)
+                if ($changes && $historicalFinalization === null
+                    && (in_array($status, ['Акт согласован', 'Счет оплачен'], true)
                     || $protectionReason !== null)) {
                     // Report only fixed-code field reasons. A future operator
                     // needs to distinguish changed legacy input from edits to
@@ -1074,7 +1177,8 @@ class ClientsMigration extends SchemaMigration
                 }
             }
             $this->write('reporting_periods', $id, 'reporting_periods', $periodPayload, $r,
-                ['client_id' => $client, 'period_start' => $from, 'period_end' => $to]);
+                ['client_id' => $client, 'period_start' => $from, 'period_end' => $to],
+                $historicalFinalization ?? []);
         });
         foreach (['contacts','technologies','sectors','grades','grade_rates','departments','results','attempt_result','reporting_period_rate','feedback','interviews','notes','reviews','subcontracts','attachments','legal_documents','activity_log','settings','client_technology','user_technology'] as $table) {
             $this->rows($table, fn ($r, $id) => $this->preserve($table, $r, $id, config('migration.deferred_tables.clients.'.$table) ?: 'Original auxiliary attributes retained in private metadata; not fabricated into new domain history or downloaded files.'));
