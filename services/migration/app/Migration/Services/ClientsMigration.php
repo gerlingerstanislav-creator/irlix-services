@@ -1053,11 +1053,23 @@ class ClientsMigration extends SchemaMigration
                 $protectionReason = $this->unsealedLegacyProtectionReason($previous);
                 if ($changes && (in_array($status, ['Акт согласован', 'Счет оплачен'], true)
                     || $protectionReason !== null)) {
+                    // Report only fixed-code field reasons. A future operator
+                    // needs to distinguish changed legacy input from edits to
+                    // a confirmed target; never export raw values or IDs.
+                    $mappingJson = DB::table('migration_mappings')
+                        ->where('service', 'clients')->where('entity_type', 'reporting_periods')
+                        ->where('legacy_id', $id)->value('metadata');
+                    $mappingEvidence = json_decode((string) ($mappingJson ?? ''), true);
+                    $baseline = is_array($mappingEvidence)
+                        && is_array($mappingEvidence['target_payload'] ?? null)
+                        ? $mappingEvidence['target_payload'] : null;
+                    $provenance = ReconciliationProvenance::compare($baseline, $previous, $periodPayload);
                     throw new SourceRowConflict('PROTECTED_REPORTING_PERIOD_CHANGE',
                         'Повторный перенос не может переписать оплаченную, согласованную в новой платформе '
                         .'или изменённую вне миграции отчётность.',
                         ['changed_fields' => $changes, 'target_status' => $previous->status,
                          'reconciliation_type' => 'reporting_period_provenance',
+                         'reconciliation_provenance' => $provenance,
                          'protection_reason' => $protectionReason ?? 'LEGACY_FINAL_STATUS_CHANGE']);
                 }
             }
