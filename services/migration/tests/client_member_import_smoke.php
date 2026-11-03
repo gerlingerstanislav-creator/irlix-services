@@ -506,6 +506,18 @@ try {
         && \Illuminate\Support\Facades\DB::table('migration_conflicts')
             ->where('code','PROTECTED_REPORTING_PERIOD_CHANGE')->exists(),
         'Independent edit to confirmed reporting hours must block the source-drift exception');
+    $blockedContext = json_decode((string) \Illuminate\Support\Facades\DB::table('migration_conflicts')
+        ->where('code', 'PROTECTED_REPORTING_PERIOD_CHANGE')
+        ->orderByDesc('id')->value('context'), true);
+    $proof = $blockedContext['reconciliation_provenance'] ?? [];
+    check(($proof['classification'] ?? null) === 'needs_evidence'
+        && ($proof['field_reasons']['confirmed_hours'] ?? null) === 'both_changed',
+        'Blocked reporting correction must expose safe source-versus-target provenance');
+    $publicProof = \App\Migration\Core\ControlReport::safeContext(['reconciliation_provenance'=>$proof]);
+    check(($publicProof['reconciliation_provenance']['field_reasons']['confirmed_hours'] ?? null)
+            === 'both_changed'
+        && !isset($publicProof['reconciliation_provenance']['source_values']),
+        'Reporting provenance export includes field reasons, never raw money/hour values');
     target('clients')->table('reporting_periods')->where('id', $legacyPeriodId)
         ->update(['confirmed_hours'=>null, 'timesheet_snapshot'=>'native-snapshot']);
     check(runFixture($clients, true)['conflicts']>0
