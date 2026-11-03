@@ -845,6 +845,21 @@ class ClientsMigration extends SchemaMigration
                 $previousPayload = is_array($mappingMetadata)
                     && is_array($mappingMetadata['target_payload'] ?? null)
                     ? $mappingMetadata['target_payload'] : null;
+                // A previous committed plan intentionally lacking hourly_rate
+                // means the historical amount was DEFERRED, not approved as
+                // NULL or zero. A later configuration/build must not silently
+                // "discover" a new amount and make that unknown field a
+                // false three-way conflict or an unintended monetary UPDATE.
+                // Preserve the target amount and reconcile only the fields
+                // that were actually committed in the former source plan.
+                if ($previousPayload !== null && !array_key_exists('hourly_rate', $previousPayload)
+                    && array_key_exists('hourly_rate', $termPayload)) {
+                    unset($termPayload['hourly_rate']);
+                    $this->warning('rates', $id, 'HISTORICAL_RATE_AMOUNT_REMAINS_DEFERRED',
+                        'Ранее отложенная сумма исторической ставки не дозаполняется '
+                        .'при повторном переносе без отдельного доказательства.',
+                        ['field' => 'hourly_rate', 'baseline_amount_known' => false]);
+                }
                 $provenance = ReconciliationProvenance::compare($previousPayload, $old, $termPayload);
                 $changedFields = $provenance['changed_fields'];
                 if ($changedFields) {
