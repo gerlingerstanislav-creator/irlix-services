@@ -227,7 +227,7 @@ class CheckpointSafetyTests(unittest.TestCase):
                 if kwargs.get('stdout'):
                     kwargs['stdout'].write(b'synthetic database dump')
                 return ''
-            with patch.dict(os.environ, MIGRATION_VACATIONS_FILES_PATH=str(files)), patch.object(snapshot,'BASE',root/'points'), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=volume), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot.common,'container',return_value='synthetic-container'), patch.object(snapshot.common,'run',side_effect=command) as run, patch.object(snapshot.common,'compose'):
+            with patch.dict(os.environ, MIGRATION_VACATIONS_FILES_PATH=str(files)), patch.object(snapshot,'BASE',root/'points'), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot,'identity_volume',return_value=volume), patch.object(snapshot.common,'migration_volume',return_value=volume), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot.common,'container',return_value='synthetic-container'), patch.object(snapshot.common,'run',side_effect=command) as run, patch.object(snapshot.common,'compose'):
                 snapshot.main('snapshot','vacations','123')
                 self.assertFalse(any(call.args[0][:2]==['docker','inspect'] for call in run.call_args_list))
             point=root/'points'/'vacations'/'123'
@@ -360,6 +360,59 @@ class CheckpointSafetyTests(unittest.TestCase):
             with patch.object(snapshot,'BASE',root), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=root), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot.common,'compose') as compose:
                 with self.assertRaisesRegex(RuntimeError,'checksum'): snapshot.main('restore','all','123')
             compose.assert_not_called()
+
+
+class IdentityBackupTests(unittest.TestCase):
+    def test_private_ledger_is_backed_up_and_survives_metadata_rollback(self):
+        import tarfile
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            identity=root/'identity';identity.mkdir()
+            point=root/'point';point.mkdir()
+            for name in ('employee-logins.sqlite','reconciliation-decisions.sqlite'):
+                with sqlite3.connect(identity/name) as db:
+                    db.execute('CREATE TABLE proof(value TEXT NOT NULL)')
+                    db.execute('INSERT INTO proof VALUES (?)',(name,))
+            with patch.object(snapshot,'identity_volume',return_value=identity):
+                archive=snapshot.backup_identity_volume(point)
+            names=snapshot.verify_identity_backup(archive)
+            self.assertEqual(names,['employee-logins.sqlite','reconciliation-decisions.sqlite'])
+            self.assertEqual(archive.stat().st_mode & 0o777,0o600)
+            with sqlite3.connect(identity/'reconciliation-decisions.sqlite') as db:
+                db.execute("DELETE FROM proof")
+            # This archive is only ever a separate operator recovery point;
+            # metadata restore must not silently rewind the live decisions.
+            with tarfile.open(archive,'r:gz') as source:
+                entry=source.extractfile('reconciliation-decisions.sqlite')
+                target=root/'recovered.sqlite'
+                target.write_bytes(entry.read())
+            with sqlite3.connect(target) as db:
+                self.assertEqual(db.execute('SELECT value FROM proof').fetchone()[0],
+                                 'reconciliation-decisions.sqlite')
+            with sqlite3.connect(identity/'reconciliation-decisions.sqlite') as db:
+                self.assertEqual(db.execute('SELECT count(*) FROM proof').fetchone()[0],0)
+
+    def test_symlink_in_identity_volume_is_rejected_without_creating_archive(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            identity=root/'identity';identity.mkdir()
+            point=root/'point';point.mkdir()
+            (identity/'unsafe').symlink_to(root/'missing')
+            with patch.object(snapshot,'identity_volume',return_value=identity):
+                with self.assertRaisesRegex(RuntimeError,'Unsafe identity'):
+                    snapshot.backup_identity_volume(point)
+            self.assertFalse((point/'identity-backup.tar.gz').exists())
+
+    def test_identity_backup_rejects_archive_path_traversal(self):
+        import tarfile,io
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/'backup.tar.gz'
+            with tarfile.open(path,'w:gz') as archive:
+                item=tarfile.TarInfo('../escape')
+                item.size=1
+                archive.addfile(item,io.BytesIO(b'x'))
+            with self.assertRaisesRegex(RuntimeError,'Unsafe identity backup'):
+                snapshot.verify_identity_backup(path)
 
 
 class RestoredServiceGuardTests(unittest.TestCase):
