@@ -114,6 +114,9 @@ jobs:
           else
             echo "WORKER_PHP_PROCESSES=unknown_no_container"
           fi
+          # Diagnose deployed runtime config without displaying any values
+          # beyond this single non-secret feature flag.
+          $SUDO sh -c "$COMPOSE exec -T migration-worker php artisan config:show migration.clients_defer_rate_amounts" | grep -E -i 'true|false' || true
           # Private run #416. Report only fixed enum codes, allowlisted field
           # names and booleans. No source/target IDs or monetary values.
           if ! $SUDO sh -c "$COMPOSE exec -T migration-worker php" <<'PHP'
