@@ -844,6 +844,8 @@ try {
     unset($rateMeta['target_payload']['hourly_rate']);
     $rateMap->update(['metadata'=>json_encode($rateMeta,JSON_UNESCAPED_UNICODE)]);
     $clients->fixture['rates'][1]['end_date'] = '2026-01-29';
+    $clients->fixture['rates'][0]['rate'] = '1750.00';
+    $clients->fixture['rates'][1]['rate'] = '1750.00';
     $clients->fixture['reporting_periods'][0]['act_approval_at'] = '2026-02-03';
     $clients->fixture['reporting_periods'][0]['act_approved_at'] = '2026-02-04';
     $clients->fixture['reporting_periods'][0]['approved_hours'] = '11.25';
@@ -853,7 +855,9 @@ try {
     check(runFixture($clients,true)['conflicts']>0,
         'Legacy paid status cannot be manufactured by act-only reconciliation');
     $clients->fixture['reporting_periods'][0]['paid_at']=null;
-    config(['migration.clients_defer_rate_amounts'=>true]);
+    // Deliberately switch the current deployment to amount-enabled: the
+    // old seven-field mapping still forbids silent monetary backfill.
+    config(['migration.clients_defer_rate_amounts'=>false]);
     $historicalTerm = target('clients')->table('member_terms')
         ->where('id',$canonicalTermId)->first();
     $historicalPeriod = target('clients')->table('reporting_periods')
@@ -862,6 +866,9 @@ try {
         'Synthetic finalization starts from legacy-only nonfinal target');
     $lateDry=runFixture($clients,true);
     check($lateDry['conflicts']===0, 'Human-confirmed late legacy finalization can dry-run safely');
+    check(\Illuminate\Support\Facades\DB::table('migration_conflicts')
+        ->where('code','HISTORICAL_RATE_AMOUNT_REMAINS_DEFERRED')->exists(),
+        'Unknown historical rate amount remains deferred across configuration changes');
     check(target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
         ->value('status')==='ТШ согласованы',
         'Dry-run must not write historical approval state');
