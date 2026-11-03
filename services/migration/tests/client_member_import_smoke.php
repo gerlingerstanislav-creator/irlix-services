@@ -832,6 +832,67 @@ try {
             $volumeCount, $created - $before, microtime(true) - $started,
             memory_get_peak_usage(true) / 1048576);
     }
+    // Real Clients dry-run #416: the old source got human-approved/finalized
+    // AFTER the first import. The new platform's period still equals all 10
+    // imported fields, has no native approvals, and Finance is not live.
+    // A mapped rate's financial amount was intentionally deferred (7-field
+    // baseline), while its source end date changed. The correct replay
+    // preserves MemberTerms and advances the imported historical confirmation.
+    $rateMap = \Illuminate\Support\Facades\DB::table('migration_mappings')
+        ->where('service','clients')->where('entity_type','rates')->where('legacy_id','41');
+    $rateMeta = json_decode((string)$rateMap->value('metadata'),true);
+    unset($rateMeta['target_payload']['hourly_rate']);
+    $rateMap->update(['metadata'=>json_encode($rateMeta,JSON_UNESCAPED_UNICODE)]);
+    $clients->fixture['rates'][1]['end_date'] = '2026-01-29';
+    $clients->fixture['reporting_periods'][0]['act_approval_at'] = '2026-02-03';
+    $clients->fixture['reporting_periods'][0]['act_approved_at'] = '2026-02-04';
+    $clients->fixture['reporting_periods'][0]['paid_at'] = '2026-02-05';
+    $clients->fixture['reporting_periods'][0]['approved_hours'] = '11.25';
+    config(['migration.clients_defer_rate_amounts'=>true]);
+    $historicalTerm = target('clients')->table('member_terms')
+        ->where('id',$canonicalTermId)->first();
+    $historicalPeriod = target('clients')->table('reporting_periods')
+        ->where('id',$legacyPeriodId)->first();
+    check($historicalPeriod->status === 'ТШ согласованы',
+        'Synthetic finalization starts from legacy-only nonfinal target');
+    $lateDry=runFixture($clients,true);
+    check($lateDry['conflicts']===0, 'Human-confirmed late legacy finalization can dry-run safely');
+    check(target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
+        ->value('status')==='ТШ согласованы',
+        'Dry-run must not write historical approval state');
+    check(runFixture($clients,false)['conflicts']===0 && $clients->validate(1)['ok'],
+        'Proven late historical finalization and deferred historical term reconcile together');
+    $finalized=target('clients')->table('reporting_periods')
+        ->where('id',$legacyPeriodId)->first();
+    check($finalized->status==='Счет оплачен'
+        && $finalized->paid_at==='2026-02-05'
+        && (float)$finalized->confirmed_hours===11.25
+        && $finalized->period_start===$historicalPeriod->period_start
+        && $finalized->period_end===$historicalPeriod->period_end,
+        'Legacy human finalization advances only confirmed status/hours and approval dates');
+    check(target('clients')->table('member_terms')
+        ->where('id',$canonicalTermId)->value('valid_to')===$historicalTerm->valid_to
+        && (float)target('clients')->table('member_terms')
+            ->where('id',$canonicalTermId)->value('hourly_rate')===(float)$historicalTerm->hourly_rate,
+        'Historic source rate and deferred amount must not rewrite existing monetary terms');
+    $finalizedMeta = json_decode((string)\Illuminate\Support\Facades\DB::table('migration_mappings')
+        ->where('service','clients')->where('entity_type','reporting_periods')
+        ->where('legacy_id','51')->value('metadata'),true);
+    check(($finalizedMeta['historical_reconciliation']['policy']??null)
+        ==='legacy_human_finalization_v1',
+        'Late historical approval is auditable and linked to previous mapping');
+    check(runFixture($clients,true)['conflicts']===0
+        && runFixture($clients,false)['conflicts']===0
+        && $clients->validate(1)['ok'],
+        'Late legacy finalization is idempotent on dry-run, migrate and Validate');
+    // A real target-side change is still blocking even after an audited
+    // historical finalization, never mistaken for another legacy correction.
+    target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
+        ->update(['confirmed_hours'=>'12.50']);
+    check(runFixture($clients,true)['conflicts']>0
+        && \Illuminate\Support\Facades\DB::table('migration_conflicts')
+            ->where('code','PROTECTED_REPORTING_PERIOD_CHANGE')->exists(),
+        'Target-side change of finalized historical hours stays blocked');
     echo "ClientMember legacy import smoke passed.\n";
 } catch (Throwable $e) { $failure=$e; }
 finally { @unlink($path); @unlink($path.'.identity'); @unlink($path.'-wal'); @unlink($path.'-shm'); }
