@@ -22,7 +22,7 @@ def main():
         root=Path(temp); root.chmod(0o755); (root/'scripts').mkdir()
         for name in ('migration_diagnostics.py','migration_console_snapshot.py','migration_test_snapshot.py'):
             shutil.copyfile(REPO/'scripts'/name,root/'scripts'/name)
-        (root/'data').mkdir(); (root/'snapshots').mkdir(); (root/'app').mkdir(); (root/'ops').mkdir(); (root/'documents').mkdir()
+        (root/'data').mkdir(); (root/'snapshots').mkdir(); (root/'app').mkdir(); (root/'ops').mkdir(); (root/'documents').mkdir(); (root/'identity').mkdir()
         (root/'data'/'migration-credential.key').write_text('synthetic-credential-key')
         with sqlite3.connect(root/'data'/'migration.sqlite') as db:
             db.execute('CREATE TABLE migration_runs(id INTEGER PRIMARY KEY,service TEXT,mode TEXT,status TEXT,created_at TEXT,started_at TEXT)')
@@ -41,6 +41,13 @@ echo "Synthetic schema command passed\\n";
         }
         services['vacations'] = dict(services['clients'])
         services['migration'] = dict(services['clients'])
+        services['migration']['volumes'] = [
+            str(root/'app')+':/app:ro', str(root/'identity')+':/identity'
+        ]
+        with sqlite3.connect(root/'identity'/'employee-logins.sqlite') as db:
+            db.execute('CREATE TABLE synthetic_identity (key TEXT)')
+            db.execute("INSERT INTO synthetic_identity VALUES ('baseline')")
+
         services['vacations-calendar-sync'] = dict(services['migration-worker'])
         compose_file=root/'docker-compose.yml'
         compose_file.write_text(json.dumps({'name':project,'services':services}))
