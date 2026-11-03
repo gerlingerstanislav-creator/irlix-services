@@ -24,7 +24,10 @@ final class ControlReport
             }
             if ($key === 'field_reasons' && is_array($value)) {
                 $allowedFields = ['hourly_rate','valid_from','valid_to','client_member_id',
-                    'technology','level','hours_per_day','project_member_id'];
+                    'technology','level','hours_per_day','project_member_id',
+                    'client_id','period_start','period_end','status','confirmed_hours',
+                    'timesheets_sent_at','timesheets_approved_at','act_sent_at',
+                    'act_approved_at','paid_at'];
                 $allowedReasons = ['equal','source_changed','target_changed','both_changed',
                     'baseline_missing','target_field_missing'];
                 $out[$key] = [];
@@ -65,7 +68,10 @@ final class ControlReport
                 // Publish only these fixed non-sensitive field names so an
                 // operator knows what disagrees with the protected term.
                 $fields = ['hourly_rate','valid_from','valid_to','client_member_id',
-                    'technology','level','hours_per_day','project_member_id'];
+                    'technology','level','hours_per_day','project_member_id',
+                    'client_id','period_start','period_end','status','confirmed_hours',
+                    'timesheets_sent_at','timesheets_approved_at','act_sent_at',
+                    'act_approved_at','paid_at'];
                 $out[$key] = array_values(array_unique(array_filter($value,
                     static fn ($field) => is_string($field) && in_array($field, $fields, true))));
                 continue;
