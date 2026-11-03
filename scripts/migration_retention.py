@@ -17,7 +17,7 @@ SCOPES = {s: (s,) for s in ('employees', 'vacations', 'clients', 'timesheets')}
 SCOPES['all'] = ('employees', 'vacations', 'clients', 'timesheets')
 DEFAULT_COUNT, MIN_COUNT, MAX_COUNT = 2, 1, 20
 ALLOWED_FILES = {'target.dump', 'metadata.sqlite', 'migration-credential.key',
-                 'vacations-files.tar.gz', 'manifest.json', 'restored', '.keep'}
+                 'vacations-files.tar.gz', 'identity-backup.tar.gz', 'manifest.json', 'restored', '.keep'}
 
 
 def validate_count(value):
