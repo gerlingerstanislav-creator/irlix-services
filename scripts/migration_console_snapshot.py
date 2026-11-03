@@ -48,6 +48,76 @@ def target_fingerprint(scope):
     return result
 
 
+def identity_volume():
+    """Find the private identity mount without printing its host path or data."""
+    mount = common.run(['docker', 'inspect', '--format',
+        '{{range .Mounts}}{{if eq .Destination "/identity"}}{{.Source}}{{end}}{{end}}',
+        common.container('migration')])
+    path = Path(mount)
+    if not mount or not path.is_dir() or path.is_symlink():
+        raise RuntimeError('Migration identity volume is unavailable or unsafe')
+    return path
+
+
+def verify_identity_backup(archive):
+    """Prove an on-host recovery archive can be read, without restoring it."""
+    with tempfile.TemporaryDirectory(prefix='identity-verify-') as root:
+        root = Path(root)
+        names = set()
+        with tarfile.open(archive, 'r:gz') as source:
+            for member in source:
+                name = member.name
+                if (not member.isfile() or name in names or name in ('', '.', '..')
+                        or name != Path(name).name or '/' in name or '\\' in name):
+                    raise RuntimeError('Unsafe identity backup member')
+                names.add(name)
+                with source.extractfile(member) as stored, (root / name).open('xb') as output:
+                    shutil.copyfileobj(stored, output)
+        for name in names:
+            if name.endswith('.sqlite'):
+                with sqlite3.connect('file:' + str(root / name) + '?mode=ro', uri=True) as db:
+                    if db.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
+                        raise RuntimeError('Identity backup database integrity check failed')
+    return sorted(names)
+
+
+def backup_identity_volume(destination):
+    """Keep an independent, verified copy; never roll identity back with /data.
+
+    Both identity mappings and the append-only reconciliation decisions live in
+    /identity. Migration API and worker are stopped by the checkpoint caller,
+    so SQLite backup can capture consistent commits without copying WAL files.
+    This private archive stays on the host and is subject to checkpoint retention.
+    """
+    root = identity_volume()
+    with tempfile.TemporaryDirectory(prefix='identity-copy-', dir=destination) as work:
+        staging = Path(work)
+        for entry in sorted(root.iterdir()):
+            if (entry.is_symlink() or not entry.is_file()
+                    or entry.stat().st_nlink != 1):
+                raise RuntimeError('Unsafe identity volume content')
+            if entry.name.endswith(('-wal', '-shm', '-journal')):
+                continue
+            destination_file = staging / entry.name
+            if entry.name.endswith('.sqlite'):
+                with sqlite3.connect('file:' + str(entry) + '?mode=ro', uri=True) as source, \\
+                     sqlite3.connect(destination_file) as target:
+                    source.execute('PRAGMA query_only=ON')
+                    if source.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
+                        raise RuntimeError('Identity source database integrity check failed')
+                    source.backup(target)
+            else:
+                shutil.copyfile(entry, destination_file)
+            destination_file.chmod(0o600)
+        archive = destination / 'identity-backup.tar.gz'
+        with tarfile.open(archive, 'w:gz') as output:
+            for entry in sorted(staging.iterdir()):
+                output.add(entry, arcname=entry.name, recursive=False)
+    verify_identity_backup(archive)
+    archive.chmod(0o600)
+    return archive
+
+
 def document_fingerprint(root):
     result = {}
     for path in sorted(root.rglob('*')):
@@ -405,6 +475,7 @@ def _main(action, scope, sid):
                 with sqlite3.connect(f'file:{volume / "migration.sqlite"}?mode=ro', uri=True) as source, \
                      sqlite3.connect(destination / 'metadata.sqlite') as target:
                     source.backup(target)
+                backup_identity_volume(destination)
                 target_state = target_fingerprint(scope)
                 key = volume / 'migration-credential.key'
                 if key.exists():
@@ -440,9 +511,14 @@ def _main(action, scope, sid):
                 checksums = manifest.get('checksums', {})
                 if not {'target.dump', 'metadata.sqlite'}.issubset(checksums):
                     raise RuntimeError('Incomplete checkpoint')
-                allowed = {'target.dump', 'metadata.sqlite', 'migration-credential.key', 'vacations-files.tar.gz'}
+                allowed = {'target.dump', 'metadata.sqlite', 'migration-credential.key',
+                           'vacations-files.tar.gz', 'identity-backup.tar.gz'}
                 if any(f not in allowed or common.digest(destination / f) != sha for f, sha in checksums.items()):
                     raise RuntimeError('Checkpoint checksum mismatch')
+                if 'identity-backup.tar.gz' in checksums:
+                    # The archive is checked but deliberately never restored:
+                    # /identity is an append-only audit/identity continuity boundary.
+                    verify_identity_backup(destination / 'identity-backup.tar.gz')
                 if tuple(manifest.get('schemas', ())) != SCOPES[scope]:
                     raise RuntimeError('Checkpoint schema set differs from current scope; restore refused')
                 assert_idle(volume, scope, manifest['last_migration_run_id'], destination)
