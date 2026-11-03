@@ -438,6 +438,63 @@ try {
     check(runFixture($clients, true)['conflicts']===0,
         'No-op after restoring original historical status still succeeds');
 
+    // The original (human-confirmed) paid period remains authoritative.
+    // Finance has not been commissioned, so an empty Finance ledger is not
+    // evidence that an imported human-confirmed reporting period was unpaid.
+    $periodMapping = \Illuminate\Support\Facades\DB::table('migration_mappings')
+        ->where('service','clients')->where('entity_type','reporting_periods')->where('legacy_id','51');
+    $originalPeriodMeta = json_decode($periodMapping->value('metadata'), true);
+    $originalRates = $clients->fixture['rates'];
+    $originalReportingRow = $clients->fixture['reporting_periods'][0];
+    $originalTerm = target('clients')->table('member_terms')->where('id',$canonicalTermId)->first();
+    $clients->fixture['reporting_periods'][0]['paid_at'] = '2026-03-01';
+    $paidPeriodMeta = $originalPeriodMeta;
+    $paidPeriodMeta['source'] = $clients->fixture['reporting_periods'][0];
+    $paidPeriodMeta['target_payload']['status'] = 'Счет оплачен';
+    $paidPeriodMeta['target_payload']['paid_at'] = '2026-03-01';
+    target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
+        ->update(['status'=>'Счет оплачен','paid_at'=>'2026-03-01']);
+    $periodMapping->update(['metadata'=>json_encode($paidPeriodMeta,JSON_UNESCAPED_UNICODE)]);
+    $clients->fixture['rates'][0]['rate'] = '1700.50';
+    $clients->fixture['rates'][1]['rate'] = '1700.50';
+    $clients->fixture['rates'][1]['end_date'] = '2026-01-29';
+    $frozenDry = runFixture($clients,true);
+    check($frozenDry['conflicts']===0,
+        'Confirmed historically paid period may preserve its original rate without a Finance ledger');
+    check(\Illuminate\Support\Facades\DB::table('migration_conflicts')
+        ->where('code','CONFIRMED_HISTORICAL_RATE_PRESERVED')->exists(),
+        'Frozen historical rate must leave an auditable exception, not silently disappear');
+    check(target('clients')->table('member_terms')->where('id',$canonicalTermId)
+        ->value('valid_to')===$originalTerm->valid_to,
+        'Dry-run must not modify the historical term end');
+    check(runFixture($clients,false)['conflicts']===0,
+        'Frozen historical rate may be reconciled metadata-only, without changing paid data');
+    check(target('clients')->table('member_terms')->where('id',$canonicalTermId)
+        ->value('valid_to')===$originalTerm->valid_to
+        && (float)target('clients')->table('member_terms')->where('id',$canonicalTermId)
+            ->value('hourly_rate')===(float)$originalTerm->hourly_rate,
+        'Paid period rate and term must be unchanged after the real migration');
+    check(target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
+        ->value('status')==='Счет оплачен',
+        'Human-confirmed paid reporting period cannot be downgraded');
+    check($clients->validate(1)['ok'],
+        'Accepted frozen historical rate is accounted for in full Clients validation');
+    check(runFixture($clients,false)['conflicts']===0,
+        'Repeated frozen reconciliation must remain idempotent');
+    target('clients')->table('member_terms')->where('id',$canonicalTermId)
+        ->update(['hourly_rate'=>'1550.50']);
+    check(runFixture($clients,true)['conflicts']>0,
+        'A later independent target rate change must invalidate the frozen-rate exemption');
+    target('clients')->table('member_terms')->where('id',$canonicalTermId)
+        ->update(['hourly_rate'=>$originalTerm->hourly_rate]);
+    $clients->fixture['rates'] = $originalRates;
+    $clients->fixture['reporting_periods'][0] = $originalReportingRow;
+    target('clients')->table('reporting_periods')->where('id',$legacyPeriodId)
+        ->update(['status'=>'ТШ согласованы','paid_at'=>null]);
+    $periodMapping->update(['metadata'=>json_encode($originalPeriodMeta,JSON_UNESCAPED_UNICODE)]);
+    check(runFixture($clients,false)['conflicts']===0 && $clients->validate(1)['ok'],
+        'Restoring the fixture after a preserved paid period remains idempotent');
+
     $only = [['target_id'=>98,'client_name'=>'Renamed Client','project_names'=>[],
         'terms'=>[['id'=>5,'valid_from'=>'2026-01-01','valid_to'=>'2026-12-31']]]];
     check(\App\Migration\Core\TimesheetsMemberMatching::choose('Old project', [], $only)['selected_id']===98,
