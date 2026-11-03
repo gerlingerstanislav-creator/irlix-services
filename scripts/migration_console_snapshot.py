@@ -100,7 +100,7 @@ def backup_identity_volume(destination):
                 continue
             destination_file = staging / entry.name
             if entry.name.endswith('.sqlite'):
-                with sqlite3.connect('file:' + str(entry) + '?mode=ro', uri=True) as source, \\
+                with sqlite3.connect('file:' + str(entry) + '?mode=ro', uri=True) as source, \
                      sqlite3.connect(destination_file) as target:
                     source.execute('PRAGMA query_only=ON')
                     if source.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
