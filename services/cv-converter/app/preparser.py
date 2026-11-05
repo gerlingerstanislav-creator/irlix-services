@@ -315,6 +315,7 @@ def _merge_project(seed_item: ProjectItem, llm_item: ProjectItem | None) -> Proj
         name=seed_item.name or llm_item.name,
         description=seed_item.description or llm_item.description,
         responsibilities=llm_item.responsibilities or seed_item.responsibilities,
+        results=llm_item.results or seed_item.results,
     )
 
 
