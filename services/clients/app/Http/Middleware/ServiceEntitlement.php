@@ -24,6 +24,16 @@ final class ServiceEntitlement
         // remains an inactive rollout compatibility path only.
         if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
             $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
+            // Narrow read-only exception: Clients owns project assignments, but
+            // Specialists managers must not acquire general Clients admission.
+            // The controller additionally checks current Employees scope per employee.
+            if ($request->isMethod('GET')
+                && preg_match('#^api/specialists/people/[0-9]+/projects$#', $request->path()) === 1) {
+                if (!in_array('service:specialists', $roles, true)) {
+                    return response()->json(['message' => 'Specialists access denied'], 403);
+                }
+                return $next($request);
+            }
             if (!in_array('service:clients', $roles, true)) {
                 return response()->json(['message' => 'Service access denied'], 403);
             }
