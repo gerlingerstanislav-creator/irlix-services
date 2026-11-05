@@ -4,12 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { UiAppTopbar, UiAppSidebar, UiRegistryTable, UiFilterBar, UiSearchSelect, UiTreeToggle, UiErrorState, UiLoader } from '@irlix/ui';
 import { auth } from './auth';
 import SpecialistsRolePermissionsView from './SpecialistsRolePermissionsView.vue';
-
-const defaultNavItems = [
-  { id: 'dashboard', label: 'Дашборд', icon: 'dashboard' },
-  { id: 'people', label: 'Специалисты', icon: 'users' },
-  { id: 'competencies', label: 'Технологии и компетенции', icon: 'code' },
-];
+import { accessibleSpecialistsNavigation } from './accessNavigation.js';
 
 const roleMatrixAdmin=ref(false);
 const roleAccessPhase=ref('loading');
@@ -19,11 +14,7 @@ const canViewProfiles=computed(()=>effectivePermissions.value?.profiles_view ===
 const canManageProfiles=computed(()=>effectivePermissions.value?.profiles_manage === true);
 const canViewCatalog=computed(()=>effectivePermissions.value?.catalog_view === true);
 const canEditTechnologyCatalog=computed(()=>effectivePermissions.value?.catalog_manage === true);
-const navItems=computed(()=>[
-  ...(canViewProfiles.value ? defaultNavItems.slice(0,2) : []),
-  ...(canViewCatalog.value ? defaultNavItems.slice(2) : []),
-  ...(roleMatrixAdmin.value?[{id:'role-permissions',label:'Разрешения',icon:'settings'}]:[]),
-]);
+const navItems=computed(()=>accessibleSpecialistsNavigation(effectivePermissions.value, roleMatrixAdmin.value));
 const loading = ref(true);
 const saving = ref(false);
 const catalogSaving = ref(false);
