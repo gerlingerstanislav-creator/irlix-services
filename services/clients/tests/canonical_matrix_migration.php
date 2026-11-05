@@ -175,7 +175,7 @@ $syntheticRole = 'org:example-department';
 $check($service->addRole($syntheticRole, 42), 'New V2 role column could not be created');
 $check(!$service->addRole($syntheticRole, 42), 'Duplicate role column was created');
 $check(DB::table('client_contour_permissions')->where('role', $syntheticRole)->count()
-    === count(\\App\\Support\\ClientContourAccess::PERMISSION_LABELS),
+    === count(\App\Support\ClientContourAccess::PERMISSION_LABELS),
     'Created role does not contain all empty permission cells');
 $check(!DB::table('client_contour_permissions')->where('role', $syntheticRole)
     ->where('allowed', true)->exists(), 'New role was granted permissions by default');
@@ -193,7 +193,7 @@ $check(!DB::table('client_contour_permissions')->where('role', $syntheticRole)->
     'Deleted role retains effective permissions');
 $check(!isset($service->matrix()[$syntheticRole]), 'Deleted role remains in matrix');
 $check(DB::table('client_contour_permission_audit')->where('role', $syntheticRole)
-    ->whereNull('after')->count() === count(\\App\\Support\\ClientContourAccess::PERMISSION_LABELS),
+    ->whereNull('after')->count() === count(\App\Support\ClientContourAccess::PERMISSION_LABELS),
     'Role removal was not audited for every permission');
 $check($service->addRole($syntheticRole, 42), 'Removed role could not be added back');
 $check(!DB::table('client_contour_permissions')->where('role', $syntheticRole)
@@ -204,4 +204,4 @@ $check(!$service->removeRole('special:platform-admin', 42),
 $check(isset($service->matrix()['special:platform-admin']['clients.view']),
     'Platform administrator access was lost');
 
-echo "Clients canonical matrix data migration and API: PASS\\n";
+echo "Clients canonical matrix data migration and API: PASS\n";
