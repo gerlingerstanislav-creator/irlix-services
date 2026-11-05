@@ -17,20 +17,33 @@ final class PayrollMonthCalculator
             && (!$row->{$to} || $row->{$to} >= $day);
     }
 
-    /** @param iterable<object> $periods @param iterable<object> $assignments */
+    /**
+     * Legacy employment periods can predate the assignment-history migration.
+     * Use their recorded department only on dates with no explicit assignment;
+     * never use the employee's current department for past payroll.
+     */
+    private function departmentAt(iterable $periods, iterable $assignments, string $day): ?int
+    {
+        $period = null;
+        foreach ($periods as $item) {
+            if (self::covers($item, $day, 'started_at', 'ended_at')) $period = $item;
+        }
+        if (!$period) return null;
+
+        $assignment = null;
+        foreach ($assignments as $item) {
+            if (self::covers($item, $day, 'effective_from', 'effective_to')) $assignment = $item;
+        }
+        $department = $assignment ? $assignment->department_id : ($period->department_id ?? null);
+        return $department === null ? null : (int) $department;
+    }
+
+    /** A calendar-day overlap counts even when no paid working day exists. */
     public function visible(iterable $periods, iterable $assignments, array $allowed, string $from, string $to): bool
     {
-        foreach ($periods as $period) {
-            $start = max($from, (string) $period->started_at);
-            $end = min($to, (string) ($period->ended_at ?: $to));
-            if ($start > $end) continue;
-
-            foreach ($assignments as $assignment) {
-                if (!isset($allowed[(int) ($assignment->department_id ?? 0)])) continue;
-                $assignmentStart = max($start, (string) $assignment->effective_from);
-                $assignmentEnd = min($end, (string) ($assignment->effective_to ?: $end));
-                if ($assignmentStart <= $assignmentEnd) return true;
-            }
+        for ($date = new DateTimeImmutable($from); $date->format('Y-m-d') <= $to; $date = $date->modify('+1 day')) {
+            $department = $this->departmentAt($periods, $assignments, $date->format('Y-m-d'));
+            if ($department !== null && isset($allowed[$department])) return true;
         }
         return false;
     }
@@ -58,20 +71,8 @@ final class PayrollMonthCalculator
                 $date = $date->modify('+1 day');
                 if (!isset($working[$day])) continue;
 
-                $employed = false;
-                foreach ($periods as $period) {
-                    if (self::covers($period, $day, 'started_at', 'ended_at')) {
-                        $employed = true;
-                        break;
-                    }
-                }
-                if (!$employed) continue;
-
-                $assignment = null;
-                foreach ($assignments as $item) {
-                    if (self::covers($item, $day, 'effective_from', 'effective_to')) $assignment = $item;
-                }
-                if (!$assignment || !isset($allowed[(int) ($assignment->department_id ?? 0)])) continue;
+                $department = $this->departmentAt($periods, $assignments, $day);
+                if ($department === null || !isset($allowed[$department])) continue;
                 $days++;
 
                 $salary = null;
