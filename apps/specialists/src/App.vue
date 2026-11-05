@@ -351,28 +351,48 @@ const openPerson = id => navigate(`people/${id}`);
 
       <template v-else-if="route.section === 'competencies'">
         
-        <section class="technology-panel panel">
-          <div class="specialists-catalog-toolbar"><span class="specialists-filter-count">Технологий: {{ workspace.catalog.technologies.length }}</span><button v-if="canEditTechnologyCatalog" class="primary" @click="openCreateTechnology()">+ Добавить технологию</button></div>
-          <div v-if="technologyTree.length" class="technology-table">
-            <div class="technology-table-head"><span>Название</span><span>Алиас</span><span>Направление</span><span></span></div>
-            <div v-for="technology in technologyTree" :key="technology.id" class="technology-row">
-              <div class="technology-name" :style="{ paddingLeft: `${technology.depth * 28}px` }">
-                <button v-if="technology.hasChildren" class="tree-toggle" :aria-label="expandedTechnologies.has(Number(technology.id)) ? 'Свернуть' : 'Развернуть'" @click="toggleTechnologyRow(technology.id)">{{ expandedTechnologies.has(Number(technology.id)) ? '⌄' : '›' }}</button>
-                <span v-else class="tree-spacer"></span>
-                <b>{{ technology.name }}</b>
-              </div>
-              <span>{{ technology.alias || '—' }}</span>
-              <span>{{ technology.category || '—' }}</span>
-              <div v-if="canEditTechnologyCatalog" class="row-actions">
-                <button title="Добавить дочернюю технологию" @click="openCreateTechnology(technology)">＋</button>
-                <button title="Редактировать" @click="openEditTechnology(technology)">✎</button>
-                <button class="danger-icon" title="Удалить" :disabled="catalogSaving" @click="deleteTechnology(technology)">×</button>
-              </div>
-            </div>
+        <section class="specialists-catalog-section specialists-catalog-section--technologies">
+          <div class="specialists-catalog-toolbar">
+            <span class="specialists-filter-count">Технологий: {{ workspace.catalog.technologies.length }}</span>
+            <button v-if="canEditTechnologyCatalog" class="primary" @click="openCreateTechnology()">+ Добавить технологию</button>
           </div>
-          <div v-else class="empty">Каталог пока пуст.</div>
+          <UiRegistryTable v-if="technologyTree.length" :columns="['53%','19%','18%','10%']" min-width="760px" density="compact" aria-label="Дерево технологий">
+            <template #head><tr><th>Технология</th><th>Алиас</th><th>Направление</th><th aria-label="Действия"></th></tr></template>
+            <tr v-for="technology in technologyTree" :key="technology.id">
+              <td>
+                <div class="technology-name" :style="{ paddingLeft: (technology.depth * 20) + 'px' }">
+                  <UiTreeToggle v-if="technology.hasChildren"
+                    :expanded="expandedTechnologies.has(Number(technology.id))"
+                    :label="expandedTechnologies.has(Number(technology.id)) ? 'Свернуть ' + technology.name : 'Развернуть ' + technology.name"
+                    @click="toggleTechnologyRow(technology.id)" />
+                  <span v-else class="technology-tree-spacer"></span>
+                  <span class="technology-name-text">{{ technology.name }}</span>
+                </div>
+              </td>
+              <td>{{ technology.alias || '—' }}</td>
+              <td>{{ technology.category || '—' }}</td>
+              <td>
+                <div v-if="canEditTechnologyCatalog" class="row-actions">
+                  <button type="button" title="Добавить дочернюю технологию" :aria-label="'Добавить дочернюю технологию для ' + technology.name" @click="openCreateTechnology(technology)">＋</button>
+                  <button type="button" title="Редактировать" :aria-label="'Редактировать ' + technology.name" @click="openEditTechnology(technology)">✎</button>
+                  <button type="button" class="danger-icon" title="Удалить" :aria-label="'Удалить ' + technology.name" :disabled="catalogSaving" @click="deleteTechnology(technology)">×</button>
+                </div>
+              </td>
+            </tr>
+          </UiRegistryTable>
+          <div v-else class="empty padded">Каталог технологий пока пуст.</div>
         </section>
-        <section class="panel competencies-panel"><div class="panel-head"><div><h2>Компетенции</h2><p>{{ workspace.catalog.competencies.length }} записей</p></div></div><div v-if="workspace.catalog.competencies.length" class="catalog-list"><div v-for="c in workspace.catalog.competencies" :key="c.id"><b>{{ c.name }}</b><span>{{ c.technology_name || 'Общая' }}</span></div></div><div v-else class="empty">Компетенции пока не заведены.</div></section>
+        <section class="specialists-catalog-section specialists-catalog-section--competencies">
+          <div class="specialists-catalog-toolbar"><span class="specialists-filter-count">Компетенций: {{ workspace.catalog.competencies.length }}</span></div>
+          <UiRegistryTable v-if="workspace.catalog.competencies.length" :columns="['55%','45%']" min-width="500px" density="compact" aria-label="Компетенции">
+            <template #head><tr><th>Компетенция</th><th>Технология</th></tr></template>
+            <tr v-for="competency in workspace.catalog.competencies" :key="competency.id">
+              <td>{{ competency.name }}</td>
+              <td>{{ competency.technology_name || 'Общая компетенция' }}</td>
+            </tr>
+          </UiRegistryTable>
+          <div v-else class="empty padded">Компетенции пока не заведены.</div>
+        </section>
       </template>
       </div>
     </main>
