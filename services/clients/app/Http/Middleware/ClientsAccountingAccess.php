@@ -19,6 +19,12 @@ class ClientsAccountingAccess
 
     public function handle(Request $request, Closure $next): Response
     {
+        // This GET-only view has its own Employees-scoped controller gate.
+        // Do not resolve Clients contour privileges for Specialists-only users.
+        if ($request->isMethod('GET')
+            && preg_match('#^api/specialists/people/[0-9]+/projects$#', $request->path()) === 1) {
+            return $next($request);
+        }
         if ($request->is('api/health')) return $next($request);
         // Reuse only this request's fresh entitlement projection, never a
         // stale previous middleware result on a reused Request object.
