@@ -6,6 +6,7 @@ use App\Models\ClientContourPermission;
 use App\Models\ClientContourPermissionAudit;
 use App\Support\ClientContourAccess;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 final class ClientContourPermissionService
 {
@@ -52,9 +53,70 @@ final class ClientContourPermissionService
             && ClientContourPermission::query()->where('role', $role)->exists();
     }
 
+    /**
+     * Creating a visible column stores explicit empty permissions, not grants.
+     * A removed column has no rows and can never influence effective access.
+     */
+    public function addRole(string $role, ?int $actorId): bool
+    {
+        if (!self::isCanonicalRole($role) || $role === 'special:platform-admin') return false;
+
+        return DB::transaction(static function () use ($role, $actorId): bool {
+            if (ClientContourPermission::query()->where('role', $role)->exists()) return false;
+            $now = now();
+            foreach (array_keys(ClientContourAccess::PERMISSION_LABELS) as $permission) {
+                ClientContourPermission::query()->create([
+                    'role' => $role, 'permission' => $permission,
+                    'allowed' => false, 'scope' => 'none', 'denied' => false,
+                ]);
+                ClientContourPermissionAudit::query()->insert([
+                    'actor_employee_id' => $actorId,
+                    'role' => $role, 'permission' => $permission,
+                    'before' => null,
+                    'after' => json_encode(['allowed' => false, 'scope' => 'none', 'denied' => false]),
+                    'created_at' => $now,
+                ]);
+            }
+            return true;
+        });
+    }
+
+    /** Revokes every Clients grant and explicit denial in one transaction. */
+    public function removeRole(string $role, ?int $actorId): bool
+    {
+        if (!self::isCanonicalRole($role) || $role === 'special:platform-admin') return false;
+
+        return DB::transaction(static function () use ($role, $actorId): bool {
+            $rows = ClientContourPermission::query()->where('role', $role)->lockForUpdate()->get();
+            if ($rows->isEmpty()) return false;
+            $now = now();
+            foreach ($rows as $row) {
+                ClientContourPermissionAudit::query()->insert([
+                    'actor_employee_id' => $actorId,
+                    'role' => $role, 'permission' => (string) $row->permission,
+                    'before' => json_encode([
+                        'allowed' => (bool) $row->allowed, 'scope' => (string) $row->scope,
+                        'denied' => (bool) ($row->denied ?? false),
+                    ]),
+                    'after' => null,
+                    'created_at' => $now,
+                ]);
+            }
+            ClientContourPermission::query()->where('role', $role)->delete();
+            return true;
+        });
+    }
+
     public function update(array $data, ?int $actorId): void
     {
         DB::transaction(static function () use ($data, $actorId): void {
+            // Re-check under a row lock: a delayed editor cannot recreate
+            // a role that another administrator has just removed.
+            $activeRole = ClientContourPermission::query()->where('role', $data['role'])
+                ->lockForUpdate()->first(['id']);
+            if (!$activeRole) {
+                throw ValidationException::withMessages(['role' => 'Роль уже удалена. Обновите список.']);
+            }
             $row = ClientContourPermission::query()
                 ->where(['role' => $data['role'], 'permission' => $data['permission']])
                 ->lockForUpdate()->first();
