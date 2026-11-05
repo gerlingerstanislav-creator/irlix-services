@@ -96,3 +96,7 @@
 /* Clear hierarchy and selected states in the shared visual palette. */
 .specialists-app .stat-row .bar i{background:var(--irlix-color-primary)}
 .specialists-roles tbody tr{cursor:default}
+
+/* View-only profiles remain readable but cannot suggest editable actions. */
+.specialists-app .form-panel :is(input,textarea):disabled{background:var(--irlix-color-surface-muted);color:var(--irlix-color-text);cursor:default}
+.specialists-app .choice-grid button:disabled{cursor:default;opacity:.78}
