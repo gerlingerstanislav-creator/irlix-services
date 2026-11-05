@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { UiBadge, UiButton, UiDrawer, UiPanel, UiPeriodPicker, UiSearchSelect , UiLoader } from '@irlix/ui';
+import { UiBadge, UiButton, UiDrawer, UiPeriodPicker, UiSearchSelect , UiLoader } from '@irlix/ui';
 import { employeeTreeOptions } from '../staffTree';
 
 const props = defineProps({
@@ -113,7 +113,7 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
       <div><small>Изменение ФОТ</small><strong :class="difference > 0 ? 'fot-positive' : ''">{{ difference > 0 ? '+' : '' }}{{ price(difference) }}</strong></div>
     </div>
     <p v-if="error" class="fot-error" role="alert">{{ error }}</p>
-    <UiPanel class="fot-table-shell irlix-registry-panel">
+    <section class="fot-table-shell irlix-registry-panel">
       <UiLoader v-if="loading" page label="Загрузка расчётов ФОТ" />
       <div v-else class="fot-table-scroll irlix-registry-scroll">
         <table class="fot-matrix">
@@ -135,7 +135,7 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
           </tbody>
         </table>
       </div>
-    </UiPanel>
+    </section>
     <section v-if="canApprove && inbox.length" class="fot-register">
       <h3>Ожидают моего согласования</h3>
       <div v-for="item in inbox" :key="item.id" class="fot-review-row">
