@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { UiAppTopbar, UiBadge, UiButton, UiFilterRail, UiPanel, UiSearchSelect, UiRegistryTable, UiLoader } from '@irlix/ui';
+import { UiAppTopbar, UiBadge, UiButton, UiFilterRail, UiPanel, UiSearchSelect, UiRegistryTable, UiPeriodPicker, UiLoader } from '@irlix/ui';
 import { departmentOptions, employeeTreeOptions, staffPositionTreeOptions } from './staffTree';
 import { DEFAULT_EMPLOYMENT_STATUSES, employmentStatusesFromQuery, matchesEmploymentStatus } from './employeeStatusFilter';
 import { auth } from './auth';
@@ -50,6 +50,9 @@ const showDepartmentForm = ref(false);
 const departmentForm = ref(emptyDepartment());
 const staffPositionsRef = ref(null);
 const positionsCatalogRef = ref(null);
+const fotViewRef = ref(null);
+const fotCurrentYear = new Date().getFullYear();
+const fotYear = ref(fotCurrentYear);
 
 const canCreateApplication = computed(() => Boolean(access.value.permissions?.['employees.application.create']));
 const canHireEmployees = computed(() => Boolean(access.value.permissions?.['employees.hire']));
@@ -58,6 +61,7 @@ const canManageEmployees = computed(() => Boolean(access.value.permissions?.['em
 const canManageOrganization = computed(() => (access.value.roles ?? []).includes('platform-admin'));
 const canManagePositions = computed(() => Boolean(access.value.permissions?.['staff_positions.manage']));
 const canReadFot = computed(() => Boolean(access.value.permissions?.['employees.fot.view']));
+const canPlanFot = computed(() => Boolean(access.value.permissions?.['employees.fot.plan']));
 const canManageAccess = computed(() => Boolean(access.value.permissions?.['access.manage']));
 const canReadAudit = computed(() => Boolean(access.value.permissions?.['audit.read']));
 const isPlatformAdmin = computed(() => (access.value.roles ?? []).includes('platform-admin'));
@@ -129,6 +133,7 @@ const resetEmployeeFilters = () => {
 const openCreateStaffPosition = () => staffPositionsRef.value?.openCreate?.();
 const openCreateCatalogPosition = () => positionsCatalogRef.value?.openCreate?.();
 const openImportCatalogPositions = () => positionsCatalogRef.value?.openImport?.();
+const openPlanFotReview = () => fotViewRef.value?.openPlanReview?.();
 
 const api = async (url, options = {}) => {
   const response = await auth.fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
@@ -194,7 +199,9 @@ onMounted(loadEmployees);
             <span v-else-if="currentSection === 'positions'"><strong>{{ departments.length }}</strong> подразделений · {{ positions.length }} должностей</span>
             <span v-else-if="currentSection === 'staffPositions'"><strong>{{ positions.length }}</strong> должностей</span>
           </div>
-          <UiButton v-if="currentSection === 'employees' && canCreateApplication" @click="showNewEmployee = true">+ Новый сотрудник</UiButton>
+          <UiPeriodPicker v-if="currentSection === 'fot' && canReadFot" v-model="fotYear" mode="year" :min-year="fotCurrentYear - 2" :max-year="fotCurrentYear + 4" />
+           <UiButton v-if="currentSection === 'fot' && canPlanFot" @click="openPlanFotReview">+ Запланировать пересмотр</UiButton>
+           <UiButton v-if="currentSection === 'employees' && canCreateApplication" @click="showNewEmployee = true">+ Новый сотрудник</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManageOrganization" @click="openCreateDepartment">+ Подразделение</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManagePositions" @click="openCreateStaffPosition">+ Должность</UiButton>
           <UiButton v-if="currentSection === 'staffPositions' && canManagePositions" variant="secondary" @click="openImportCatalogPositions">Импорт должностей</UiButton>
@@ -228,7 +235,7 @@ onMounted(loadEmployees);
         <div v-if="error" class="alert">{{ error }}</div>
         <PositionsCatalogView ref="positionsCatalogRef" :positions="positions" :departments="departments" :employees="employees" :can-manage="canManagePositions" :can-delete="canDeletePositions" @updated="loadEmployees" />
       </div>
-      <EmployeeFotView v-if="access.allowed && canReadFot && currentSection === 'fot'" :employees="employees" :departments="departments" :access="access" />
+      <EmployeeFotView v-if="access.allowed && canReadFot && currentSection === 'fot'" ref="fotViewRef" :year="fotYear" :employees="employees" :departments="departments" :access="access" />
       <EmployeePermissionsView v-if="access.allowed && canManageEmployeePermissions && currentSection === 'permissions'" />
       <SpecialRolesView v-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" :departments="departments" :actor-roles="access.roles || []" />
       <AuditLogView v-if="access.allowed && canReadAudit && currentSection === 'audit'" :employees="employees" :departments="departments" />
