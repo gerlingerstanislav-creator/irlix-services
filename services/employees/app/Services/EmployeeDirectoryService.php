@@ -154,6 +154,7 @@ final class EmployeeDirectoryService
             'departments' => $allDepartments
                 ->map(static fn (Department $row) => (object) $row->getRawOriginal()),
             'role_catalog' => RoleLabels::canonicalRoleCatalog($allDepartments->all()),
+            'role_tree' => RoleLabels::canonicalRoleTree($allDepartments->all()),
         ];
     }
 
