@@ -20,7 +20,6 @@ $columns = [
     'reporting_periods' => ['client_id', 'status', 'period_start', 'period_end'],
     'reporting_period_approved_hours' => ['reporting_period_id', 'member_term_id', 'updated_by'],
     'connection_attempts' => ['specialist_id', 'responsible_employee_id', 'cv_storage_path'],
-    'project_members' => ['specialist_id'],
     'leads' => ['responsible_employee_id'],
     'positions' => ['responsible_rn_employee_id'],
     'client_requests' => ['responsible_employee_id'],
@@ -75,7 +74,6 @@ $cvFilename = 'employee-purge-synthetic-7.txt';
 file_put_contents($cvDirectory.'/'.$cvFilename, 'synthetic CV');
 DB::table('connection_attempts')->insert(['specialist_id'=>7, 'responsible_employee_id'=>7,
     'cv_storage_path'=>$cvFilename]);
-DB::table('project_members')->insert(['specialist_id'=>7]);
 DB::table('clients')->where('id', 10)->update(['sales_employee_id'=>7]);
 DB::table('client_history_events')->insert(['created_by_username'=>'synthetic.employee']);
 DB::table('client_notes')->insert(['client_id'=>10,'created_by_username'=>'synthetic.employee']);
