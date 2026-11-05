@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { UiAppSidebar, UiAppTopbar, UiButton, UiErrorState, UiLoader } from '@irlix/ui';
 import { auth } from './auth';
@@ -11,7 +11,10 @@ const navItems = [
   { id: 'convert', label: 'Конвертация', icon: 'document' },
   { id: 'settings', label: 'Настройки', icon: 'audit', groupStart: true },
 ];
-const templates = [{ id: 'irlix-cv', label: 'Irlix CV' }];
+const templates = [
+  { id: 'irlix-cv', label: 'Irlix CV' },
+  { id: 'irlix-cv-an', label: 'Irlix CV AN' },
+];
 const route = useRoute();
 const router = useRouter();
 const currentSection = computed(() => route.meta.section || 'not-found');
@@ -154,7 +157,7 @@ async function renderPreview() {
   startTimer();
   const startedAt = performance.now();
   try {
-    const response = await auth.fetch('/api/cv-converter/render/pdf', {
+    const response = await auth.fetch(`/api/cv-converter/render/pdf?template=${encodeURIComponent(selectedTemplate.value)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(canonical.value),
@@ -216,7 +219,8 @@ function saveBlob(blob, filename) {
 function safeName(ext) {
   const raw = canonical.value?.full_name || sourceFile.value?.name?.replace(/\.[^.]+$/, '') || 'CV';
   const base = raw.replace(/[\\/:*?"<>|]+/g, ' ').trim().replace(/\s+/g, '_');
-  return `${base || 'CV'}_IRLIX.${ext}`;
+  const suffix = selectedTemplate.value === 'irlix-cv-an' ? 'IRLIX_AN' : 'IRLIX';
+  return `${base || 'CV'}_${suffix}.${ext}`;
 }
 
 async function download(format) {
@@ -228,7 +232,7 @@ async function download(format) {
       saveBlob(blob, safeName('pdf'));
       return;
     }
-    const response = await auth.fetch(`/api/cv-converter/render/${format}`, {
+    const response = await auth.fetch(`/api/cv-converter/render/${format}?template=${encodeURIComponent(selectedTemplate.value)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(canonical.value),
@@ -246,6 +250,19 @@ function onDrop(event) {
   isDragging.value = false;
   onFiles(event.dataTransfer.files);
 }
+
+// Re-render from the already parsed canonical model; switching styles never repeats LLM extraction.
+watch(selectedTemplate, async () => {
+  if (!canonical.value || processing.value || rendering.value) return;
+  revoke(resultUrl);
+  renderMs.value = null;
+  error.value = '';
+  try {
+    await renderPreview();
+  } catch (e) {
+    error.value = e?.message || 'Не удалось перестроить документ по выбранному шаблону.';
+  }
+});
 
 onBeforeUnmount(stopTimer);
 </script>
