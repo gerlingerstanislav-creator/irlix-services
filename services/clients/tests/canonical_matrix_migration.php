@@ -169,4 +169,39 @@ $check((bool) DB::table('client_contour_permissions')->where('role','org:sales')
     ->where('permission','attempts.view')->value('denied') === true,
     'Reapplying Sales V2 seed overwrote administrator explicit deny');
 
-echo "Clients canonical matrix data migration and API: PASS\n";
+// Adding a new platform role never grants access. Deleting it atomically
+// revokes both grants and explicit denies; re-adding is a clean slate.
+$syntheticRole = 'org:example-department';
+$check($service->addRole($syntheticRole, 42), 'New V2 role column could not be created');
+$check(!$service->addRole($syntheticRole, 42), 'Duplicate role column was created');
+$check(DB::table('client_contour_permissions')->where('role', $syntheticRole)->count()
+    === count(\\App\\Support\\ClientContourAccess::PERMISSION_LABELS),
+    'Created role does not contain all empty permission cells');
+$check(!DB::table('client_contour_permissions')->where('role', $syntheticRole)
+    ->where('allowed', true)->exists(), 'New role was granted permissions by default');
+$service->update([
+    'role' => $syntheticRole, 'permission' => 'clients.view',
+    'allowed' => true, 'scope' => 'all', 'denied' => false,
+], 42);
+$service->update([
+    'role' => $syntheticRole, 'permission' => 'contacts.view',
+    'allowed' => false, 'scope' => 'none', 'denied' => true,
+], 42);
+$check($service->removeRole($syntheticRole, 42), 'Existing role was not removed');
+$check(!$service->removeRole($syntheticRole, 42), 'Removed role was unexpectedly still present');
+$check(!DB::table('client_contour_permissions')->where('role', $syntheticRole)->exists(),
+    'Deleted role retains effective permissions');
+$check(!isset($service->matrix()[$syntheticRole]), 'Deleted role remains in matrix');
+$check(DB::table('client_contour_permission_audit')->where('role', $syntheticRole)
+    ->whereNull('after')->count() === count(\\App\\Support\\ClientContourAccess::PERMISSION_LABELS),
+    'Role removal was not audited for every permission');
+$check($service->addRole($syntheticRole, 42), 'Removed role could not be added back');
+$check(!DB::table('client_contour_permissions')->where('role', $syntheticRole)
+    ->where(static fn ($q) => $q->where('allowed', true)->orWhere('denied', true))->exists(),
+    'Re-added role resurrected revoked grants or denies');
+$check(!$service->removeRole('special:platform-admin', 42),
+    'Platform administrator column must remain locked');
+$check(isset($service->matrix()['special:platform-admin']['clients.view']),
+    'Platform administrator access was lost');
+
+echo "Clients canonical matrix data migration and API: PASS\\n";
