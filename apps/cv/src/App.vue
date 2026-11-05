@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { UiAppSidebar, UiAppTopbar, UiButton, UiErrorState, UiLoader } from '@irlix/ui';
 import { auth } from './auth';
 import SettingsView from './SettingsView.vue';
+import PermissionsView from './PermissionsView.vue';
 import DOMPurify from 'dompurify';
 import mammoth from 'mammoth';
 
@@ -13,7 +14,8 @@ const props = defineProps({
 const navItems = computed(() => [
   { id: 'convert', label: 'Конвертация', icon: 'document' },
   ...(props.canManageSettings
-    ? [{ id: 'settings', label: 'Настройки', icon: 'audit', groupStart: true }]
+    ? [{ id: 'settings', label: 'Настройки', icon: 'audit', groupStart: true },
+       { id: 'permissions', label: 'Доступы', icon: 'shield-check' }]
     : []),
 ]);
 const templates = [
@@ -299,6 +301,8 @@ onBeforeUnmount(stopTimer);
       <UiErrorState v-if="currentSection === 'not-found'" :status="404" back-href="/cv-converter/convert/" back-label="К конвертации" />
       <SettingsView v-else-if="currentSection === 'settings' && props.canManageSettings" />
       <UiErrorState v-else-if="currentSection === 'settings'" :status="403" back-href="/cv-converter/convert/" back-label="К конвертации" />
+      <PermissionsView v-else-if="currentSection === 'permissions' && props.canManageSettings" />
+      <UiErrorState v-else-if="currentSection === 'permissions'" :status="403" back-href="/cv-converter/convert/" back-label="К конвертации" />
 
       <div v-else-if="currentSection === 'convert'" class="workspace-wrap">
         <div v-if="error" class="error-banner">{{ error }}</div>
