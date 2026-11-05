@@ -356,7 +356,7 @@ const openPerson = id => navigate(`people/${id}`);
             <span class="specialists-filter-count">Технологий: {{ workspace.catalog.technologies.length }}</span>
             <button v-if="canEditTechnologyCatalog" class="primary" @click="openCreateTechnology()">+ Добавить технологию</button>
           </div>
-          <UiRegistryTable v-if="technologyTree.length" :columns="['53%','19%','18%','10%']" min-width="760px" density="compact" aria-label="Дерево технологий">
+          <UiRegistryTable v-if="technologyTree.length" :columns="['49%','18%','18%','15%']" min-width="800px" density="compact" aria-label="Дерево технологий">
             <template #head><tr><th>Технология</th><th>Алиас</th><th>Направление</th><th aria-label="Действия"></th></tr></template>
             <tr v-for="technology in technologyTree" :key="technology.id">
               <td>
