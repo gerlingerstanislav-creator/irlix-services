@@ -7,10 +7,15 @@ import SettingsView from './SettingsView.vue';
 import DOMPurify from 'dompurify';
 import mammoth from 'mammoth';
 
-const navItems = [
+const props = defineProps({
+  canManageSettings: { type: Boolean, default: false },
+});
+const navItems = computed(() => [
   { id: 'convert', label: 'Конвертация', icon: 'document' },
-  { id: 'settings', label: 'Настройки', icon: 'audit', groupStart: true },
-];
+  ...(props.canManageSettings
+    ? [{ id: 'settings', label: 'Настройки', icon: 'audit', groupStart: true }]
+    : []),
+]);
 const templates = [
   { id: 'irlix-cv', label: 'Irlix CV' },
   { id: 'irlix-cv-an', label: 'Irlix CV AN' },
@@ -292,7 +297,8 @@ onBeforeUnmount(stopTimer);
       </UiAppTopbar>
 
       <UiErrorState v-if="currentSection === 'not-found'" :status="404" back-href="/cv-converter/convert/" back-label="К конвертации" />
-      <SettingsView v-else-if="currentSection === 'settings'" />
+      <SettingsView v-else-if="currentSection === 'settings' && props.canManageSettings" />
+      <UiErrorState v-else-if="currentSection === 'settings'" :status="403" back-href="/cv-converter/convert/" back-label="К конвертации" />
 
       <div v-else-if="currentSection === 'convert'" class="workspace-wrap">
         <div v-if="error" class="error-banner">{{ error }}</div>
