@@ -7,6 +7,7 @@ use App\Http\Controllers\ClientCardController;
 use App\Http\Controllers\ClientContourPermissionsController;
 use App\Http\Controllers\ClientsController;
 use App\Http\Controllers\ClientSpecialistsController;
+use App\Http\Controllers\SpecialistsProjectDirectoryController;
 use App\Http\Controllers\ClientAccountHandoffsController;
 use App\Http\Controllers\ClientLogoController;
 use App\Http\Controllers\ContactPeopleController;
@@ -29,6 +30,7 @@ Route::delete('/permissions/roles/{role}', [ClientContourPermissionsController::
 Route::get('/production-calendar', \App\Http\Controllers\ProductionCalendarController::class);
 Route::get('/specialists/filter-clients', [ClientSpecialistsController::class, 'clients']);
 Route::get('/specialists/client-members', [ClientSpecialistsController::class, 'members']);
+Route::get('/specialists/people/{employee}/projects', [SpecialistsProjectDirectoryController::class, 'show'])->whereNumber('employee');
 
 Route::get('/clients/{client}/client-members', [ClientMembersController::class, 'index'])->whereNumber('client');
 Route::post('/clients/{client}/client-members', [ClientMembersController::class, 'store'])->whereNumber('client');
