@@ -352,7 +352,11 @@ class EmployeesAccess
             'equipment' => $equipmentAllowed,
             'finance' => $financeVisible,
             'recruitment' => $canRecruitment,
-            'cv-converter' => $privileged,
+            // CV conversion is available to verified production department
+            // managers; the same Employees-owned entitlement is published to
+            // Keycloak as service:cv-converter. A job title or inherited
+            // ancestor alias must not grant manager access.
+            'cv-converter' => $privileged || $isProductionManager,
             'storage' => $privileged || (getenv('STORAGE_V1_ACCESS_ENABLED') === '1'
                 && in_array(SpecialRoles::TopManagement, $normalizedRoles, true)
                 && $employee !== null && BrandbookGate::active($employee)),
