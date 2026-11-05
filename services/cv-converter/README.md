@@ -23,7 +23,7 @@ API:
 - `POST /api/render/docx?template=irlix-cv|irlix-cv-an` — принимает `CanonicalCv`, возвращает DOCX;
 - `POST /api/render/pdf?template=irlix-cv|irlix-cv-an` — принимает `CanonicalCv`, возвращает PDF из того же template-specific DOCX renderer и header `X-CV-Render-Ms` с серверным временем renderer. Без параметра выбирается существующий `irlix-cv`.
 
-`parse`, render и settings endpoints требуют platform Bearer JWT. Health endpoints используются инфраструктурой.
+`parse` и `render` требуют подписанный Bearer JWT с эффективным `service:cv-converter`. Employees выдаёт это разрешение администраторам платформы и действительным руководителям подразделений с `is_production=true` (по `departments.manager_id`, а не по названию должности). В legacy-режиме backend проверяет то же `services.cv-converter` через Employees. Для `GET/PUT /api/settings` и `POST /api/settings/test` дополнительно требуется `platform-admin`: руководители могут конвертировать CV, но не могут видеть или менять LLM credentials и provider. Режим `X-Irlix-Role-Preview` запрещён для всех CV API операций. После изменения service audience существующие связанные учётные записи ставятся в штатную очередь синхронизации Keycloak, затем требуется обновление JWT; в случае отсутствия/отзыва grant backend отвечает 403. Health endpoints используются инфраструктурой.
 
 ## Irlix CV AN — визуальный эталон
 
