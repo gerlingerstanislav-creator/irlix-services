@@ -42,7 +42,7 @@ class CvTemplateTest(unittest.TestCase):
     def test_legacy_template_keeps_existing_layout(self):
         text = paragraphs(render_docx(sample_cv()))
         self.assertIn('Навыки и умения:', text)
-        self.assertIn('Проекты', text)
+        self.assertIn('Опыт работы', text)
         self.assertNotIn('О СЕБЕ', text)
 
     def test_an_template_preserves_distinct_project_results(self):
