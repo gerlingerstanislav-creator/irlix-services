@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { UiBadge, UiButton, UiDrawer, UiPeriodPicker, UiSearchSelect , UiLoader } from '@irlix/ui';
-import { employeeTreeOptions } from '../staffTree';
+import { departmentOptions, employeeTreeOptions } from '../staffTree';
 
 const props = defineProps({
   access: { type: Object, required: true },
@@ -9,7 +9,8 @@ const props = defineProps({
   employees: { type: Array, default: () => [] },
   departments: { type: Array, default: () => [] },
 });
-const departmentId = ref('');
+const departmentIds = ref([]);
+const employmentStatuses = ref([]);
 const loading = ref(false);
 const busy = ref(false);
 const error = ref('');
@@ -24,7 +25,8 @@ const canPlan = computed(() => !!props.access?.permissions?.['employees.fot.plan
 const canApprove = computed(() => !!props.access?.permissions?.['employees.fot.approve']);
 const months = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 const scopedEmployeeOptions = computed(() => employeeTreeOptions(props.departments, props.employees));
-const availableDepartments = computed(() => (overview.value.departments || props.departments).map(dept => ({ value: String(dept.id), label: dept.name })));
+const availableDepartments = computed(() => departmentOptions(overview.value.departments || []));
+const statusOptions = ['Трудоустроен', 'Уволен', 'Ожидает трудоустройства'].map(status => ({ value: status, label: status }));
 const currentYear = new Date().getFullYear();
 const statusNames = { draft: 'Черновик', pending: 'На согласовании', returned: 'На доработке', approved: 'Согласован', cancelled: 'Отменён' };
 const statusTones = { draft: 'neutral', pending: 'info', returned: 'warning', approved: 'success', cancelled: 'neutral' };
@@ -44,7 +46,8 @@ async function load() {
   error.value = '';
   try {
     const qs = new URLSearchParams({ year: String(props.year) });
-    if (departmentId.value) qs.set('department_id', String(departmentId.value));
+    departmentIds.value.forEach(id => qs.append('department_ids[]', String(id)));
+    employmentStatuses.value.forEach(status => qs.append('employment_statuses[]', status));
     overview.value = await api('/api/employees/fot/overview?' + qs);
   } catch (e) { error.value = e.message; overview.value = { summary: {}, employees: [] }; }
   try {
@@ -53,7 +56,7 @@ async function load() {
   } catch (e) { error.value = error.value || e.message; }
   finally { loading.value = false; }
 }
-watch([() => props.year, departmentId], load);
+watch([() => props.year, departmentIds, employmentStatuses], load);
 onMounted(load);
 function openForm(review = null, employeeId = '') {
   selectedReview.value = review;
@@ -102,14 +105,18 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
   <div class="fot-page">
     <div class="fot-toolbar">
       <div class="fot-department-filter">
-        <span>Направление</span>
-        <UiSearchSelect v-model="departmentId" :options="availableDepartments" placeholder="Все доступные" search-placeholder="Поиск направления" aria-label="Направление ФОТ" />
+        <span>Направления</span>
+        <UiSearchSelect v-model="departmentIds" :options="availableDepartments" multiple placeholder="Все доступные" search-placeholder="Поиск направления" aria-label="Направления ФОТ" />
+      </div>
+      <div class="fot-department-filter">
+        <span>Статус трудоустройства</span>
+        <UiSearchSelect v-model="employmentStatuses" :options="statusOptions" multiple placeholder="Все статусы" search-placeholder="Поиск статуса" aria-label="Статус трудоустройства для ФОТ" />
       </div>
     </div>
     <div class="fot-stat-grid">
-      <div><small>Текущий ФОТ за год</small><strong>{{ price(currentTotal) }}</strong></div>
-      <div><small>Плановый ФОТ за год</small><strong>{{ price(plannedTotal) }}</strong></div>
-      <div><small>Изменение ФОТ</small><strong :class="difference > 0 ? 'fot-positive' : ''">{{ difference > 0 ? '+' : '' }}{{ price(difference) }}</strong></div>
+      <div><small>Текущий ФОТ за год</small><span class="fot-stat-value">{{ price(currentTotal) }}</span></div>
+      <div><small>Плановый ФОТ за год</small><span class="fot-stat-value">{{ price(plannedTotal) }}</span></div>
+      <div><small>Изменение ФОТ</small><span class="fot-stat-value">{{ difference > 0 ? '+' : '' }}{{ price(difference) }}</span></div>
     </div>
     <p v-if="error" class="fot-error" role="alert">{{ error }}</p>
     <section class="fot-table-shell irlix-registry-panel">
@@ -121,7 +128,7 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
             <tr class="fot-total"><th>Текущий ФОТ</th><td v-for="m in 12" :key="m">{{ price(overview.summary[m]?.current) }}</td></tr>
             <tr class="fot-total"><th>Плановый ФОТ</th><td v-for="m in 12" :key="m">{{ price(overview.summary[m]?.planned) }}</td></tr>
             <tr class="fot-total fot-diff"><th>Разница</th><td v-for="m in 12" :key="m">{{ price(overview.summary[m]?.difference) }}</td></tr>
-            <tr v-if="!overview.employees?.length"><td colspan="13" class="fot-empty">Нет сотрудников с ФОТ за выбранный период</td></tr>
+            <tr v-if="!overview.employees?.length"><td colspan="13" class="fot-empty">Нет сотрудников, трудоустроенных в выбранных направлениях за этот год</td></tr>
             <tr v-for="employee in overview.employees || []" :key="employee.id">
               <th><button class="fot-person" type="button" @click="openForm(null, employee.id)" :disabled="!canPlan">{{ employee.name }}</button></th>
               <td v-for="m in 12" :key="m" :class="{ 'fot-modified': employee.months[m]?.planned !== employee.months[m]?.current }">
@@ -178,26 +185,27 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
 .fot-page{padding:10px 16px 16px;display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;height:100%;overflow-y:auto}
 .fot-toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
 .fot-department-filter,.fot-form label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--irlix-color-text-muted)}
-.fot-department-filter .ui-search-select{min-width:220px}
+.fot-department-filter .ui-search-select{min-width:230px}
 .fot-form input,.fot-form textarea,.fot-review-row input{height:36px;padding:7px 10px;border:1px solid var(--irlix-color-border);background:var(--irlix-color-bg);color:var(--irlix-color-text);border-radius:8px;font:inherit}
 .fot-form textarea{height:auto;min-height:96px}
 .fot-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .fot-stat-grid > div{min-width:0;padding:2px 0}
 .fot-stat-grid small{display:block;color:var(--irlix-color-text-muted)}
-.fot-stat-grid strong{display:block;margin-top:6px;font-size:18px;font-weight:700}
-.fot-positive{color:var(--irlix-color-primary-text)}
+.fot-stat-value{display:block;margin-top:6px;font-size:18px;font-weight:400;color:var(--irlix-color-text)}
 .fot-table-shell{min-height:310px;min-width:0;flex:none}
 .fot-table-scroll{overflow:auto;max-height:min(55vh,580px)}
 .fot-matrix{border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums;min-width:1500px;width:100%;font-size:12px}
 .fot-matrix th,.fot-matrix td{padding:8px 9px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--irlix-color-border)}
+.fot-matrix td{font-weight:400;color:var(--irlix-color-text)}
 .fot-matrix td{min-width:108px}
 .fot-matrix thead th{position:sticky;top:0;background:var(--irlix-color-bg);z-index:2}
 .fot-matrix th:first-child{position:sticky;left:0;z-index:1;min-width:220px;max-width:220px;text-align:left;background:var(--irlix-color-bg)}
 .fot-matrix thead th:first-child{z-index:3}
-.fot-total th,.fot-total td{font-weight:700;background:var(--irlix-color-bg)}
-.fot-diff td{color:var(--irlix-color-primary-text)}
+.fot-total th,.fot-total td{background:var(--irlix-color-bg)}
+.fot-total th{font-weight:600}
+.fot-total td{font-weight:400;color:var(--irlix-color-text)}
 .fot-modified{background:color-mix(in srgb, var(--irlix-color-primary) 8%, transparent)}
-.fot-matrix td small{display:block;font-size:10px;color:var(--irlix-color-text-muted)}
+.fot-matrix td small{display:block;font-size:10px;font-weight:400;color:var(--irlix-color-text)}
 .fot-person{border:0;background:none;color:inherit;cursor:pointer;text-align:left;font-weight:600}
 .fot-person:disabled{cursor:default}
 .fot-review-tag{display:block;padding:2px 0;font-size:10px;color:var(--irlix-color-primary-text);background:none;border:0;cursor:pointer}
