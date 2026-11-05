@@ -38,14 +38,23 @@ final class SalaryReviewController extends Controller
         $access = $this->access($request, 'employees.fot.view');
         $data = Validator::make($request->query(), [
             'year' => ['required', 'integer', 'between:2000,2100'],
-            'department_id' => ['nullable', 'integer', 'exists:departments,id'],
+            'department_ids' => ['sometimes', 'array', 'max:500'],
+            'department_ids.*' => ['integer', 'distinct', 'exists:departments,id'],
+            'employment_statuses' => ['sometimes', 'array', 'max:3'],
+            'employment_statuses.*' => [
+                'string', 'distinct', Rule::in(['Трудоустроен', 'Уволен', 'Ожидает трудоустройства']),
+            ],
         ])->validate();
         $permitted = array_map('intval', $access['department_ids'] ?? []);
-        $departmentId = isset($data['department_id']) ? (int) $data['department_id'] : null;
-        if ($departmentId !== null && !in_array($departmentId, $permitted, true)) {
-            return response()->json(['message' => 'Подразделение недоступно'], 403);
+        $departments = array_map('intval', $data['department_ids'] ?? []);
+        foreach ($departments as $departmentId) {
+            if (!in_array($departmentId, $permitted, true)) {
+                return response()->json(['message' => 'Подразделение недоступно'], 403);
+            }
         }
-        $result = $this->payroll->overview((int) $data['year'], $permitted, $departmentId);
+        $result = $this->payroll->overview(
+            (int) $data['year'], $permitted, $departments, $data['employment_statuses'] ?? []
+        );
         $status = $result['status'];
         unset($result['status']);
         return response()->json($status === 200 ? ['data' => $result['data']] : $result, $status);
