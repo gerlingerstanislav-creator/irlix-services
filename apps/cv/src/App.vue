@@ -38,6 +38,7 @@ let stageTimer = null;
 
 const sourceKind = computed(() => sourceFile.value?.name?.toLowerCase().endsWith('.pdf') ? 'pdf' : 'docx');
 const hasResult = computed(() => Boolean(canonical.value && resultUrl.value));
+const sourceWarnings = computed(() => (canonical.value?.warnings || []).filter(item => item.startsWith('В исходнике заявлено')));
 const canConvert = computed(() => Boolean(sourceFile.value && !processing.value && !rendering.value));
 const selectedTemplateLabel = computed(() => templates.find(item => item.id === selectedTemplate.value)?.label || 'Irlix CV');
 const statusText = computed(() => {
@@ -335,6 +336,11 @@ onBeforeUnmount(stopTimer);
                 <button class="secondary-btn" type="button" :disabled="!hasResult || downloading" @click="download('docx')">{{ downloading === 'docx' ? 'Готовим…' : 'DOCX' }}</button>
                 <button class="primary-btn" type="button" :disabled="!hasResult || downloading" @click="download('pdf')">{{ downloading === 'pdf' ? 'Готовим…' : 'PDF' }}</button>
               </div>
+            </div>
+
+            <div v-if="sourceWarnings.length" class="cv-data-warning" role="status">
+              <b>Проверьте расхождение в исходном CV</b>
+              <span v-for="(warning, index) in sourceWarnings" :key="index">{{ warning }}</span>
             </div>
 
             <div v-if="!hasResult" class="result-empty">
