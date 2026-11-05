@@ -1,11 +1,59 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { UiButton, UiLoader, UiSearchSelect } from '@irlix/ui';
+import { moveRoleBefore, orderedRoles, roleTreeOptions, shiftRole } from '../permissionRoleLayout.js';
 
-const data = ref({ roles: [], available_roles: [], permissions: [], matrix: {}, scopes: [], can_manage: false });
+const data = ref({ roles: [], available_roles: [], role_tree: [], permissions: [], matrix: {}, scopes: [], can_manage: false });
 const loading = ref(false);
 const error = ref('');
 const saving = ref('');
+const draggedRole = ref('');
+const hoveredRole = ref('');
+const COLUMN_ORDER_KEY = 'irlix.clients.permissions.column-order.v1';
+function savedColumnOrder() {
+  try {
+    const keys = JSON.parse(window.localStorage.getItem(COLUMN_ORDER_KEY) || '[]');
+    return Array.isArray(keys) && keys.every(key => typeof key === 'string') ? keys : [];
+  } catch { return []; }
+}
+const columnOrder = ref(savedColumnOrder());
+const displayedRoles = computed(() => orderedRoles(data.value.roles, data.value.role_tree, columnOrder.value));
+
+function keepColumnOrder(next) {
+  columnOrder.value = next.map(role => role.key);
+  try { window.localStorage.setItem(COLUMN_ORDER_KEY, JSON.stringify(columnOrder.value)); }
+  catch { /* Local storage can be disabled; current-page order still works. */ }
+}
+function shiftColumn(key, direction) {
+  const current = displayedRoles.value;
+  const next = shiftRole(current, key, direction);
+  if (next !== current) keepColumnOrder(next);
+}
+function dragStart(role, event) {
+  draggedRole.value = role.key;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', role.key);
+}
+function dragOver(role, event) {
+  if (!draggedRole.value || draggedRole.value === role.key) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  hoveredRole.value = role.key;
+}
+function dropColumn(role, event) {
+  event.preventDefault();
+  const source = draggedRole.value;
+  if (source && source !== role.key) {
+    const next = moveRoleBefore(displayedRoles.value, source, role.key);
+    if (next !== displayedRoles.value) keepColumnOrder(next);
+  }
+  draggedRole.value = '';
+  hoveredRole.value = '';
+}
+function dragEnd() {
+  draggedRole.value = '';
+  hoveredRole.value = '';
+}
 const groups = [
   { key: 'clients', label: 'Лиды и клиенты', prefixes: ['leads.', 'clients.', 'contacts.', 'reports.'] },
   { key: 'requests', label: 'Запросы', prefixes: ['requests.', 'positions.', 'attempts.'] },
@@ -23,12 +71,10 @@ const permissionGroups = computed(() => {
   }).filter(group => group.permissions.length);
 });
 
-const unassignedRoles = computed(() => {
-  const assigned = new Set(data.value.roles.map(role => role.key));
-  return (data.value.available_roles || [])
-    .filter(role => !role.locked && !assigned.has(role.key))
-    .map(role => ({ value: role.key, label: role.label }));
-});
+const unassignedRoles = computed(() => roleTreeOptions(
+  data.value.role_tree, data.value.available_roles, data.value.roles,
+));
+const hasUnassignedRoles = computed(() => unassignedRoles.value.some(option => option.kind !== 'group'));
 
 async function api(url, options = {}) {
   const response = await fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json' } });
@@ -46,7 +92,7 @@ async function load() {
 }
 
 async function addRole(role) {
-  if (!role || !data.value.can_manage || saving.value || !unassignedRoles.value.some(option => option.value === role)) return;
+  if (!role || !data.value.can_manage || saving.value || !unassignedRoles.value.some(option => option.kind !== 'group' && option.value === role)) return;
   saving.value = `add:${role}`;
   error.value = '';
   try {
@@ -96,8 +142,8 @@ onMounted(load);
         class="permissions-role-select"
         :model-value="''"
         :options="unassignedRoles"
-        :disabled="loading || !!saving || !unassignedRoles.length"
-        :placeholder="unassignedRoles.length ? 'Выберите роль платформы' : 'Все роли добавлены'"
+        :disabled="loading || !!saving || !hasUnassignedRoles"
+        :placeholder="hasUnassignedRoles ? 'Выберите роль платформы' : 'Все роли добавлены'"
         search-placeholder="Найти роль"
         aria-label="Добавить роль в матрицу клиентов"
         :clearable="false"
@@ -110,12 +156,19 @@ onMounted(load);
       <table class="permissions-table">
         <colgroup>
           <col class="permissions-name-col">
-          <col v-for="role in data.roles" :key="role.key" class="permissions-role-col">
+          <col v-for="role in displayedRoles" :key="role.key" class="permissions-role-col">
         </colgroup>
         <thead>
           <tr>
             <th scope="col">Разрешение</th>
-            <th v-for="role in data.roles" :key="role.key" scope="col">
+            <th v-for="role in displayedRoles" :key="role.key" scope="col"
+                :class="{ 'permissions-drop-target': hoveredRole === role.key }"
+                draggable="true"
+                @dragstart="dragStart(role, $event)"
+                @dragover="dragOver(role, $event)"
+                @dragleave="hoveredRole = hoveredRole === role.key ? '' : hoveredRole"
+                @drop="dropColumn(role, $event)"
+                @dragend="dragEnd">
               <div class="permissions-role-heading">
                 <span :title="role.label">{{ role.label }}</span>
                 <UiButton
@@ -127,6 +180,19 @@ onMounted(load);
                   @click="removeRole(role)"
                 >×</UiButton>
               </div>
+              <div class="permissions-role-order">
+                <span class="permissions-role-grip" title="Перетащите заголовок, чтобы переместить столбец" aria-hidden="true">⠿</span>
+                <UiButton variant="ghost"
+                  :disabled="displayedRoles[0]?.key === role.key"
+                  :title="`Переместить «${role.label}» влево`"
+                  :aria-label="`Переместить «${role.label}» влево`"
+                  @click="shiftColumn(role.key, -1)">←</UiButton>
+                <UiButton variant="ghost"
+                  :disabled="displayedRoles[displayedRoles.length - 1]?.key === role.key"
+                  :title="`Переместить «${role.label}» вправо`"
+                  :aria-label="`Переместить «${role.label}» вправо`"
+                  @click="shiftColumn(role.key, 1)">→</UiButton>
+              </div>
             </th>
           </tr>
         </thead>
@@ -134,11 +200,11 @@ onMounted(load);
           <template v-for="group in permissionGroups" :key="group.key">
             <tr class="permissions-group-row">
               <th class="permissions-group-title" scope="rowgroup">{{ group.label }}</th>
-              <td v-for="role in data.roles" :key="role.key" aria-hidden="true"></td>
+              <td v-for="role in displayedRoles" :key="role.key" aria-hidden="true"></td>
             </tr>
             <tr v-for="permission in group.permissions" :key="permission.key">
               <th scope="row" class="permissions-label">{{ permission.label }}</th>
-              <td v-for="role in data.roles" :key="role.key">
+              <td v-for="role in displayedRoles" :key="role.key">
                 <select
                   :aria-label="`${permission.label}: ${role.label}`"
                   :value="data.matrix?.[role.key]?.[permission.key]?.denied ? 'deny' : (data.matrix?.[role.key]?.[permission.key]?.scope || 'none')"
@@ -205,7 +271,8 @@ onMounted(load);
   position: sticky;
   top: 0;
   z-index: 3;
-  height: 48px;
+  height: 68px;
+  vertical-align: top;
   background: var(--irlix-color-surface-muted);
 }
 .permissions-table thead th:first-child {
@@ -242,6 +309,14 @@ onMounted(load);
   line-height: 1.15;
 }
 .permissions-role-heading .ui-button { flex: none; padding: 0 4px; }
+.permissions-table thead th:not(:first-child) { cursor: grab; }
+.permissions-table thead th.permissions-drop-target {
+  outline: 2px solid var(--irlix-color-primary);
+  outline-offset: -2px;
+}
+.permissions-role-order { display: flex; align-items: center; justify-content: flex-end; gap: 3px; padding-top: 3px; }
+.permissions-role-order .ui-button { min-width: 25px; padding: 0 4px; }
+.permissions-role-grip { color: var(--irlix-color-text-muted); margin-right: auto; font-size: 15px; }
 .permissions-table select {
   width: 100%;
   height: 30px;
