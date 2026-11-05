@@ -16,6 +16,37 @@ $roles = fn (int $id,int $department,array $special=[]) =>
     RoleLabels::resolve((object) ['id'=>$id,'department_id'=>$department], $departments, $special);
 $check = fn ($actual,$expected) => $actual === $expected || throw new RuntimeException(
     'Expected '.json_encode($expected).' got '.json_encode($actual));
+
+$production = [
+    (object) ['id'=>50,'alias'=>'development','parent_id'=>null,'manager_id'=>700,'is_production'=>true],
+    (object) ['id'=>51,'alias'=>'backend','parent_id'=>50,'manager_id'=>700,'is_production'=>true],
+    (object) ['id'=>52,'alias'=>'legal','parent_id'=>null,'manager_id'=>701,'is_production'=>false],
+    (object) ['id'=>53,'alias'=>'frontend','parent_id'=>50,'manager_id'=>null,'is_production'=>true],
+];
+$lead = (object) ['id'=>700,'department_id'=>53];
+$legal = (object) ['id'=>701,'department_id'=>52];
+$check(RoleLabels::managesProductionDirection($lead, $production), true);
+$check(RoleLabels::managesProductionDirection($legal, $production), false);
+$check(in_array('production-direction-head', RoleLabels::resolve($lead, $production), true), true);
+$check(in_array('production-direction-head', RoleLabels::resolve($legal, $production), true), false);
+$check(in_array('special:production-direction-head',
+    RoleLabels::publishedRoleClaims($lead, $production), true), true);
+$check(in_array('special:production-direction-head',
+    RoleLabels::publishedRoleClaims($legal, $production), true), false);
+$check(in_array('special:production-direction-head',
+    RoleLabels::publishedRoleClaims($legal, $production, ['production-direction-head']), true), false);
+$check(in_array('production-direction-head',
+    RoleLabels::resolve($legal, $production, ['production-direction-head']), true), false);
+$check(isset(RoleLabels::canonicalRoleCatalog($production)['special:production-direction-head']), true);
+$production[0]->manager_id = null;
+$production[1]->manager_id = null;
+$check(RoleLabels::managesProductionDirection($lead, $production), false);
+$check(in_array('special:production-direction-head',
+    RoleLabels::publishedRoleClaims($lead, $production), true), false);
+$production[1]->manager_id = 700;
+$production[1]->is_production = false;
+$check(RoleLabels::managesProductionDirection($lead, $production), false);
+
 $check($roles(101,2), ['accounting']);
 $check($roles(200,3), ['account-management','account-manager','accounting','accounting-head','sales','sales-head']);
 $check($roles(200,3,['personnel-officer']), ['account-management','account-manager','accounting','accounting-head','personnel-officer','sales','sales-head']);
