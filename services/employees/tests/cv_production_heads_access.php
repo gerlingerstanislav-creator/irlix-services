@@ -86,6 +86,10 @@ $check($revoked['services']['cv-converter'] === false && !$grant($revoked),
     'Removing department manager did not revoke CV at source and Keycloak grant');
 
 $db->table('departments')->where('id', 2)->update(['manager_id'=>10]);
+$catalog = (new \App\Services\PermissionRuleService())->permissionCatalog();
+$check(isset($catalog['services.cv-converter']),
+    'CV service entry is absent from the configurable Employees role matrix');
+
 $db->table('employee_permission_rules')->insert([
     'role'=>'development-head', 'permission'=>'services.cv-converter', 'enabled'=>0,
 ]);
