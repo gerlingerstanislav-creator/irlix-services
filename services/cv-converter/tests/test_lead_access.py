@@ -182,15 +182,19 @@ class CvPermissionMatrixTest(unittest.TestCase):
         self.assertEqual(exc.exception.status_code, 503)
 
     def test_fastapi_routes_bind_local_cv_permission_vs_admin(self):
-        actual = {route.path: route.dependant.dependencies[0].call
+        actual = {(route.path, method): route.dependant.dependencies[0].call
                   for route in app.routes
-                  if getattr(route, 'dependant', None)
-                  and route.dependant.dependencies}
+                  if getattr(route, 'dependant', None) and route.dependant.dependencies
+                  for method in route.methods}
         for path in ('/api/parse', '/api/render/docx', '/api/render/pdf'):
-            self.assertIs(actual[path], require_cv_access)
-        for path in ('/api/settings', '/api/settings/test', '/api/permissions'):
-            self.assertIs(actual[path], require_platform_admin
-                          if path != '/api/permissions' else require_platform_admin)
+            self.assertIs(actual[(path, 'POST')], require_cv_access)
+        for path, method in (('/api/settings', 'GET'), ('/api/settings', 'PUT'),
+                             ('/api/settings/test', 'POST'),
+                             ('/api/permissions', 'GET')):
+            self.assertIs(actual[(path, method)], require_platform_admin)
+        from app.main import require_cv_service
+        for method in ('PUT', 'DELETE'):
+            self.assertIs(actual[('/api/permissions', method)], require_cv_service)
 
 
 class JwtValidationTest(unittest.TestCase):
