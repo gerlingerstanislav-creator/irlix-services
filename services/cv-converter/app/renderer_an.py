@@ -1,11 +1,13 @@
-"""Minimalist single-column IRLIX CV AN renderer.
+"""One-column IRLIX CV AN layout, matching the approved DOCX visual reference.
 
-The template is a presentation of CanonicalCv, never an extraction pipeline.
-It omits absent facts and preserves explicit project outcomes separately from duties.
+This is presentation only: content must come from CanonicalCv, not from the
+reference candidate. Missing fields stay missing; results are not tasks.
 """
 from __future__ import annotations
 
+import base64
 from io import BytesIO
+from pathlib import Path
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -15,19 +17,21 @@ from docx.shared import Mm, Pt, RGBColor
 
 from .models import CanonicalCv, ProjectItem, WorkExperienceItem
 
+INK = RGBColor(32, 42, 47)
+SECONDARY = RGBColor(90, 103, 108)
+ACCENT = RGBColor(0, 143, 141)
+RULE = 'DCE6E7'
+FONT = 'Inter'
 
-INK = RGBColor(34, 40, 49)
-SECONDARY = RGBColor(92, 99, 109)
-RULE = 'DDE2E8'
-FONT = 'Arial'
 
-
-def _write(container, value: str, *, size=9, bold=False, color=INK, after=3, before=0, keep=False):
+def _write(container, value: str, *, size=9, bold=False, color=INK,
+           after=3, before=0, keep=False):
     paragraph = container.add_paragraph()
-    paragraph.paragraph_format.space_before = Pt(before)
-    paragraph.paragraph_format.space_after = Pt(after)
-    paragraph.paragraph_format.line_spacing = 1.12
-    paragraph.paragraph_format.keep_with_next = keep
+    fmt = paragraph.paragraph_format
+    fmt.space_before = Pt(before)
+    fmt.space_after = Pt(after)
+    fmt.line_spacing = 1.15
+    fmt.keep_with_next = keep
     run = paragraph.add_run(value)
     run.font.name = FONT
     run.font.size = Pt(size)
@@ -38,11 +42,13 @@ def _write(container, value: str, *, size=9, bold=False, color=INK, after=3, bef
 
 
 def _heading(document, label: str):
-    paragraph = _write(document, label.upper(), size=11, bold=True, after=9, before=13, keep=True)
+    paragraph = _write(document, label.upper(), size=12, bold=True,
+                       color=ACCENT, after=8, before=16, keep=True)
     properties = paragraph._p.get_or_add_pPr()
     borders = OxmlElement('w:pBdr')
     bottom = OxmlElement('w:bottom')
-    for key, value in [('val', 'single'), ('sz', '6'), ('space', '3'), ('color', RULE)]:
+    for key, value in [('val', 'single'), ('sz', '5'),
+                       ('space', '3'), ('color', RULE)]:
         bottom.set(qn(f'w:{key}'), value)
     borders.append(bottom)
     properties.append(borders)
@@ -52,80 +58,127 @@ def _bullets(document, values: list[str]):
     for value in values:
         if not value.strip():
             continue
-        p = _write(document, value.strip(), size=9, after=3)
-        p.paragraph_format.left_indent = Mm(5)
-        p.paragraph_format.first_line_indent = Mm(-3)
-        p.runs[0].text = '• ' + value.strip()
+        paragraph = _write(document, '', after=2.25)
+        paragraph.paragraph_format.line_spacing = 1.13
+        paragraph.paragraph_format.left_indent = Mm(5.5)
+        paragraph.paragraph_format.first_line_indent = Mm(-3.3)
+        bullet = paragraph.add_run('•  ')
+        bullet.font.name = FONT
+        bullet.font.size = Pt(9)
+        bullet.font.color.rgb = ACCENT
+        text = paragraph.add_run(value.strip())
+        text.font.name = FONT
+        text.font.size = Pt(9)
+        text.font.color.rgb = INK
 
 
-def _label_and_values(document, label: str, values: list[str]):
+def _group(document, label: str, values: list[str]):
     if values:
-        _write(document, label, size=9.5, bold=True, before=7, after=3, keep=True)
+        _write(document, label, size=9.5, bold=True, before=8,
+               after=3, keep=True)
         _bullets(document, values)
+
+
+def _project_label(document, label: str):
+    _write(document, label, size=9, bold=True, color=ACCENT,
+           before=4, after=1.5, keep=True)
+
+
+def _result(document, values: list[str]):
+    if values:
+        _project_label(document, 'Результат')
+        for value in values:
+            if value.strip():
+                _write(document, value.strip(), after=3)
 
 
 def _project(document, item: ProjectItem):
     if item.name:
-        _write(document, item.name, size=11, bold=True, before=12, after=4, keep=True)
+        _write(document, item.name, size=11, bold=True,
+               before=13, after=3, keep=True)
     context = [value for value in [item.role, item.dates] if value]
     if item.team:
         context.append('Команда: ' + item.team)
     if item.technologies:
         context.append('Технологии: ' + ', '.join(item.technologies))
     if context:
-        _write(document, ' | '.join(context), size=8.5, color=SECONDARY, after=7, keep=True)
+        _write(document, ' | '.join(context), size=9,
+               color=SECONDARY, after=4, keep=True)
     if item.description:
-        _write(document, 'Описание проекта', size=9.5, bold=True, after=2, keep=True)
-        _write(document, item.description, after=6)
-    _label_and_values(document, 'Выполняемые задачи', item.responsibilities)
-    _label_and_values(document, 'Результат', item.results)
+        _project_label(document, 'Описание проекта')
+        _write(document, item.description)
+    if item.responsibilities:
+        _project_label(document, 'Выполняемые задачи')
+        _bullets(document, item.responsibilities)
+    _result(document, item.results)
 
 
 def _work(document, item: WorkExperienceItem):
     title = item.company or item.role
     if title:
-        _write(document, title, size=11, bold=True, before=12, after=4, keep=True)
-    detail = [value for value in [item.role if item.company else None, item.dates] if value]
+        _write(document, title, size=11, bold=True,
+               before=13, after=3, keep=True)
+    context = [value for value in [item.role if item.company else None, item.dates] if value]
     if item.technologies:
-        detail.append('Технологии: ' + ', '.join(item.technologies))
-    if detail:
-        _write(document, ' | '.join(detail), size=8.5, color=SECONDARY, after=7, keep=True)
+        context.append('Технологии: ' + ', '.join(item.technologies))
+    if context:
+        _write(document, ' | '.join(context), size=9,
+               color=SECONDARY, after=4, keep=True)
     if item.description:
-        _write(document, 'Описание', size=9.5, bold=True, after=2, keep=True)
-        _write(document, item.description, after=6)
-    _label_and_values(document, 'Выполняемые задачи', item.responsibilities)
-    _label_and_values(document, 'Результат', item.achievements)
+        _project_label(document, 'Описание проекта')
+        _write(document, item.description)
+    if item.responsibilities:
+        _project_label(document, 'Выполняемые задачи')
+        _bullets(document, item.responsibilities)
+    _result(document, item.achievements)
+
+
+def _brand_logo(section):
+    """Load the isolated brand-only asset, never a candidate CV."""
+    asset = Path(__file__).parent / 'assets' / 'irlix_logo.b64'
+    if not asset.is_file():
+        raise RuntimeError('Irlix CV AN brand asset is missing')
+    logo_bytes = base64.b64decode(asset.read_text(encoding='ascii'), validate=False)
+    header = section.header.paragraphs[0]
+    header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    header.paragraph_format.space_after = Pt(0)
+    header.add_run().add_picture(BytesIO(logo_bytes), width=Mm(15.7))
 
 
 def render_docx_an(cv: CanonicalCv) -> bytes:
-    """Build IRLIX CV AN from canonical facts; output is intentionally ephemeral."""
+    """Render only canonical facts with the approved AN styling."""
     document = Document()
     section = document.sections[0]
     section.page_width = Mm(210)
     section.page_height = Mm(297)
-    section.top_margin = Mm(17)
-    section.bottom_margin = Mm(19)
-    section.left_margin = Mm(19)
-    section.right_margin = Mm(19)
+    section.top_margin = Mm(17.5)
+    section.bottom_margin = Mm(15.5)
+    section.left_margin = Mm(21.5)
+    section.right_margin = Mm(21.5)
+    section.header_distance = Mm(6.5)
+    section.footer_distance = Mm(8)
+    _brand_logo(section)
 
     normal = document.styles['Normal']
     normal.font.name = FONT
     normal.font.size = Pt(9)
     normal.font.color.rgb = INK
+    normal.paragraph_format.space_after = Pt(3)
+    normal.paragraph_format.line_spacing = 1.15
 
-    # Footer intentionally contains only facts already present in the source CV.
+    name = cv.full_name or 'CV'
     footer = section.footer.paragraphs[0]
     footer.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    name = cv.full_name or 'CV'
     footer_text = ' · '.join(value for value in ['CV', name, cv.target_role] if value)
     footer_run = footer.add_run(footer_text)
     footer_run.font.name = FONT
-    footer_run.font.size = Pt(8)
+    footer_run.font.size = Pt(7)
     footer_run.font.color.rgb = SECONDARY
 
-    _write(document, name, size=27, bold=True, after=2, keep=True)
+    _write(document, name, size=25, bold=True, after=0, keep=True)
     if cv.target_role:
-        _write(document, cv.target_role, size=13, color=SECONDARY, after=7, keep=True)
+        _write(document, cv.target_role, size=12, bold=True,
+               color=ACCENT, after=5, keep=True)
     profile_exp = cv.experience.role or cv.experience.commercial
     profile_line = []
     if profile_exp:
@@ -133,38 +186,38 @@ def render_docx_an(cv: CanonicalCv) -> bytes:
     if cv.projects:
         profile_line.append(f'{len(cv.projects)} проектов')
     if profile_line:
-        _write(document, ' • '.join(profile_line), size=9.5, after=11)
+        _write(document, ' • '.join(profile_line), size=9,
+               color=SECONDARY, after=8)
 
     if cv.summary:
         _heading(document, 'О себе')
-        _write(document, cv.summary, size=9.5, after=7)
+        _write(document, cv.summary, after=7)
 
     if cv.skill_groups or cv.tools:
         _heading(document, 'Навыки и умения')
         for group in cv.skill_groups:
-            _label_and_values(document, group.title, group.items)
+            _group(document, group.title, group.items)
         if cv.tools:
-            _write(document, 'Используемые инструменты', size=9.5, bold=True, before=9, after=3, keep=True)
+            _write(document, 'Используемые инструменты', size=9.5,
+                   bold=True, before=8, after=3, keep=True)
             _write(document, ' · '.join(cv.tools), after=6)
 
     if cv.education or cv.languages:
         _heading(document, 'Образование и языки')
         for item in cv.education:
-            details = [value for value in [item.institution, item.degree, item.specialty, item.status] if value]
+            details = [v for v in [item.institution, item.degree, item.specialty, item.status] if v]
             details.extend(item.details)
             if details:
-                _write(document, 'Образование: ' + '; '.join(details), after=5)
+                _write(document, 'Образование: ' + '; '.join(details))
         for item in cv.languages:
             value = item.language + (': ' + item.level if item.level else '')
-            _write(document, value, after=5)
+            _write(document, value)
 
     contacts = cv.contacts
-    contact_values = [
-        ('Телефон', contacts.phone), ('Email', contacts.email),
-        ('Telegram', contacts.telegram), ('Город', contacts.location),
-        ('Формат работы', contacts.work_format),
-    ]
-    contact_lines = [f'{label}: {value}' for label, value in contact_values if value]
+    pairs = [('Телефон', contacts.phone), ('Email', contacts.email),
+             ('Telegram', contacts.telegram), ('Город', contacts.location),
+             ('Формат работы', contacts.work_format)]
+    contact_lines = [f'{label}: {value}' for label, value in pairs if value]
     contact_lines.extend(contacts.links)
     if contact_lines:
         _heading(document, 'Контакты и условия')
@@ -172,7 +225,8 @@ def render_docx_an(cv: CanonicalCv) -> bytes:
             _write(document, line)
 
     if cv.projects or cv.work_experience:
-        document.add_page_break()
+        # Unlike the legacy template, the AN reference flows directly from
+        # education into project experience on the same page.
         _heading(document, 'Опыт работы' + (' — ' + profile_exp if profile_exp else ''))
         for item in cv.work_experience:
             _work(document, item)
@@ -184,7 +238,7 @@ def render_docx_an(cv: CanonicalCv) -> bytes:
         for item in cv.additional:
             if item.question:
                 _write(document, item.question, bold=True, before=6, keep=True)
-            _write(document, item.answer, after=6)
+            _write(document, item.answer)
         for item in cv.extra_sections:
             if item.title:
                 _write(document, item.title, bold=True, before=6, keep=True)
