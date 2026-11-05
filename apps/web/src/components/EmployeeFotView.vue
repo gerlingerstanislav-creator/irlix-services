@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { UiBadge, UiButton, UiDrawer, UiPeriodPicker, UiSearchSelect , UiLoader } from '@irlix/ui';
 import { departmentOptions, employeeTreeOptions } from '../staffTree';
+import { fotOverviewQuery } from '../fotFilters';
 
 const props = defineProps({
   access: { type: Object, required: true },
@@ -45,9 +46,7 @@ async function load() {
   loading.value = true;
   error.value = '';
   try {
-    const qs = new URLSearchParams({ year: String(props.year) });
-    departmentIds.value.forEach(id => qs.append('department_ids[]', String(id)));
-    employmentStatuses.value.forEach(status => qs.append('employment_statuses[]', status));
+    const qs = fotOverviewQuery(props.year, departmentIds.value, employmentStatuses.value);
     overview.value = await api('/api/employees/fot/overview?' + qs);
   } catch (e) { error.value = e.message; overview.value = { summary: {}, employees: [] }; }
   try {
