@@ -1,10 +1,11 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { UiAppTopbar, UiAppSidebar, UiRegistryTable, UiFilterBar, UiSearchSelect, UiTreeToggle, UiErrorState, UiLoader } from '@irlix/ui';
+import { UiAppTopbar, UiAppSidebar, UiRegistryTable, UiFilterBar, UiSearchSelect, UiTreeToggle, UiErrorState, UiLoader, UiDrawer, UiButton } from '@irlix/ui';
 import { auth } from './auth';
 import SpecialistsRolePermissionsView from './SpecialistsRolePermissionsView.vue';
 import { accessibleSpecialistsNavigation, specialistsLandingPath } from './accessNavigation.js';
+import { scopedDashboardPeople, validDashboardDepartmentSelection } from './dashboardDirections.js';
 
 const roleMatrixAdmin=ref(false);
 const roleAccessPhase=ref('loading');
@@ -15,6 +16,9 @@ const canManageProfiles=computed(()=>effectivePermissions.value?.profiles_manage
 const canViewCatalog=computed(()=>effectivePermissions.value?.catalog_view === true);
 const canEditTechnologyCatalog=computed(()=>effectivePermissions.value?.catalog_manage === true);
 const navItems=computed(()=>accessibleSpecialistsNavigation(effectivePermissions.value, roleMatrixAdmin.value));
+const mainNavItems=computed(()=>navItems.value.filter(item=>item.id!=='role-permissions'));
+const bottomNavItems=computed(()=>navItems.value.filter(item=>item.id==='role-permissions'));
+const gradeChoices=['Junior','Middle','Middle+','Senior'];
 const loading = ref(true);
 const saving = ref(false);
 const catalogSaving = ref(false);
@@ -24,6 +28,9 @@ const activeRoute = useRoute();
 const router = useRouter();
 const selected = ref(null);
 const profileErrorStatus = ref(null);
+const projectAssignments=ref([]);
+const projectLoading=ref(false);
+const projectError=ref('');
 const filters = reactive({ search: '', department: '', grade: '', technology: '', status: 'active' });
 const editor = reactive({ grade: '', manager_note: '', technology_ids: [], competencies: [] });
 const technologyEditor = reactive({ id: null, name: '', alias: '', category: '', parent_id: '' });
@@ -311,7 +318,8 @@ const openPerson = id => navigate(`people/${id}`);
   <div class="specialists-app">
     <UiAppSidebar
       :section="sidebarSection"
-      :items="navItems"
+      :items="mainNavItems"
+      :bottom-items="bottomNavItems"
       current-service="specialists"
       :current-user="auth.user"
       :platform-access="() => auth.fetch('/api/employees/access/me')"
