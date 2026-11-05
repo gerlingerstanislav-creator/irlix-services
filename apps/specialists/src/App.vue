@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { UiAppTopbar, UiAppSidebar, UiRegistryTable, UiErrorState, UiLoader } from '@irlix/ui';
+import { UiAppTopbar, UiAppSidebar, UiRegistryTable, UiFilterBar, UiSearchSelect, UiTreeToggle, UiErrorState, UiLoader } from '@irlix/ui';
 import { auth } from './auth';
 import SpecialistsRolePermissionsView from './SpecialistsRolePermissionsView.vue';
 
@@ -131,6 +131,14 @@ const techStats = computed(() => {
 });
 const incompleteCount = computed(() => activePeople.value.filter((p) => !p.grade || !(p.technologies || []).length).length);
 const grades = computed(() => [...new Set(workspace.value.people.map((p) => p.grade).filter(Boolean))].sort());
+const departmentOptions = computed(() => (workspace.value.departments || []).map(d => ({ value: String(d.id), label: d.name })));
+const gradeOptions = computed(() => grades.value.map(grade => ({ value: grade, label: grade })));
+const technologyOptions = computed(() => (workspace.value.catalog.technologies || []).map(t => ({ value: String(t.id), label: t.name })));
+const statusOptions = [
+  { value: 'active', label: 'Работают' },
+  { value: 'dismissed', label: 'Уволены' },
+  { value: 'all', label: 'Все статусы' },
+];
 const filteredPeople = computed(() => {
   const q = filters.search.trim().toLowerCase();
   return workspace.value.people.filter((p) => {
@@ -305,10 +313,7 @@ const openPerson = id => navigate(`people/${id}`);
       <UiErrorState v-else-if="route.section==='role-permissions' && roleAccessPhase==='forbidden'" :status="403"/>
       <SpecialistsRolePermissionsView v-else-if="route.section==='role-permissions' && roleAccessPhase==='allowed'"/>
       <template v-else-if="route.section === 'dashboard'">
-        <header class="page-head">
-          <div><div class="eyebrow">Specialists</div><h1>Дашборд направления</h1><p>Профессиональный профиль команды и состояние компетенций.</p></div>
-          <div class="scope-pill">{{ workspace.scope === 'all' ? 'Все направления' : 'Моё направление и дочерние' }}</div>
-        </header>
+        <div class="dashboard-context"><span class="scope-pill">{{ workspace.scope === 'all' ? 'Все направления' : 'Моё направление и дочерние' }}</span></div>
         <section class="metric-grid">
           <article class="metric"><span>Работают</span><strong>{{ activePeople.length }}</strong><small>специалистов в доступном дереве</small></article>
           <article class="metric"><span>Уволены</span><strong>{{ dismissedPeople.length }}</strong><small>профили сохранены</small></article>
@@ -323,8 +328,14 @@ const openPerson = id => navigate(`people/${id}`);
       </template>
 
       <template v-else-if="route.section === 'people'">
-        <header class="page-head"><div><div class="eyebrow">Команда</div><h1>Специалисты</h1><p>Все сотрудники доступного вам дерева направлений, включая уволенных.</p></div></header>
-        <section class="filters"><input v-model="filters.search" placeholder="Поиск по имени, должности или направлению" /><select v-model="filters.department"><option value="">Все направления</option><option v-for="d in workspace.departments" :key="d.id" :value="String(d.id)">{{ d.name }}</option></select><select v-model="filters.grade"><option value="">Все грейды</option><option v-for="grade in grades" :key="grade">{{ grade }}</option></select><select v-model="filters.technology"><option value="">Все технологии</option><option v-for="t in workspace.catalog.technologies" :key="t.id" :value="String(t.id)">{{ t.name }}</option></select><select v-model="filters.status"><option value="active">Работают</option><option value="dismissed">Уволены</option><option value="all">Все</option></select></section>
+        <UiFilterBar class="specialists-filter-bar">
+          <input v-model="filters.search" class="specialists-search irlix-search" type="search" aria-label="Поиск специалистов" placeholder="Поиск по имени, должности или направлению" />
+          <UiSearchSelect v-model="filters.department" :options="departmentOptions" placeholder="Все направления" search-placeholder="Поиск направления" aria-label="Направление" />
+          <UiSearchSelect v-model="filters.grade" :options="gradeOptions" placeholder="Все грейды" search-placeholder="Поиск грейда" aria-label="Грейд" />
+          <UiSearchSelect v-model="filters.technology" :options="technologyOptions" placeholder="Все технологии" search-placeholder="Поиск технологии" aria-label="Технология" />
+          <UiSearchSelect v-model="filters.status" :options="statusOptions" placeholder="Статус" :clearable="false" aria-label="Статус специалиста" />
+          <span class="specialists-filter-count">Найдено: {{ filteredPeople.length }}</span>
+        </UiFilterBar>
         <section class="table-card table-card--registry"><UiRegistryTable class="shared-registry-content" :columns="['27%','16%','12%','25%','14%','6%']" min-width="1000px" aria-label="Специалисты" density="compact"><template #head><tr><th>Специалист</th><th>Направление</th><th>Грейд</th><th>Технологии</th><th>Статус</th><th></th></tr></template><tr v-for="person in filteredPeople" :key="person.id" :class="{ dismissed: person.employment_status === 'Уволен' }" @click="openPerson(person.id)"><td><div class="person-cell"><span class="avatar">{{ initials(person.full_name) }}</span><span><b>{{ person.full_name }}</b><small>{{ person.position || 'Должность не указана' }}</small></span></div></td><td>{{ person.department_name || '—' }}</td><td><span class="grade">{{ person.grade || 'Не указан' }}</span></td><td><div class="chips"><span v-for="t in (person.technologies || []).slice(0, 3)" :key="t.id">{{ t.name }}</span><span v-if="(person.technologies || []).length > 3">+{{ person.technologies.length - 3 }}</span><em v-if="!(person.technologies || []).length">Не заполнено</em></div></td><td><span :class="['status', person.employment_status === 'Уволен' ? 'off' : 'on']">{{ person.employment_status === 'Уволен' ? 'Уволен' : 'Работает' }}</span></td><td class="arrow">→</td></tr></UiRegistryTable><div v-if="!filteredPeople.length" class="empty padded">По заданным фильтрам специалистов нет.</div></section>
       </template>
 
@@ -339,9 +350,9 @@ const openPerson = id => navigate(`people/${id}`);
       </template>
 
       <template v-else-if="route.section === 'competencies'">
-        <header class="page-head"><div><div class="eyebrow">Source of truth</div><h1>Технологии и компетенции</h1><p>Корпоративный каталог профессиональных знаний.</p></div></header>
+        
         <section class="technology-panel panel">
-          <div class="panel-head"><div><h2>Технологии</h2><p>{{ workspace.catalog.technologies.length }} записей · поддерживается вложенность</p></div><button v-if="canEditTechnologyCatalog" class="primary" @click="openCreateTechnology()">+ Добавить технологию</button></div>
+          <div class="specialists-catalog-toolbar"><span class="specialists-filter-count">Технологий: {{ workspace.catalog.technologies.length }}</span><button v-if="canEditTechnologyCatalog" class="primary" @click="openCreateTechnology()">+ Добавить технологию</button></div>
           <div v-if="technologyTree.length" class="technology-table">
             <div class="technology-table-head"><span>Название</span><span>Алиас</span><span>Направление</span><span></span></div>
             <div v-for="technology in technologyTree" :key="technology.id" class="technology-row">
