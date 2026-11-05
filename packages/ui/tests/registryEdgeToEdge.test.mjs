@@ -53,5 +53,5 @@ test('Specialists and four Recruitment lists have flush full-height tables, but 
     assert.match(css,/\.content:has\(> \.table-card--registry\) > \.page-head\{[^}]*padding:12px 16px;/);
   }
   assert.match(read('apps/recruitment/src/AppMvp.vue'),/<template v-else-if="route.section === 'offers'">/);
-  assert.match(read('apps/specialists/src/App.vue'),/<template v-else-if="route.section === 'person'">/);
+  assert.match(read('apps/specialists/src/App.vue'),/<UiDrawer :open="route.section==='person'"/);
 });
