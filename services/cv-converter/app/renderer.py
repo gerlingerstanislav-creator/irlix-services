@@ -150,6 +150,11 @@ def _project_table(document: Document, project: ProjectItem):
         for item in project.responsibilities:
             _bullet(right, item)
 
+    if project.results:
+        _paragraph(right, 'Результаты', size=9.5, bold=True, space_after=3)
+        for item in project.results:
+            _bullet(right, item)
+
     document.add_paragraph().paragraph_format.space_after = Pt(8)
 
 
