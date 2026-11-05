@@ -130,6 +130,30 @@ class ClientContourAccess
         return array_keys($out);
     }
 
+    /**
+     * Employees publishes functional Account/Sales positions even when their
+     * holder works directly in Client Service, rather than a child department.
+     * Map them to existing canonical V2 columns only when both the signed JWT
+     * and the current authenticated Employees directory agree. A stale JWT,
+     * a directory-only value or a same-named Finance position cannot grant
+     * financial or client permissions.
+     */
+    public static function verifiedFunctionalMatrixLabels(array $signed, array $current): array
+    {
+        $mapping = [
+            'account-manager' => 'org:account-management',
+            'sales-manager' => 'org:sales',
+        ];
+        $labels = [];
+        foreach ($mapping as $functional => $canonical) {
+            if (in_array($functional, $signed, true)
+                && in_array($functional, $current, true)) {
+                $labels[] = $canonical;
+            }
+        }
+        return $labels;
+    }
+
     public function resolve(Request $request): array
     {
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
@@ -412,10 +436,13 @@ class ClientContourAccess
             // Only signed canonical identity labels select Clients' persisted
             // V2 rows. Old role aliases are never used for grant selection.
             $matrixRoles = $localRoleMode
-                ? self::currentIdentityLabels(
-                    $jwtLabels, (int) ($employee['id'] ?? 0),
-                    $departments->all(), $directoryEmployees->all()
-                )
+                ? array_values(array_unique([
+                    ...self::currentIdentityLabels(
+                        $jwtLabels, (int) ($employee['id'] ?? 0),
+                        $departments->all(), $directoryEmployees->all()
+                    ),
+                    ...self::verifiedFunctionalMatrixLabels($jwtFunctionalRoles, $verifiedFunctionalRoles),
+                ]))
                 : $roles;
             $explicitDenies = [];
             foreach (ClientContourPermission::query()->whereIn('role', $matrixRoles)->get() as $row) {
