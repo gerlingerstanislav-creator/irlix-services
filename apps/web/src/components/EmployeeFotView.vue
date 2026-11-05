@@ -5,10 +5,10 @@ import { employeeTreeOptions } from '../staffTree';
 
 const props = defineProps({
   access: { type: Object, required: true },
+  year: { type: Number, required: true },
   employees: { type: Array, default: () => [] },
   departments: { type: Array, default: () => [] },
 });
-const year = ref(new Date().getFullYear());
 const departmentId = ref('');
 const loading = ref(false);
 const busy = ref(false);
@@ -24,6 +24,7 @@ const canPlan = computed(() => !!props.access?.permissions?.['employees.fot.plan
 const canApprove = computed(() => !!props.access?.permissions?.['employees.fot.approve']);
 const months = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 const scopedEmployeeOptions = computed(() => employeeTreeOptions(props.departments, props.employees));
+const availableDepartments = computed(() => (overview.value.departments || props.departments).map(dept => ({ value: String(dept.id), label: dept.name })));
 const currentYear = new Date().getFullYear();
 const statusNames = { draft: 'Черновик', pending: 'На согласовании', returned: 'На доработке', approved: 'Согласован', cancelled: 'Отменён' };
 const statusTones = { draft: 'neutral', pending: 'info', returned: 'warning', approved: 'success', cancelled: 'neutral' };
@@ -43,7 +44,7 @@ async function load() {
   loading.value = true;
   error.value = '';
   try {
-    const qs = new URLSearchParams({ year: String(year.value) });
+    const qs = new URLSearchParams({ year: String(props.year) });
     if (departmentId.value) qs.set('department_id', String(departmentId.value));
     overview.value = await api('/api/employees/fot/overview?' + qs);
   } catch (e) { error.value = e.message; overview.value = { summary: {}, employees: [] }; }
@@ -53,7 +54,7 @@ async function load() {
   } catch (e) { error.value = error.value || e.message; }
   finally { loading.value = false; }
 }
-watch([year, departmentId], load);
+watch([() => props.year, departmentId], load);
 onMounted(load);
 function openForm(review = null, employeeId = '') {
   selectedReview.value = review;
@@ -64,6 +65,7 @@ function openForm(review = null, employeeId = '') {
   error.value = '';
   drawerOpen.value = true;
 }
+defineExpose({ openPlanReview: () => openForm() });
 async function save() {
   if (!canPlan.value || busy.value) return;
   if (!form.employee_id || !form.effective_month) { error.value = 'Укажите сотрудника и месяц'; return; }
@@ -100,19 +102,20 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
 <template>
   <div class="fot-page">
     <div class="fot-toolbar">
-      <label>Год <UiPeriodPicker v-model="year" mode="year" :min-year="currentYear - 2" :max-year="currentYear + 4" /></label>
-      <label>Направление <select v-model="departmentId" aria-label="Направление ФОТ"><option value="">Все доступные</option><option v-for="dept in overview.departments || departments" :key="dept.id" :value="String(dept.id)">{{ dept.name }}</option></select></label>
-      <UiButton v-if="canPlan" @click="openForm()">+ Запланировать пересмотр</UiButton>
+      <div class="fot-department-filter">
+        <span>Направление</span>
+        <UiSearchSelect v-model="departmentId" :options="availableDepartments" placeholder="Все доступные" search-placeholder="Поиск направления" aria-label="Направление ФОТ" />
+      </div>
     </div>
     <div class="fot-stat-grid">
-      <UiPanel><small>Текущий ФОТ за год</small><strong>{{ price(currentTotal) }}</strong></UiPanel>
-      <UiPanel><small>Плановый ФОТ за год</small><strong>{{ price(plannedTotal) }}</strong></UiPanel>
-      <UiPanel><small>Изменение ФОТ</small><strong :class="difference > 0 ? 'fot-positive' : ''">{{ difference > 0 ? '+' : '' }}{{ price(difference) }}</strong></UiPanel>
+      <div><small>Текущий ФОТ за год</small><strong>{{ price(currentTotal) }}</strong></div>
+      <div><small>Плановый ФОТ за год</small><strong>{{ price(plannedTotal) }}</strong></div>
+      <div><small>Изменение ФОТ</small><strong :class="difference > 0 ? 'fot-positive' : ''">{{ difference > 0 ? '+' : '' }}{{ price(difference) }}</strong></div>
     </div>
     <p v-if="error" class="fot-error" role="alert">{{ error }}</p>
-    <UiPanel class="fot-table-shell">
+    <UiPanel class="fot-table-shell irlix-registry-panel">
       <UiLoader v-if="loading" page label="Загрузка расчётов ФОТ" />
-      <div v-else class="fot-table-scroll">
+      <div v-else class="fot-table-scroll irlix-registry-scroll">
         <table class="fot-matrix">
           <thead><tr><th>Сотрудник / ФОТ</th><th v-for="month in months" :key="month">{{ month }}</th></tr></thead>
           <tbody>
@@ -133,7 +136,7 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
         </table>
       </div>
     </UiPanel>
-    <UiPanel v-if="canApprove && inbox.length" class="fot-register">
+    <section v-if="canApprove && inbox.length" class="fot-register">
       <h3>Ожидают моего согласования</h3>
       <div v-for="item in inbox" :key="item.id" class="fot-review-row">
         <div><strong>{{ item.employee_name }}</strong><small>{{ dateLabel(item.effective_month) }} · {{ price(item.gross_salary) }}</small></div>
@@ -141,8 +144,8 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
         <UiButton compact :disabled="busy" @click="reviewAction(item.id, 'decision', { decision: 'approved' })">Согласовать</UiButton>
         <UiButton compact variant="secondary" :disabled="busy || !comments[item.id]?.trim()" @click="reviewAction(item.id, 'decision', { decision: 'returned', comment: comments[item.id] })">Вернуть</UiButton>
       </div>
-    </UiPanel>
-    <UiPanel class="fot-register">
+    </section>
+    <section class="fot-register">
       <h3>Пересмотры зарплат</h3>
       <div v-if="!reviews.length" class="fot-empty">Пока нет запланированных пересмотров</div>
       <div v-for="item in reviews" :key="item.id" class="fot-review-row">
@@ -156,7 +159,7 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
           <p v-for="step in item.approvals" :key="step.id">{{ step.approver_name }} · {{ step.decision }} <span v-if="step.comment">— {{ step.comment }}</span></p>
         </details>
       </div>
-    </UiPanel>
+    </section>
     <UiDrawer :open="drawerOpen" :title="selectedReview ? 'Редактирование пересмотра' : 'Плановый пересмотр зарплаты'" width="520px" @close="drawerOpen=false">
       <form class="fot-form" @submit.prevent="save">
         <label>Сотрудник
@@ -173,13 +176,14 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
 </template>
 
 <style scoped>
-.fot-page{padding:16px 20px 24px;display:flex;flex-direction:column;gap:14px;min-width:0;min-height:0;height:100%;overflow-y:auto}
+.fot-page{padding:10px 16px 16px;display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;height:100%;overflow-y:auto}
 .fot-toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
-.fot-toolbar label,.fot-form label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--irlix-color-text-muted)}
-.fot-toolbar select,.fot-form input,.fot-form textarea,.fot-review-row input{height:36px;padding:7px 10px;border:1px solid var(--irlix-color-border);background:var(--irlix-color-bg);color:var(--irlix-color-text);border-radius:8px;font:inherit}
+.fot-department-filter,.fot-form label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--irlix-color-text-muted)}
+.fot-department-filter .ui-search-select{min-width:220px}
+.fot-form input,.fot-form textarea,.fot-review-row input{height:36px;padding:7px 10px;border:1px solid var(--irlix-color-border);background:var(--irlix-color-bg);color:var(--irlix-color-text);border-radius:8px;font:inherit}
 .fot-form textarea{height:auto;min-height:96px}
 .fot-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-.fot-stat-grid :deep(.irlix-panel){padding:12px}
+.fot-stat-grid > div{min-width:0;padding:2px 0}
 .fot-stat-grid small{display:block;color:var(--irlix-color-text-muted)}
 .fot-stat-grid strong{display:block;margin-top:6px;font-size:18px;font-weight:700}
 .fot-positive{color:var(--irlix-color-primary-text)}
@@ -198,7 +202,7 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
 .fot-person{border:0;background:none;color:inherit;cursor:pointer;text-align:left;font-weight:600}
 .fot-person:disabled{cursor:default}
 .fot-review-tag{display:block;padding:2px 0;font-size:10px;color:var(--irlix-color-primary-text);background:none;border:0;cursor:pointer}
-.fot-register{padding:12px;min-width:0}
+.fot-register{padding:0;min-width:0}
 .fot-register h3{margin:0 0 12px;font-size:15px}
 .fot-review-row{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:10px 0;border-bottom:1px solid var(--irlix-color-border)}
 .fot-review-row>div:first-child{margin-right:auto;min-width:190px}
@@ -209,5 +213,5 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
 .fot-error{padding:10px;color:var(--irlix-color-danger-text,#b42318)}
 .fot-form{display:flex;flex-direction:column;gap:18px}
 .fot-form-actions{display:flex;justify-content:flex-end;gap:8px}
-@media(max-width:760px){.fot-page{padding:12px}.fot-stat-grid{grid-template-columns:1fr}.fot-matrix th:first-child{min-width:150px;max-width:150px}}
+@media(max-width:760px){.fot-page{padding:8px 12px 12px}.fot-stat-grid{grid-template-columns:1fr}.fot-matrix th:first-child{min-width:150px;max-width:150px}}
 </style>
