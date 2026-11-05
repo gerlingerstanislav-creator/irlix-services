@@ -3,17 +3,20 @@
 Only synthetic people, companies and dates may be committed to this public repo.
 """
 import unittest
+import shutil
 from io import BytesIO
+
+import fitz
 
 from docx import Document
 
 from app.extractor import extract_text
 from app.models import CanonicalCv, ProjectItem
 from app.preparser import merge_preparsed, preparse_cv
-from app.renderer import render_docx
+from app.renderer import render_docx, render_pdf
 
 
-def two_column_cv() -> bytes:
+def two_column_cv(project_count: int = 2, tasks_per_project: int = 2) -> bytes:
     document = Document()
     for line in [
         'Тестовый Кандидат', 'Системный аналитик',
@@ -30,17 +33,19 @@ def two_column_cv() -> bytes:
     ]:
         document.add_paragraph(line)
 
-    for number, explicit_result in ((1, True), (2, False)):
+    for number in range(1, project_count + 1):
+        explicit_result = number == 1
         table = document.add_table(rows=2, cols=2)
         left = table.cell(0, 0).merge(table.cell(1, 0))
         right = table.cell(0, 1).merge(table.cell(1, 1))
-        for text in ['Системный аналитик', f'01.202{number} - 12.202{number}',
+        for text in ['Системный аналитик', f'01.{2020 + number} - 12.{2020 + number}',
                      'Команда 1 analyst, 2 backend, 1 qa', 'Postman, OpenAPI']:
             left.add_paragraph(text)
         for text in [
             f'Тестовая организация {number}', f'Тестовый проект {number}',
             'Описание проекта', f'Описание проекта {number} без домыслов.',
-            'Выполняемые задачи', f'Задача {number}.1', f'Задача {number}.2',
+            'Выполняемые задачи',
+            *[f'Задача {number}.{j}' for j in range(1, tasks_per_project + 1)],
         ]:
             right.add_paragraph(text)
         if explicit_result:
@@ -109,6 +114,24 @@ class TwoColumnCvTest(unittest.TestCase):
         self.assertIn('ОБРАЗОВАНИЕ И ЯЗЫКИ', text)
         self.assertIn('Новые методы аналитики.', text)
         self.assertNotIn('Несуществующее профессиональное достижение', text)
+
+    @unittest.skipUnless(shutil.which('libreoffice') or shutil.which('soffice'), 'LibreOffice required')
+    def test_long_cv_11_projects_99_tasks_survive_real_pdf_export(self):
+        source = extract_text('long_synthetic.docx', two_column_cv(project_count=11, tasks_per_project=9))
+        parsed = preparse_cv(source)
+        self.assertEqual(parsed.expected_projects, 11)
+        merged = merge_preparsed(CanonicalCv(), parsed)
+        self.assertEqual(len(merged.projects), 11)
+        self.assertEqual(sum(len(project.responsibilities) for project in merged.projects), 99)
+        pdf = render_pdf(merged, template='irlix-cv-an')
+        with fitz.open(stream=pdf, filetype='pdf') as document:
+            self.assertGreaterEqual(len(document), 4)
+            text = ' '.join(page.get_text() for page in document).replace('\n', ' ')
+            self.assertIn('Тестовый проект 1', text)
+            self.assertIn('Тестовый проект 11', text)
+            self.assertIn('Задача 11.9', text)
+            self.assertIn('Тестовый университет', text)
+            self.assertIn('Новые методы аналитики.', text)
 
     def test_unstructured_table_is_not_hallucinated_into_project(self):
         doc = Document()
