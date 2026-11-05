@@ -15,6 +15,13 @@ final class CashFlowReportService
     {
         $start = Carbon::createFromFormat('Y-m-d', $month.'-01')->startOfMonth()->toDateString();
         $end = Carbon::parse($start)->endOfMonth()->toDateString();
+        // Set by ClientsAccountingAccess from cashflow.view's own/team/all
+        // scope. An empty list denies all rows without querying Timesheets;
+        // null is reserved for a verified all-scope or platform-admin request.
+        $clientIds = $request->attributes->get('clients_cashflow_client_ids');
+        if (is_array($clientIds) && $clientIds === []) {
+            return ['month' => $month, 'rows' => []];
+        }
 
         // Index facts, approvals and exceptions once. The old implementation
         // rescanned every imported fact for each commercial term (O(terms * facts)).
@@ -37,6 +44,9 @@ final class CashFlowReportService
         $terms = MemberTerm::query()
             ->with('clientMember')
             ->whereNotNull('client_member_id')
+            ->when(is_array($clientIds), fn ($query) => $query->whereHas(
+                'clientMember', fn ($member) => $member->whereIn('client_id', $clientIds)
+            ))
             ->whereDate('valid_from', '<=', $end)
             ->where(fn ($query) => $query->whereNull('valid_to')->orWhereDate('valid_to', '>=', $start))
             ->get();
