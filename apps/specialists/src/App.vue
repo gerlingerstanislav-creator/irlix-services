@@ -329,6 +329,7 @@ watch(() => route.value.employeeId, id => {
 });
 
 const openPerson = id => navigate(`people/${id}`);
+const closePerson=()=>navigate('people');
 </script>
 
 <template>
@@ -398,23 +399,10 @@ const openPerson = id => navigate(`people/${id}`);
         <section class="table-card table-card--registry"><UiRegistryTable class="shared-registry-content" :columns="['27%','16%','12%','25%','14%','6%']" min-width="1000px" aria-label="Специалисты" density="compact"><template #head><tr><th>Специалист</th><th>Направление</th><th>Грейд</th><th>Технологии</th><th>Статус</th><th></th></tr></template><tr v-for="person in filteredPeople" :key="person.id" :class="{ dismissed: person.employment_status === 'Уволен' }" @click="openPerson(person.id)"><td><div class="person-cell"><span class="avatar">{{ initials(person.full_name) }}</span><span><b>{{ person.full_name }}</b><small>{{ person.position || 'Должность не указана' }}</small></span></div></td><td>{{ person.department_name || '—' }}</td><td><span class="grade">{{ person.grade || 'Не указан' }}</span></td><td><div class="chips"><span v-for="t in (person.technologies || []).slice(0, 3)" :key="t.id">{{ t.name }}</span><span v-if="(person.technologies || []).length > 3">+{{ person.technologies.length - 3 }}</span><em v-if="!(person.technologies || []).length">Не заполнено</em></div></td><td><span :class="['status', person.employment_status === 'Уволен' ? 'off' : 'on']">{{ person.employment_status === 'Уволен' ? 'Уволен' : 'Работает' }}</span></td><td class="arrow">→</td></tr></UiRegistryTable><div v-if="!filteredPeople.length" class="empty padded">По заданным фильтрам специалистов нет.</div></section>
       </template>
 
-      <template v-else-if="route.section === 'person'">
-        <button class="back" @click="navigate('people')">← К специалистам</button>
-        <section v-if="profileErrorStatus" class="panel" role="alert"><h1>{{ profileErrorStatus }} — {{ profileErrorStatus===403 ? 'Доступ запрещён' : 'Профиль не найден' }}</h1><p>{{ error }}</p><a href="/specialists/people">К специалистам</a></section>
-        <UiLoader v-else-if="!selected" page label="Загрузка профиля специалиста" />
-        <template v-else>
-          <header class="profile-head"><span class="avatar xl">{{ initials(selected.employee.full_name) }}</span><div><div class="profile-title"><h1>{{ selected.employee.full_name }}</h1><span v-if="selected.employee.employment_status === 'Уволен'" class="status off">Уволен</span></div><p>{{ selected.employee.position || 'Должность не указана' }} · {{ selected.employee.department_name || 'Направление не указано' }}</p></div></header>
-          <section class="profile-grid"><article class="panel form-panel"><h2>Профессиональный профиль</h2><label>Грейд<input v-model="editor.grade" :disabled="!canManageProfiles" placeholder="Например: Middle" /></label><label>Комментарий руководителя<textarea v-model="editor.manager_note" :disabled="!canManageProfiles" rows="5" placeholder="Краткий контекст по развитию специалиста"></textarea></label><h3>Технологии</h3><div v-if="workspace.catalog.technologies.length" class="choice-grid"><button v-for="t in workspace.catalog.technologies" :key="t.id" :class="{ selected: editor.technology_ids.includes(Number(t.id)) }" :disabled="!canManageProfiles" @click="toggleTechnology(t.id)">{{ t.name }}</button></div><div v-else class="empty">Каталог технологий пока пуст.</div><div v-if="canManageProfiles" class="actions"><button class="primary" :disabled="saving" @click="savePerson">{{ saving ? 'Сохраняем…' : 'Сохранить профиль' }}</button></div></article><aside class="stack"><article class="panel"><h2>Компетенции</h2><div v-if="selected.professional.competencies?.length" class="competency-list"><div v-for="c in selected.professional.competencies" :key="c.id"><span><b>{{ c.name }}</b><small>{{ c.technology_name || 'Общая компетенция' }}</small></span><strong>{{ c.level ?? '—' }}</strong></div></div><div v-else class="empty">Компетенции пока не оценены.</div></article><article class="panel future"><h2>Следующие этапы</h2><p>Assessments, обучение и Performance Review будут добавлены следующими итерациями.</p></article></aside></section>
-        </template>
-      </template>
-
       <template v-else-if="route.section === 'competencies'">
         
         <section class="specialists-catalog-section specialists-catalog-section--technologies">
-          <div class="specialists-catalog-toolbar">
-            <span class="specialists-filter-count">Технологий: {{ workspace.catalog.technologies.length }}</span>
-            <button v-if="canEditTechnologyCatalog" class="primary" @click="openCreateTechnology()">+ Добавить технологию</button>
-          </div>
+
           <UiRegistryTable v-if="technologyTree.length" :columns="['49%','18%','18%','15%']" min-width="800px" density="compact" aria-label="Дерево технологий">
             <template #head><tr><th>Технология</th><th>Алиас</th><th>Направление</th><th aria-label="Действия"></th></tr></template>
             <tr v-for="technology in technologyTree" :key="technology.id">
@@ -440,17 +428,6 @@ const openPerson = id => navigate(`people/${id}`);
             </tr>
           </UiRegistryTable>
           <div v-else class="empty padded">Каталог технологий пока пуст.</div>
-        </section>
-        <section class="specialists-catalog-section specialists-catalog-section--competencies">
-          <div class="specialists-catalog-toolbar"><span class="specialists-filter-count">Компетенций: {{ workspace.catalog.competencies.length }}</span></div>
-          <UiRegistryTable v-if="workspace.catalog.competencies.length" :columns="['55%','45%']" min-width="500px" density="compact" aria-label="Компетенции">
-            <template #head><tr><th>Компетенция</th><th>Технология</th></tr></template>
-            <tr v-for="competency in workspace.catalog.competencies" :key="competency.id">
-              <td>{{ competency.name }}</td>
-              <td>{{ competency.technology_name || 'Общая компетенция' }}</td>
-            </tr>
-          </UiRegistryTable>
-          <div v-else class="empty padded">Компетенции пока не заведены.</div>
         </section>
       </template>
       </div>
