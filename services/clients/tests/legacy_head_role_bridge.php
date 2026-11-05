@@ -29,4 +29,20 @@ $check(!in_array('head:sales', Access::currentIdentityLabels(
     ['head:sales'],41,
     [['id'=>3,'alias'=>'sales','parent_id'=>2,'manager_id'=>0]],$employees
 ),true), 'Revoked head role retained V2 privileges');
+// A direct Client Service job title has functional identity without org:sales
+// or org:account-management ancestry. Only signed AND live Employees-verified
+// functional claims may select those existing V2 business columns.
+$check(Access::verifiedFunctionalMatrixLabels(['sales-manager'], ['sales-manager']) === ['org:sales'],
+    'Verified Sales role did not select canonical V2 matrix column');
+$check(Access::verifiedFunctionalMatrixLabels(['account-manager'], ['account-manager']) === ['org:account-management'],
+    'Verified Account Manager role did not select canonical V2 matrix column');
+$check(Access::verifiedFunctionalMatrixLabels(['sales-manager'], []) === [],
+    'Stale Sales claim retained access after Employees role removal');
+$check(Access::verifiedFunctionalMatrixLabels([], ['sales-manager']) === [],
+    'Unsigned Sales role from directory escalated matrix rights');
+$check(Access::verifiedFunctionalMatrixLabels(['account-manager'], ['sales-manager']) === [],
+    'Unmatched signed functional role escalated matrix rights');
+$check(Access::verifiedFunctionalMatrixLabels(['finance'], ['sales-manager']) === [],
+    'Finance role was accepted as Clients Sales permission');
+
 echo "Clients canonical head identity: PASS\n";
