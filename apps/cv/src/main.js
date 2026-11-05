@@ -27,6 +27,11 @@ const start = async () => {
       renderNavigationError(document.querySelector('#app'), 403);
       return;
     }
+    const cvRights = await auth.fetch('/api/cv-converter/permissions/me', { cache: 'no-store' });
+    if (!cvRights.ok || (await cvRights.json())?.data?.permissions?.['cv.convert']?.allowed !== true) {
+      renderNavigationError(document.querySelector('#app'), 403);
+      return;
+    }
     const canManageSettings = Array.isArray(access.roles)
       && access.roles.some(role => String(role).trim().toLowerCase() === 'platform-admin');
     const app = createApp(App, { canManageSettings });
