@@ -19,6 +19,22 @@ const navItems=computed(()=>accessibleSpecialistsNavigation(effectivePermissions
 const mainNavItems=computed(()=>navItems.value.filter(item=>item.id!=='role-permissions'));
 const bottomNavItems=computed(()=>navItems.value.filter(item=>item.id==='role-permissions'));
 const gradeChoices=['Junior','Middle','Middle+','Senior'];
+
+const selectedDashboardDepartments=ref([]);
+const canFilterDashboard=computed(()=>canViewProfiles.value && (workspace.value.scope==='all' || (workspace.value.departments||[]).length>1));
+const dashboardDepartmentOptions=computed(()=>(workspace.value.departments||[]).map(d=>({value:String(d.id),label:d.name})));
+const dashboardPeople=computed(()=>scopedDashboardPeople(workspace.value.people,workspace.value.departments,selectedDashboardDepartments.value));
+const dashboardStorageKey=()=> 'irlix.specialists.dashboard.departments.v1.' + (workspace.value.actor?.id||'unknown');
+const rememberDashboardDepartments=(values)=>{
+  selectedDashboardDepartments.value=validDashboardDepartmentSelection(workspace.value.departments,values);
+  try { localStorage.setItem(dashboardStorageKey(),JSON.stringify(selectedDashboardDepartments.value)); } catch (_) {}
+};
+const restoreDashboardDepartments=()=>{
+  let stored=[];
+  try { stored=JSON.parse(localStorage.getItem(dashboardStorageKey())||'[]'); } catch (_) {}
+  selectedDashboardDepartments.value=validDashboardDepartmentSelection(workspace.value.departments,stored);
+};
+
 const loading = ref(true);
 const saving = ref(false);
 const catalogSaving = ref(false);
@@ -71,6 +87,7 @@ const loadWorkspace = async () => {
   try {
     if (canViewProfiles.value) {
       workspace.value = await api('/workspace');
+      restoreDashboardDepartments();
     } else if (canViewCatalog.value) {
       // A catalog-only role must not call the protected profiles workspace.
       // Specialists owns the catalog; access is checked by the backend.
@@ -128,8 +145,8 @@ const savePerson = async () => {
   }
 };
 
-const activePeople = computed(() => workspace.value.people.filter((p) => p.employment_status !== 'Уволен'));
-const dismissedPeople = computed(() => workspace.value.people.filter((p) => p.employment_status === 'Уволен'));
+const activePeople = computed(() => dashboardPeople.value.filter((p) => p.employment_status !== 'Уволен'));
+const dismissedPeople = computed(() => dashboardPeople.value.filter((p) => p.employment_status === 'Уволен'));
 const gradeStats = computed(() => {
   const map = new Map();
   activePeople.value.forEach((p) => map.set(p.grade || 'Не указан', (map.get(p.grade || 'Не указан') || 0) + 1));
