@@ -15,3 +15,10 @@ export function accessibleSpecialistsNavigation(permissions, canManageRoleMatrix
   }
   return result;
 }
+
+/** The service entry URL must land on a screen the current role can read. */
+export function specialistsLandingPath(permissions) {
+  if (permissions?.profiles_view === true) return '/';
+  if (permissions?.catalog_view === true) return '/competencies';
+  return null;
+}
