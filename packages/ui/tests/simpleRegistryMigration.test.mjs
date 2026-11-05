@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const read = path => readFileSync(new URL('../../../' + path, import.meta.url), 'utf8');
 
-// Six services, twenty user-facing simple list pages. Vacations reuses one
+// Six services, nineteen user-facing simple list pages. Vacations reuses one
 // AbsenceTable component across three different screens.
 const migrated = new Map([
   ['apps/web/src/App.vue',1],
@@ -16,11 +16,11 @@ const migrated = new Map([
   ['apps/vacations/src/components/AbsenceTable.vue',1],
   ['apps/vacations/src/pages/ActionHistoryPage.vue',1],
   ['apps/timesheets/src/App.vue',2],
-  ['apps/specialists/src/App.vue',3],
+  ['apps/specialists/src/App.vue',2],
   ['apps/recruitment/src/AppMvp.vue',4],
 ]);
 
-test('all eighteen flat registry implementations share the same split-header component', () => {
+test('all seventeen flat registry implementations share the same split-header component', () => {
   let count=0;
   for (const [path, expected] of migrated) {
     const component=read(path);
@@ -32,7 +32,7 @@ test('all eighteen flat registry implementations share the same split-header com
     assert.match(component,/density="compact"/,path+' compact layout');
     count+=usages;
   }
-  assert.equal(count,18);
+  assert.equal(count,17);
 });
 
 test('shared table reuses service table classes on both head and body and aligns dynamic tracks', () => {
