@@ -123,4 +123,28 @@ clientCheck(DB::table('client_members')->where('id',102)->exists()
     && DB::table('member_terms')->where('id',202)->exists(),
     'Protected records were partially erased');
 
+// Approved-hour linkage must protect a paid period even if dates were edited
+// and no longer overlap the commercial term.
+DB::table('client_members')->insert(['id'=>103, 'client_id'=>10, 'employee_id'=>10]);
+DB::table('member_terms')->insert(['id'=>204,'client_member_id'=>103,
+    'valid_from'=>'2026-03-01', 'valid_to'=>'2026-03-31']);
+DB::table('reporting_period_approved_hours')->insert([
+    'reporting_period_id'=>2,'member_term_id'=>204,
+]);
+clientReject(static fn()=> $purge->purge(10, 'synthetic.protected'), 423,
+    'Approved hours linked to paid period must block purge regardless of term dates');
+clientCheck(DB::table('client_members')->where('id',103)->exists(),
+    'Protected approved-hours membership was erased');
+
+// A legacy row that points to a different employee's canonical membership
+// must require reconciliation rather than deleting another person's terms.
+DB::table('project_members')->insert(['id'=>400,'project_id'=>20,'specialist_id'=>11]);
+DB::table('member_terms')->insert(['id'=>205, 'project_member_id'=>400,
+    'client_member_id'=>101,'valid_from'=>'2026-04-01', 'valid_to'=>'2026-04-30']);
+clientReject(static fn()=> $purge->purge(11, 'synthetic.conflict'), 409,
+    'Cross-employee legacy term must fail closed');
+clientCheck(DB::table('member_terms')->where('id',205)->exists()
+    && DB::table('client_members')->where('id',101)->exists(),
+    'Cross-employee legacy term was lost');
+
 echo "Clients employee hard delete, retries, isolation and immutable reporting guard PASS\n";
