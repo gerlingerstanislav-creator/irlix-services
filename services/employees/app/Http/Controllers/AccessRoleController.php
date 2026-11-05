@@ -29,6 +29,7 @@ final class AccessRoleController extends Controller
         if (!$this->isPlatformAdmin($request)) return response()->json([
             'message' => 'Управление ролями доступно только администратору платформы.',
         ], 403);
+        if (SpecialRoles::isAutomatic($role)) return response()->json(['message' => 'Состав автоматической роли определяется оргструктурой и недоступен для ручного изменения.'], 409);
         if (!$this->roles->employeeExists($employee)) return response()->json(['message' => 'Employee not found'], 404);
 
         $this->roles->assign($employee, $role);
@@ -41,6 +42,7 @@ final class AccessRoleController extends Controller
         if (!$this->isPlatformAdmin($request)) return response()->json([
             'message' => 'Управление ролями доступно только администратору платформы.',
         ], 403);
+        if (SpecialRoles::isAutomatic($role)) return response()->json(['message' => 'Состав автоматической роли определяется оргструктурой и недоступен для ручного изменения.'], 409);
         if ($role === SpecialRoles::PlatformAdmin && $this->roles->isSystemAdministrator($employee)) {
             return response()->json(['message' => 'Нельзя снять роль администратора платформы с системного аккаунта IRLIX.'], 409);
         }

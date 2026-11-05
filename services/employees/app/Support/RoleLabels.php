@@ -12,7 +12,12 @@ final class RoleLabels
     public static function resolve(?object $employee, array $departments, array $specialRoles = []): array
     {
         if (!$employee) return [];
-        $labels = array_values(array_filter(array_map('strval', $specialRoles)));
+        // Automatic roles come only from current organizational facts.
+        $labels = array_values(array_filter(array_map('strval', $specialRoles),
+            static fn (string $role): bool => !SpecialRoles::isAutomatic($role)));
+        if (self::managesProductionDirection($employee, $departments)) {
+            $labels[] = SpecialRoles::ProductionDirectionHead;
+        }
         $byId = [];
         foreach ($departments as $department) $byId[(int) $department->id] = $department;
         $own = $byId[(int) ($employee->department_id ?? 0)] ?? null;
@@ -49,7 +54,8 @@ final class RoleLabels
      * "org:" means membership in the employee's own department OR one of its
      * ancestors, never management of that department. "head:" is assigned
      * only by an explicit manager_id relationship. "special:" requires an
-     * explicit Employees special-role assignment.
+     * explicit Employees special-role assignment, except the derived
+     * production-direction-head role.
      *
      * These claims are deliberately separate from EmployeesAccess::roles:
      * publishing an ancestor MUST NOT implicitly change legacy permissions,
@@ -82,13 +88,32 @@ final class RoleLabels
 
         foreach ($specialRoles as $role) {
             if (!is_string($role) || $role === SpecialRoles::PlatformTester
-                || !SpecialRoles::exists($role)) continue;
+                || SpecialRoles::isAutomatic($role) || !SpecialRoles::exists($role)) continue;
             $claims[] = 'special:'.$role;
+        }
+        if (self::managesProductionDirection($employee, $departments)) {
+            $claims[] = 'special:'.SpecialRoles::ProductionDirectionHead;
         }
 
         $claims = array_values(array_unique($claims));
         sort($claims, SORT_STRING);
         return $claims;
+    }
+
+    /**
+     * Authoritative membership: direct management of a production-marked
+     * department, never inherited subordinate management or a job title.
+     * One employee may manage multiple production departments but gets one role.
+     */
+    public static function managesProductionDirection(?object $employee, array $departments): bool
+    {
+        $employeeId = (int) ($employee->id ?? 0);
+        if ($employeeId <= 0) return false;
+        foreach ($departments as $department) {
+            if ((int) ($department->manager_id ?? 0) === $employeeId
+                && (bool) ($department->is_production ?? false)) return true;
+        }
+        return false;
     }
 
     /**

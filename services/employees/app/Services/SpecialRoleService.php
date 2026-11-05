@@ -12,15 +12,26 @@ final class SpecialRoleService
     {
         $data = [];
         foreach (SpecialRoles::catalog() as $role) {
-            $members = Employee::query()
-                ->from('employees as e')
-                ->join('employee_access_roles as r', 'r.employee_id', '=', 'e.id')
-                ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
-                ->where('r.role', $role['key'])
-                ->select([
-                    'e.id', 'e.full_name', 'e.login', 'e.work_email', 'e.position',
-                    'e.department_id', 'd.name as department_name', 'r.created_at as assigned_at_raw',
-                ])
+            // An automatic role is a live projection over Departments and
+            // must never depend on or write employee_access_roles rows.
+            $query = Employee::query()->from('employees as e')
+                ->leftJoin('departments as d', 'd.id', '=', 'e.department_id');
+            if (SpecialRoles::isAutomatic($role['key'])) {
+                $query->join('departments as managed', 'managed.manager_id', '=', 'e.id')
+                    ->where('managed.is_production', true)
+                    ->select([
+                        'e.id', 'e.full_name', 'e.login', 'e.work_email', 'e.position',
+                        'e.department_id', 'd.name as department_name',
+                    ])->distinct();
+            } else {
+                $query->join('employee_access_roles as r', 'r.employee_id', '=', 'e.id')
+                    ->where('r.role', $role['key'])
+                    ->select([
+                        'e.id', 'e.full_name', 'e.login', 'e.work_email', 'e.position',
+                        'e.department_id', 'd.name as department_name', 'r.created_at as assigned_at_raw',
+                    ]);
+            }
+            $members = $query
                 ->orderBy('e.full_name')
                 ->get()
                 ->map(static fn (Employee $member): array => [
@@ -52,6 +63,9 @@ final class SpecialRoleService
 
     public function assign(int $employeeId, string $role): void
     {
+        if (SpecialRoles::isAutomatic($role)) {
+            throw new \DomainException('Automatic role membership is derived from the organization.');
+        }
         // Atomic upsert retains the unique employee_id + role invariant under concurrent requests.
         EmployeeAccessRole::query()->upsert(
             [['employee_id' => $employeeId, 'role' => $role, 'created_at' => now(), 'updated_at' => now()]],
@@ -62,6 +76,9 @@ final class SpecialRoleService
 
     public function revoke(int $employeeId, string $role): void
     {
+        if (SpecialRoles::isAutomatic($role)) {
+            throw new \DomainException('Automatic role membership is derived from the organization.');
+        }
         EmployeeAccessRole::query()->where('employee_id', $employeeId)->where('role', $role)->delete();
     }
 

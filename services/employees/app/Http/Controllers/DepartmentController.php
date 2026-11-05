@@ -27,7 +27,7 @@ final class DepartmentController extends Controller
                 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/D',
                 Rule::unique('departments', 'alias')->ignore($department),
                 Rule::notIn(['platform-admin', 'platform-tester', 'personnel-officer',
-                    'system-admin', 'finance-director', 'finance', 'manager']),
+                    'system-admin', 'production-direction-head', 'finance-director', 'finance', 'manager']),
                 'not_regex:/-head$/D',
             ],
             'parent_id' => ['nullable', 'integer', 'exists:departments,id'],

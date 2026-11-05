@@ -56,6 +56,40 @@ $check(isset($member['created_at']) && is_string($member['created_at']), 'Assign
 $check(Employee::query()->whereKey(7)->first()?->department?->id === 5, 'Employee belongsTo relation failed');
 $check(Department::query()->whereKey(5)->first()?->is_production === true, 'Department boolean cast failed');
 
+// Role participants follow live production department managers; distinct avoids
+// duplicate people when one employee heads multiple production directions.
+$db->table('departments')->where('id', 5)->update(['manager_id' => 7]);
+$db->table('departments')->insert([
+    'id' => 6, 'name' => 'Second production team', 'alias' => 'engineering-2',
+    'parent_id' => null, 'manager_id' => 7, 'is_production' => 1,
+]);
+$auto = collect($roles->catalogWithMembers())->firstWhere('key', SpecialRoles::ProductionDirectionHead);
+$check(($auto['automatic'] ?? false) === true, 'Computed role must identify itself as automatic');
+$check(($auto['member_count'] ?? 0) === 1, 'Manager of two production directions was duplicated');
+$check((int) ($auto['members'][0]['id'] ?? 0) === 7, 'Current production head absent');
+$check(($auto['members'][0]['department_name'] ?? null) === 'Synthetic team',
+    'Automatic member row must show their own department');
+$check(array_key_exists('created_at', $auto['members'][0]) && $auto['members'][0]['created_at'] === null,
+    'Automatic role must not invent an assignment date');
+$check($db->table('employee_access_roles')->where('role', SpecialRoles::ProductionDirectionHead)->count() === 0,
+    'Computed role must not persist manual membership');
+foreach (['assign', 'revoke'] as $mutation) {
+    try {
+        $roles->{$mutation}(7, SpecialRoles::ProductionDirectionHead);
+        throw new RuntimeException('Computed role allowed manual '.$mutation);
+    } catch (DomainException $e) {
+        // Expected: protected at the service layer as well as the HTTP layer.
+    }
+}
+$db->table('departments')->whereIn('id', [5, 6])->update(['manager_id' => null]);
+$check(collect($roles->catalogWithMembers())->firstWhere('key', SpecialRoles::ProductionDirectionHead)['member_count'] === 0,
+    'Removing production management must remove the automatic membership');
+$db->table('departments')->where('id', 5)->update(['manager_id' => 7, 'is_production' => 0]);
+$check(collect($roles->catalogWithMembers())->firstWhere('key', SpecialRoles::ProductionDirectionHead)['member_count'] === 0,
+    'Non-production management must not enter automatic role');
+$db->table('departments')->where('id', 5)->update(['manager_id' => null, 'is_production' => 1]);
+
+
 $rules = new PermissionRuleService();
 $check(isset($rules->roleCatalog()['engineering-head']), 'Department-head permission alias missing');
 $rules->setRule('engineering-head', 'employees.read', false);

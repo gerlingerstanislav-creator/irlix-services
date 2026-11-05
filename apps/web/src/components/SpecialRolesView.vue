@@ -24,7 +24,7 @@ const employeeChoices = computed(() => employeeTreeOptions(props.departments, av
 const actorIsPlatformAdmin = computed(() => props.actorRoles.includes('platform-admin'));
 const actorIsPlatformTester = computed(() => props.actorRoles.includes('platform-tester'));
 const protectedPlatformRoles = new Set(['platform-admin', 'platform-tester']);
-const canMutateSelectedRole = computed(() => actorIsPlatformAdmin.value || !actorIsPlatformTester.value || !protectedPlatformRoles.has(selectedRole.value?.key));
+const canMutateSelectedRole = computed(() => !selectedRole.value?.automatic && (actorIsPlatformAdmin.value || !actorIsPlatformTester.value || !protectedPlatformRoles.has(selectedRole.value?.key)));
 
 const request = async (url, options = {}) => {
   const response = await auth.fetch(url, {
@@ -51,14 +51,14 @@ const load = async () => {
 };
 
 const openAssign = () => {
-  if (!selectedRole.value) return;
+  if (!canMutateSelectedRole.value) return;
   employeeId.value = '';
   showAssign.value = true;
 };
 
 
 const assign = async () => {
-  if (!selectedRole.value || !employeeId.value) return;
+  if (!canMutateSelectedRole.value || !employeeId.value) return;
   saving.value = true;
   error.value = '';
   try {
@@ -73,7 +73,7 @@ const assign = async () => {
 };
 
 const remove = async (member) => {
-  if (!selectedRole.value) return;
+  if (!canMutateSelectedRole.value) return;
   saving.value = true;
   error.value = '';
   try {
@@ -107,11 +107,11 @@ onMounted(load);
           class="role-item"
           :class="{ active: role.key === selectedRole?.key }"
           type="button"
-          @click="selectedKey = role.key"
+          @click="selectedKey = role.key; showAssign = false"
         >
           <span class="role-icon">◇</span>
           <span class="role-item-copy">
-            <strong>{{ role.label }}</strong>
+            <strong>{{ role.label }} <span v-if="role.automatic" class="role-auto-label">Автоматическая</span></strong>
             <small>{{ role.description }}</small>
           </span>
           <UiBadge tone="neutral">{{ role.member_count }}</UiBadge>
@@ -122,17 +122,17 @@ onMounted(load);
         <template v-if="selectedRole">
           <div class="role-detail-head">
             <div>
-              <div class="role-detail-title"><span class="role-icon large">◇</span><h2>{{ selectedRole.label }}</h2></div>
+              <div class="role-detail-title"><span class="role-icon large">◇</span><h2>{{ selectedRole.label }}</h2><span v-if="selectedRole.automatic" class="role-auto-label">Автоматическая</span></div>
               <p>{{ selectedRole.description }}</p>
             </div>
             <UiButton v-if="canMutateSelectedRole" compact @click="openAssign">Назначить</UiButton>
           </div>
 
-          <div class="role-summary"><strong>{{ selectedRole.member_count }}</strong><span>Назначено сотрудников</span></div>
+          <div class="role-summary"><strong>{{ selectedRole.member_count }}</strong><span>{{ selectedRole.automatic ? 'Участников по оргструктуре' : 'Назначено сотрудников' }}</span></div>
 
           <div v-if="!selectedRole.members?.length" class="role-empty role-empty-large">
-            <strong>Никто не назначен</strong>
-            <span>Добавьте сотрудника, чтобы он получил эту специальную роль.</span>
+            <strong>{{ selectedRole.automatic ? 'Руководители не найдены' : 'Никто не назначен' }}</strong>
+            <span>{{ selectedRole.automatic ? 'В роли автоматически появляются руководители подразделений с признаком «Производство».' : 'Добавьте сотрудника, чтобы он получил эту специальную роль.' }}</span>
           </div>
           <div v-else class="table-wrap role-members-wrap irlix-registry-scroll">
             <UiRegistryTable class="shared-registry-content" table-class="irlix-data-table role-members-table" :columns="['35%','25%','25%','15%']" min-width="800px" aria-label="Сотрудники специальной роли" density="compact">
@@ -142,7 +142,7 @@ onMounted(load);
                   <td><strong>{{ shortEmployeeName(member) }}</strong><small>{{ member.work_email || member.login || '—' }}</small></td>
                   <td>{{ member.department_name || '—' }}</td>
                   <td>{{ member.position || '—' }}</td>
-                  <td class="role-actions"><UiButton v-if="canMutateSelectedRole && !(selectedRole.key === 'platform-admin' && member.login === 'admin')" variant="danger" compact :disabled="saving" @click="remove(member)">Снять роль</UiButton><span v-else>Защищён</span></td>
+                  <td class="role-actions"><UiButton v-if="canMutateSelectedRole && !(selectedRole.key === 'platform-admin' && member.login === 'admin')" variant="danger" compact :disabled="saving" @click="remove(member)">Снять роль</UiButton><span v-else>{{ selectedRole.automatic ? 'Автоматически' : 'Защищён' }}</span></td>
                 </tr>
               
             </UiRegistryTable>
@@ -206,5 +206,15 @@ onMounted(load);
   .roles-catalog-panel, .role-detail-panel { height:auto; min-height:0; }
   .role-members-wrap { max-height:calc(100dvh - 270px); }
 }
+
+/* A single internal divider: UiPanel's own frames used to overlap on top/left. */
+.roles-page{border:0;box-shadow:none;border-radius:0;margin:0;padding:0}
+.roles-layout{border:0;margin:0;padding:0;box-shadow:none;background:var(--irlix-color-surface)}
+.roles-page :deep(.roles-catalog-panel.ui-panel),
+.roles-page :deep(.role-detail-panel.ui-panel){border:0;border-radius:0;box-shadow:none;margin:0;max-width:none}
+.roles-page :deep(.roles-catalog-panel.ui-panel){border-right:1px solid var(--irlix-color-border)}
+.role-auto-label{display:inline-flex;vertical-align:middle;align-items:center;white-space:nowrap;padding:2px 6px;border-radius:5px;background:var(--irlix-color-surface-muted);color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption);font-weight:500}
+.role-detail-title{flex-wrap:wrap}
+@media(max-width:900px){.roles-page :deep(.roles-catalog-panel.ui-panel){border-right:0;border-bottom:1px solid var(--irlix-color-border)}}
 </style>
 
