@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { moveRoleBefore, orderedRoles, roleTreeOptions, shiftRole } from '../src/permissionRoleLayout.js';
+import { moveRoleTo, orderedRoles, roleTreeOptions, shiftRole } from '../src/permissionRoleLayout.js';
 
 const hierarchy = [
   { kind: 'group', key: 'department:1', label: 'Ирликс', depth: 0 },
@@ -73,9 +73,9 @@ test('drag placement and keyboard arrows move only order, preserving role payloa
   const b = { key: 'org:sales', label: 'Продажи' };
   const c = { key: 'special:platform-admin', label: 'Администратор платформы', locked: true };
   const roles = [a, b, c];
-  assert.deepEqual(moveRoleBefore(roles, 'special:platform-admin', 'org:irlix'), [c, a, b]);
+  assert.deepEqual(moveRoleTo(roles, 'special:platform-admin', 'org:irlix'), [c, a, b]);
   assert.deepEqual(shiftRole(roles, 'org:sales', 1), [a, c, b]);
   assert.strictEqual(shiftRole(roles, 'org:irlix', -1), roles);
-  assert.strictEqual(moveRoleBefore(roles, 'missing', 'org:irlix'), roles);
+  assert.strictEqual(moveRoleTo(roles, 'missing', 'org:irlix'), roles);
   assert.deepEqual(roles, [a, b, c]);
 });
