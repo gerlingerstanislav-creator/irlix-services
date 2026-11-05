@@ -105,6 +105,16 @@ class CvProductionLeadsAccessTest(unittest.TestCase):
             require_cv_access({}, authorization='Bearer synthetic')
         self.assertEqual(caught.exception.status_code, 403)
 
+    @patch.dict(os.environ, {'IRLIX_AUTHZ_JWT_ENABLED': 'false'})
+    @patch('app.main.httpx.Client')
+    def test_malformed_employees_entitlement_fails_closed(self, client_cls):
+        result = MagicMock(status_code=200)
+        result.json.return_value = {'data': {'roles': ['backend-head'], 'services': None}}
+        client_cls.return_value.__enter__.return_value.get.return_value = result
+        with self.assertRaises(HTTPException) as caught:
+            require_cv_access({}, authorization='Bearer synthetic')
+        self.assertEqual(caught.exception.status_code, 403)
+
     def test_endpoint_dependencies_keep_settings_admin_only(self):
         actual = {}
         for route in app.routes:
@@ -117,6 +127,9 @@ class CvProductionLeadsAccessTest(unittest.TestCase):
             self.assertIs(actual[path], require_cv_access, path)
         for path in ('/api/settings', '/api/settings/test'):
             self.assertIs(actual[path], require_platform_admin, path)
+        for route in app.routes:
+            if getattr(route, 'path', None) == '/api/settings':
+                self.assertIs(route.dependant.dependencies[0].call, require_platform_admin)
 
 
 if __name__ == '__main__':
