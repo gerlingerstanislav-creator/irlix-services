@@ -24,10 +24,11 @@ def main():
         projects=[ProjectItem(role='Системный аналитик', dates='2024–2026', name='Тестовый проект',
                               description='Описание', responsibilities=['Сбор требований'])],
     )
-    docx, pdf = render_docx(cv), render_pdf(cv)
-    assert docx.startswith(b'PK') and len(docx) > 1000
-    assert pdf.startswith(b'%PDF') and len(pdf) > 1000
-    print(f'DOCX={len(docx)} PDF={len(pdf)}')
+    for template in ('irlix-cv', 'irlix-cv-an'):
+        docx, pdf = render_docx(cv, template=template), render_pdf(cv, template=template)
+        assert docx.startswith(b'PK') and len(docx) > 1000
+        assert pdf.startswith(b'%PDF') and len(pdf) > 1000
+        print(f'{template}: DOCX={len(docx)} PDF={len(pdf)}')
 
 
 if __name__ == '__main__':
