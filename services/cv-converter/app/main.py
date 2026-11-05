@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sqlite3
 import time
 from typing import Literal
+
+from pydantic import BaseModel
 
 import httpx
 import jwt
@@ -11,6 +14,7 @@ from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import Response
 from jwt import PyJWKClient
 
+from . import access_policy
 from .extractor import UnsupportedSourceError, extract_text
 from .models import CanonicalCv, ParseMetrics, ParseResponse
 from .providers import build_provider
@@ -76,70 +80,165 @@ def _employees_access_roles(payload: dict | None) -> set[str]:
     return _normalize_roles(access.get('roles', []))
 
 
-def _authorize_cv(
+def _verified_cv_context(
     claims: dict,
     authorization: str | None,
     role_preview: str | None,
-    *,
-    admin_required: bool,
 ) -> dict:
-    """Enforce Employees-owned CV entitlement, keeping provider settings admin-only.
+    """Validate current signed identity and Employees service admission.
 
-    Employees resolves production managers from actual manager_id / is_production
-    relationships and syncs the resulting service grant to Keycloak. In JWT mode
-    that signed entitlement is sufficient for CV conversion; an extra platform
-    admin role is required only for settings and provider credentials.
+    CV owns cv.convert authorization locally. Employees does not decide that
+    business permission: it only supplies current canonical identity roles
+    and the transitional service:cv-converter gateway.
     """
     if isinstance(role_preview, str) and role_preview.strip():
         raise HTTPException(status_code=403, detail='CV operations are unavailable in role preview')
+    if not isinstance(authorization, str) or not authorization.lower().startswith('bearer '):
+        raise HTTPException(status_code=401, detail='Bearer token required')
+    signed = _realm_roles(claims)
+    jwt_mode = os.getenv('IRLIX_AUTHZ_JWT_ENABLED', 'false').lower() in {'true', '1', 'yes'}
+    if jwt_mode and 'service:cv-converter' not in signed:
+        raise HTTPException(status_code=403, detail='CV service entitlement absent')
 
-    if os.getenv('IRLIX_AUTHZ_JWT_ENABLED', 'false').lower() in {'true', '1', 'yes'}:
-        roles = _realm_roles(claims)
-        if 'service:cv-converter' in roles and (not admin_required or 'platform-admin' in roles):
-            return claims
-        raise HTTPException(status_code=403, detail='CV access denied')
-
-    # Legacy authorization uses exactly the same effective Employees service
-    # entitlement as Dashboard and the Keycloak role sync. Fail closed on
-    # negative/unavailable access; do not trust unsigned role names in the JWT.
-    if not isinstance(authorization, str) or not authorization.strip():
-        raise HTTPException(status_code=403, detail='CV access denied')
+    # Like Clients/Timesheets local V2, read current Employees identity for
+    # revocation, NOT for the CV permission matrix. An expired head assignment
+    # cannot be resurrected by a still-valid signed token.
     try:
         with httpx.Client(timeout=5.0) as client:
             response = client.get(
                 EMPLOYEES_ACCESS_URL,
                 headers={'Authorization': authorization, 'Accept': 'application/json'},
             )
-        if response.status_code == 200:
-            payload = response.json()
-            access = payload.get('data', payload) if isinstance(payload, dict) else {}
-            services = access.get('services') if isinstance(access, dict) else None
-            if isinstance(services, dict) and services.get('cv-converter') is True:
-                if not admin_required or 'platform-admin' in _employees_access_roles(access):
-                    return claims
-        elif response.status_code == 401:
-            raise HTTPException(status_code=401, detail='Authentication required')
-        elif response.status_code != 403:
-            raise HTTPException(status_code=503, detail='Authorization service unavailable')
-    except (httpx.HTTPError, ValueError) as exc:
-        raise HTTPException(status_code=503, detail='Authorization service unavailable') from exc
-    raise HTTPException(status_code=403, detail='CV access denied')
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail='Current identity unavailable') from exc
+    if response.status_code == 401:
+        raise HTTPException(status_code=401, detail='Authentication required')
+    if response.status_code == 403:
+        raise HTTPException(status_code=403, detail='Employees access denied')
+    if response.status_code != 200:
+        raise HTTPException(status_code=503, detail='Current identity unavailable')
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail='Malformed identity response') from exc
+    live = payload.get('data', payload) if isinstance(payload, dict) else None
+    if not isinstance(live, dict):
+        raise HTTPException(status_code=503, detail='Malformed identity response')
+    services = live.get('services')
+    actor_id = live.get('employee_id')
+    if (not isinstance(services, dict)
+            or services.get('cv-converter') is not True
+            or type(actor_id) is not int or actor_id <= 0):
+        raise HTTPException(status_code=403, detail='CV service access denied')
+
+    canonical = live.get('role_claims')
+    if not isinstance(canonical, list) or not all(isinstance(x, str) for x in canonical):
+        raise HTTPException(status_code=503, detail='Current role assignments unavailable')
+    live_claims = set(canonical)
+    verified = {role for role in live_claims
+                if access_policy.IDENTITY_RE.fullmatch(role)}
+    live_roles = live.get('roles')
+    if not isinstance(live_roles, list):
+        raise HTTPException(status_code=503, detail='Current role assignments unavailable')
+    active_admin = 'platform-admin' in live_roles
+
+    if jwt_mode:
+        identity_ids = {role for role in signed if role.startswith('employee-id:')}
+        if identity_ids != {f'employee-id:{actor_id}'}:
+            raise HTTPException(status_code=403, detail='Signed employee identity mismatch')
+        signed_canonical = {role for role in signed
+                            if access_policy.IDENTITY_RE.fullmatch(role)}
+        if not signed_canonical.issubset(live_claims):
+            raise HTTPException(status_code=403, detail='Organizational role was revoked')
+        verified = signed_canonical  # Never grant based on unsigned live-only roles.
+        active_admin = active_admin and bool(
+            {'platform-admin', 'special:platform-admin'} & signed)
+    return {
+        'employee_id': actor_id, 'roles': verified,
+        'admin': active_admin, 'claims': claims,
+    }
 
 
-def require_cv_access(
+def require_cv_service(
     claims: dict = Depends(require_user),
     authorization: str | None = Header(default=None),
     x_irlix_role_preview: str | None = Header(default=None),
 ) -> dict:
-    return _authorize_cv(claims, authorization, x_irlix_role_preview, admin_required=False)
+    return _verified_cv_context(claims, authorization, x_irlix_role_preview)
 
 
-def require_platform_admin(
-    claims: dict = Depends(require_user),
-    authorization: str | None = Header(default=None),
-    x_irlix_role_preview: str | None = Header(default=None),
-) -> dict:
-    return _authorize_cv(claims, authorization, x_irlix_role_preview, admin_required=True)
+def require_cv_access(context: dict = Depends(require_cv_service)) -> dict:
+    try:
+        allowed = access_policy.can_convert(context['roles'], admin=context['admin'])
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail='CV permission matrix unavailable') from exc
+    if not allowed:
+        raise HTTPException(status_code=403, detail='CV conversion permission denied')
+    return context['claims']
+
+
+def require_platform_admin(context: dict = Depends(require_cv_service)) -> dict:
+    if not context['admin']:
+        raise HTTPException(status_code=403, detail='Platform administrator required')
+    return context['claims']
+
+
+class CvRoleRule(BaseModel):
+    role: str
+    allowed: bool
+
+
+class CvRoleRemoval(BaseModel):
+    role: str
+
+
+@app.get('/api/permissions/me')
+def my_permissions(context: dict = Depends(require_cv_service)):
+    try:
+        can_convert = access_policy.can_convert(context['roles'], admin=context['admin'])
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail='CV permission matrix unavailable') from exc
+    return {'data': {'permissions': {
+        'cv.convert': {'allowed': can_convert, 'scope': 'all' if can_convert else 'none'},
+    }, 'can_manage': context['admin']}}
+
+
+@app.get('/api/permissions')
+def permission_matrix(_admin: dict = Depends(require_platform_admin)):
+    try:
+        return {'data': {'permissions': [access_policy.PERMISSION],
+                         'scopes': ['none', 'all'], 'matrix': access_policy.matrix()}}
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail='CV permission matrix unavailable') from exc
+
+
+@app.put('/api/permissions')
+def update_permission_rule(payload: CvRoleRule,
+                           context: dict = Depends(require_cv_service)):
+    if not context['admin']:
+        raise HTTPException(status_code=403, detail='Platform administrator required')
+    try:
+        access_policy.update(payload.role, payload.allowed, context['employee_id'])
+        return {'data': {'matrix': access_policy.matrix()}}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail='CV permission matrix unavailable') from exc
+
+
+@app.delete('/api/permissions')
+def delete_permission_rule(payload: CvRoleRemoval,
+                           context: dict = Depends(require_cv_service)):
+    if not context['admin']:
+        raise HTTPException(status_code=403, detail='Platform administrator required')
+    try:
+        access_policy.remove(payload.role, context['employee_id'])
+        return {'data': {'matrix': access_policy.matrix()}}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail='CV permission matrix unavailable') from exc
+
 
 @app.get('/api/health')
 def health():
