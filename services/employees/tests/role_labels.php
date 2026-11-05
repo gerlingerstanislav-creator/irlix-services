@@ -40,6 +40,43 @@ $check(isset($roleCatalog['special:platform-admin']), true);
 $check(isset($roleCatalog['special:system-admin']), true);
 $check(isset($roleCatalog['special:platform-tester']), false);
 $check(isset($roleCatalog['account-manager']), false);
+
+// Role picker hierarchy is the actual Employees parent_id tree, not a
+// service-specific ordering or a list of role names guessed from labels.
+$nestedDepartments = [
+    (object) ['id' => 1, 'name' => 'Ирликс', 'alias' => 'irlix', 'parent_id' => null],
+    (object) ['id' => 4, 'name' => 'Продажи', 'alias' => 'sales', 'parent_id' => 3],
+    (object) ['id' => 3, 'name' => 'Клиентская служба', 'alias' => 'client-service', 'parent_id' => 1],
+    (object) ['id' => 5, 'name' => 'Подразделение без alias', 'alias' => null, 'parent_id' => 1],
+];
+$roleTree = RoleLabels::canonicalRoleTree($nestedDepartments);
+$roleIds = array_values(array_map(static fn ($row) => $row['key'],
+    array_filter($roleTree, static fn ($row) => $row['kind'] === 'role')));
+$check(array_slice($roleIds, 0, 6), [
+    'org:irlix', 'head:irlix',
+    'org:client-service', 'head:client-service',
+    'org:sales', 'head:sales',
+]);
+$salesNode = array_values(array_filter($roleTree, static fn ($row) =>
+    ($row['key'] ?? '') === 'head:sales'))[0] ?? null;
+$check($salesNode['label'] ?? null, 'Руководитель: Продажи');
+$check($salesNode['depth'] ?? null, 3);
+$check($roleTree[count($roleTree) - 1]['key'], 'special:top-management');
+$otherNodes = array_values(array_filter($roleTree, static fn ($row) =>
+    ($row['key'] ?? '') === 'other'));
+$check(count($otherNodes), 1);
+$check($otherNodes[0]['label'], 'Прочее');
+$check(count(array_filter($roleIds, static fn ($key) => $key === 'special:platform-tester')), 0);
+
+$cycle = [
+    (object) ['id' => 7, 'name' => 'А', 'alias' => 'group-a', 'parent_id' => 8],
+    (object) ['id' => 8, 'name' => 'Б', 'alias' => 'group-b', 'parent_id' => 7],
+];
+$cycleNodes = RoleLabels::canonicalRoleTree($cycle);
+$check(count(array_filter($cycleNodes, static fn ($item) => $item['kind'] === 'role'
+    && ($item['key'] ?? '') === 'org:group-a')), 1);
+$check(count(array_filter($cycleNodes, static fn ($item) => $item['kind'] === 'role'
+    && ($item['key'] ?? '') === 'org:group-b')), 1);
 $noHead = [(object)['id'=>88,'alias'=>'finance','parent_id'=>null,'manager_id'=>null]];
 $check(RoleLabels::publishedRoleClaims((object)['id'=>0,'department_id'=>88],$noHead),
     ['org:finance']); // missing employee id cannot turn null manager into a head grant
