@@ -484,6 +484,42 @@ const closePerson=()=>navigate('people');
               <textarea v-model="editor.manager_note" :disabled="!canManageProfiles" rows="3" placeholder="Контекст развития специалиста"></textarea>
             </label>
           </section>
+          <section class="specialists-profile-section">
+            <h3>Проекты</h3>
+            <p v-if="projectLoading" class="empty">Загрузка проектов…</p>
+            <p v-else-if="projectError" class="empty" role="status">{{ projectError }}</p>
+            <div v-else-if="projectAssignments.length" class="specialists-projects">
+              <div v-for="(project,index) in projectAssignments" :key="project.project_id + ':' + index">
+                <strong>{{ project.project_name }}</strong>
+                <span>{{ project.client_name }}
+                  <template v-if="project.valid_from"> · {{ project.valid_from }} — {{ project.valid_to || 'н. в.' }}</template>
+                </span>
+              </div>
+            </div>
+            <p v-else class="empty">Проекты не найдены.</p>
+          </section>
+          <section class="specialists-profile-section">
+            <h3>Технологии</h3>
+            <div v-if="workspace.catalog.technologies.length" class="choice-grid">
+              <button v-for="tech in workspace.catalog.technologies" :key="tech.id" type="button"
+                :class="{ selected: editor.technology_ids.includes(Number(tech.id)) }"
+                :disabled="!canManageProfiles" @click="toggleTechnology(tech.id)">{{ tech.name }}</button>
+            </div>
+            <p v-else class="empty">Каталог пока пуст.</p>
+          </section>
+          <section class="specialists-profile-section">
+            <h3>Компетенции</h3>
+            <div v-if="selected.professional.competencies?.length" class="competency-list">
+              <div v-for="competency in selected.professional.competencies" :key="competency.id">
+                <span><b>{{ competency.name }}</b><small>{{ competency.technology_name || 'Общая компетенция' }}</small></span>
+                <strong>{{ competency.level ?? '—' }}</strong>
+              </div>
+            </div>
+            <p v-else class="empty">Компетенции не оценены.</p>
+          </section>
+          <div v-if="canManageProfiles" class="specialists-profile-footer">
+            <UiButton type="button" :disabled="saving" @click="savePerson">{{ saving ? 'Сохраняем…' : 'Сохранить профиль' }}</UiButton>
+          </div>
         </template>
       </div>
     </UiDrawer>
