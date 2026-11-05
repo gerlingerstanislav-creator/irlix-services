@@ -37,7 +37,7 @@ export const serviceGroups = [
     label: 'Recruitment',
     items: [
       { key: 'recruitment', label: 'Recruitment', href: '/recruitment/', icon: 'users', available: true },
-      { key: 'cv-converter', label: 'CV конвертер', href: '/cv-converter/', icon: 'document', available: true, platformAdminOnly: true },
+      { key: 'cv-converter', label: 'CV конвертер', href: '/cv-converter/', icon: 'document', available: true },
     ],
   },
   {
@@ -73,7 +73,7 @@ const details = {
   equipment: { description: 'Корпоративная техника, выдачи сотрудникам, стоимость и амортизация.', audience: ['Системный администратор', 'Бухгалтерия'], status: SERVICE_STATUSES.preproduction },
   finance: { description: 'Счета, денежный учёт и предварительная финансовая аналитика.', audience: ['Бухгалтерия'], status: SERVICE_STATUSES.preproduction },
   recruitment: { description: 'Кандидаты, заявки на подбор, воронка найма, интервью и офферы.', audience: ['Recruiter', 'HR', 'Руководитель направления'], status: SERVICE_STATUSES.inDevelopment },
-  'cv-converter': { description: 'Преобразование исходных CV в стандартизированный формат IRLIX.', audience: [], status: SERVICE_STATUSES.inDevelopment },
+  'cv-converter': { description: 'Преобразование исходных CV в стандартизированный формат IRLIX.', audience: ['Руководитель производственного направления', 'Администратор платформы'], status: SERVICE_STATUSES.inDevelopment },
   storage: { description: 'Пилот корпоративного Диска: файлы, папки и безопасный предпросмотр через собственный Storage API.', audience:['Администратор платформы'], status:SERVICE_STATUSES.inDevelopment },
   'design-system': { description: 'Компоненты, токены и визуальные правила интерфейсов платформы.', audience: [], status: SERVICE_STATUSES.production },
   brandbook: { description: 'Закрытый цифровой брендбук IRLIX для топ-менеджмента и администратора платформы.', audience: ['Топ-менеджмент'], status: SERVICE_STATUSES.preproduction },
