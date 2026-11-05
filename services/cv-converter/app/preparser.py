@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass, field
 
 from .models import CanonicalCv, ContactInfo, LanguageItem, ProjectItem, WorkExperienceItem
+from .structured_cv import explicit_document_facts
 
 
 _ROLE_DATES_RE = re.compile(r'^(?P<role>.+?)\s*\((?P<dates>[^()]*(?:19|20)\d{2}[^()]*)\)\s*$')
@@ -120,6 +121,7 @@ class PreparsedCv:
     expected_work_experience: int = 0
     expected_projects: int = 0
     notes: list[str] = field(default_factory=list)
+    structured_document: bool = False
 
     def prompt_text(self) -> str:
         parts = [
@@ -333,6 +335,16 @@ def preparse_cv(source_text: str) -> PreparsedCv:
             experience_blocks = []
     tools = _parse_skills(skill_blocks)
 
+    # Recover explicit project records before the LLM. The source DOCX may
+    # encode all professional experience in two-column, vertically merged
+    # tables that a generic text prompt otherwise loses.
+    facts = explicit_document_facts(source_text)
+    if facts:
+        projects = facts['projects']
+        project_blocks = [block for block in blocks if block[0] == '[CV_PROJECT_START]']
+        experience_blocks = []
+        tools = facts['tools']
+
     seed = CanonicalCv(
         full_name=full_name,
         target_role=target_role,
@@ -343,6 +355,15 @@ def preparse_cv(source_text: str) -> PreparsedCv:
         projects=projects,
         tools=tools,
     )
+    if facts:
+        seed.projects = facts['projects']
+        seed.skill_groups = facts['skill_groups']
+        seed.tools = facts['tools']
+        seed.education = facts['education']
+        seed.languages = facts['languages']
+        seed.additional = facts['additional']
+        seed.experience = facts['experience']
+        seed.warnings = facts['warnings']
 
     notes: list[str] = []
     if work_experience:
@@ -360,6 +381,7 @@ def preparse_cv(source_text: str) -> PreparsedCv:
         expected_work_experience=len(work_experience),
         expected_projects=len(projects),
         notes=notes,
+        structured_document=bool(facts),
     )
 
 
@@ -442,5 +464,22 @@ def merge_preparsed(cv: CanonicalCv, parsed: PreparsedCv) -> CanonicalCv:
 
     if not cv.tools and seed.tools:
         cv.tools = seed.tools
+
+    if parsed.structured_document:
+        # Source text has authoritative typed facts for each table; do not
+        # substitute LLM summaries, fabricated results or flattened skills.
+        cv.full_name = seed.full_name or cv.full_name
+        cv.target_role = seed.target_role or cv.target_role
+        cv.summary = seed.summary
+        cv.experience = seed.experience
+        cv.projects = seed.projects
+        cv.work_experience = seed.work_experience
+        cv.skill_groups = seed.skill_groups
+        cv.tools = seed.tools
+        cv.education = seed.education
+        cv.languages = seed.languages
+        cv.additional = seed.additional
+        cv.extra_sections = seed.extra_sections
+        cv.warnings = list(dict.fromkeys([*cv.warnings, *seed.warnings]))
 
     return cv
