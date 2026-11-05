@@ -1,4 +1,5 @@
 name: Migration worker diagnostics (read-only)
+# Temporary post-release production status probe, read-only; never merge this PR.
 
 on:
   workflow_dispatch:
