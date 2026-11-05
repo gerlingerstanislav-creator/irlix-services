@@ -114,6 +114,85 @@ final class RoleLabels
         return $catalog;
     }
 
+    /**
+     * Flat preorder of the live Employees organization tree for hierarchical
+     * consumers such as Clients permission role pickers. The catalog and JWT
+     * identity keys use the same canonical alias mapping, including the legacy
+     * Client Service / Accounting disambiguation. Invalid/missing parents and
+     * cycles cannot hide roles or make this traversal infinite.
+     */
+    public static function canonicalRoleTree(array $departments): array
+    {
+        $catalog = self::canonicalRoleCatalog($departments);
+        $byId = [];
+        foreach ($departments as $department) {
+            $id = (int) ($department->id ?? 0);
+            if ($id > 0) $byId[$id] = $department;
+        }
+        $children = [];
+        $roots = [];
+        foreach ($byId as $id => $department) {
+            $parent = (int) ($department->parent_id ?? 0);
+            if ($parent > 0 && $parent !== $id && isset($byId[$parent])) {
+                $children[$parent][] = $id;
+            } else {
+                $roots[] = $id;
+            }
+        }
+        $sort = static function (array $ids) use ($byId): array {
+            usort($ids, static function (int $a, int $b) use ($byId): int {
+                $left = (string) ($byId[$a]->name ?? $byId[$a]->alias ?? '');
+                $right = (string) ($byId[$b]->name ?? $byId[$b]->alias ?? '');
+                return strnatcasecmp($left, $right) ?: ($a <=> $b);
+            });
+            return $ids;
+        };
+
+        $tree = [];
+        $visited = [];
+        $published = [];
+        $walk = function (int $id, int $depth) use (
+            &$walk, &$tree, &$visited, &$published, $byId, $children, $sort, $catalog, $departments
+        ): void {
+            if (isset($visited[$id])) return;
+            $visited[$id] = true;
+            $department = $byId[$id];
+            $alias = self::canonicalOrganizationAlias($department, $departments);
+            $name = trim((string) ($department->name ?? ''));
+            $tree[] = [
+                'kind' => 'group',
+                'key' => 'department:'.$id,
+                'label' => $name !== '' ? $name : ($alias ?? 'Подразделение #'.$id),
+                'depth' => $depth,
+            ];
+            if ($alias !== null) {
+                foreach (['org:'.$alias, 'head:'.$alias] as $role) {
+                    if (!isset($catalog[$role]) || isset($published[$role])) continue;
+                    $published[$role] = true;
+                    $tree[] = [
+                        'kind' => 'role', 'key' => $role,
+                        'label' => $catalog[$role], 'depth' => $depth + 1,
+                    ];
+                }
+            }
+            foreach ($sort($children[$id] ?? []) as $childId) $walk($childId, $depth + 1);
+        };
+
+        foreach ($sort($roots) as $id) $walk($id, 0);
+        // A malformed cyclic ancestry has no root. Keep it visible, but
+        // never derive any extra authorization from its visual position.
+        foreach ($sort(array_keys($byId)) as $id) $walk($id, 0);
+
+        $other = array_diff_key($catalog, $published);
+        if ($other !== []) {
+            $tree[] = ['kind' => 'group', 'key' => 'other', 'label' => 'Прочее', 'depth' => 0];
+            foreach ($other as $role => $label) {
+                $tree[] = ['kind' => 'role', 'key' => $role, 'label' => $label, 'depth' => 1];
+            }
+        }
+        return $tree;
+    }
+
     private static function canonicalOrganizationAlias(object $department, array $departments): ?string
     {
         $alias = (string) ($department->alias ?? '');
