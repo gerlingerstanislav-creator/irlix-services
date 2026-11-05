@@ -199,8 +199,8 @@ onMounted(loadEmployees);
             <span v-else-if="currentSection === 'positions'"><strong>{{ departments.length }}</strong> подразделений · {{ positions.length }} должностей</span>
             <span v-else-if="currentSection === 'staffPositions'"><strong>{{ positions.length }}</strong> должностей</span>
           </div>
-          <UiPeriodPicker v-if="currentSection === 'fot' && canReadFot" v-model="fotYear" mode="year" :min-year="fotCurrentYear - 2" :max-year="fotCurrentYear + 4" />
-           <UiButton v-if="currentSection === 'fot' && canPlanFot" @click="openPlanFotReview">+ Запланировать пересмотр</UiButton>
+          <UiPeriodPicker v-if="currentSection === 'fot' && access.allowed && canReadFot" v-model="fotYear" mode="year" :min-year="fotCurrentYear - 2" :max-year="fotCurrentYear + 4" />
+           <UiButton v-if="currentSection === 'fot' && access.allowed && canReadFot && canPlanFot" @click="openPlanFotReview">+ Запланировать пересмотр</UiButton>
            <UiButton v-if="currentSection === 'employees' && canCreateApplication" @click="showNewEmployee = true">+ Новый сотрудник</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManageOrganization" @click="openCreateDepartment">+ Подразделение</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManagePositions" @click="openCreateStaffPosition">+ Должность</UiButton>
