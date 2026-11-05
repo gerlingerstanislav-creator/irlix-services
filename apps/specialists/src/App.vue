@@ -106,17 +106,39 @@ const refreshCatalog = async () => {
   workspace.value = { ...workspace.value, catalog };
 };
 
-const loadPerson = async (id) => {
-  error.value = '';
-  profileErrorStatus.value = null;
+const loadProjects = async (id) => {
+  projectAssignments.value=[];
+  projectError.value='';
+  projectLoading.value=true;
   try {
-    selected.value = await api(`/people/${id}`);
-    const professional = selected.value.professional || {};
+    const response=await fetch('/api/clients/specialists/people/'+id+'/projects',{headers:{Accept:'application/json'}});
+    const body=await response.json().catch(()=>({}));
+    if (!response.ok) throw new Error(body.message || 'Projects unavailable');
+    if(route.value.employeeId===id) projectAssignments.value=Array.isArray(body.data)?body.data:[];
+  } catch (_) {
+    if(route.value.employeeId===id) projectError.value='Не удалось загрузить проекты.';
+  } finally {
+    if(route.value.employeeId===id) projectLoading.value=false;
+  }
+};
+const loadPerson = async (id) => {
+  selected.value=null;
+  projectAssignments.value=[];
+  projectError.value='';
+  profileErrorStatus.value=null;
+  error.value='';
+  try {
+    const result=await api(`/people/${id}`);
+    if (route.value.employeeId!==id) return;
+    selected.value=result;
+    const professional = result.professional || {};
     editor.grade = professional.grade || '';
     editor.manager_note = professional.manager_note || '';
     editor.technology_ids = (professional.technologies || []).map((item) => Number(item.id));
     editor.competencies = (professional.competencies || []).map((item) => ({ id: Number(item.id), level: item.level ?? null, comment: item.comment || '' }));
+    loadProjects(id);
   } catch (e) {
+    if(route.value.employeeId!==id)return;
     error.value = e.message;
     profileErrorStatus.value = [403,404].includes(e.status) ? e.status : null;
     selected.value = null;
@@ -131,7 +153,7 @@ const savePerson = async () => {
     selected.value = await api(`/people/${selected.value.employee.id}`, {
       method: 'PUT',
       body: JSON.stringify({
-        grade: editor.grade || null,
+        ...(gradeChoices.includes(editor.grade)||!editor.grade ? { grade: editor.grade||null } : {}),
         manager_note: editor.manager_note || null,
         technology_ids: editor.technology_ids,
         competencies: editor.competencies,
@@ -326,6 +348,7 @@ const reloadAccess = async () => {
 onMounted(reloadAccess);
 watch(() => route.value.employeeId, id => {
   if (id && canViewProfiles.value && !loading.value) loadPerson(id);
+  if (!id) { selected.value=null; projectAssignments.value=[]; }
 });
 
 const openPerson = id => navigate(`people/${id}`);
