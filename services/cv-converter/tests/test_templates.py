@@ -1,4 +1,5 @@
 """Synthetic regression tests for template routing and AN document content."""
+import shutil
 import unittest
 from io import BytesIO
 
@@ -70,6 +71,7 @@ class CvTemplateTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Unsupported CV template'):
             render_docx(sample_cv(), template='unknown')
 
+    @unittest.skipUnless(shutil.which('libreoffice') or shutil.which('soffice'), 'LibreOffice required')
     def test_pdf_generated_from_selected_docx(self):
         # The PDF renderer invokes the same template-specific DOCX renderer.
         pdf = render_pdf(sample_cv(), template='irlix-cv-an')
