@@ -26,7 +26,13 @@ const canPlan = computed(() => !!props.access?.permissions?.['employees.fot.plan
 const canApprove = computed(() => !!props.access?.permissions?.['employees.fot.approve']);
 const months = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 const scopedEmployeeOptions = computed(() => employeeTreeOptions(props.departments, props.employees));
-const availableDepartments = computed(() => departmentOptions(overview.value.departments || []));
+const availableDepartments = computed(() => {
+  const permitted = new Set((props.access?.department_ids || []).map(String));
+  const data = overview.value.departments?.length
+    ? overview.value.departments
+    : props.departments.filter(dept => permitted.has(String(dept.id)));
+  return departmentOptions(data);
+});
 const statusOptions = ['Трудоустроен', 'Уволен', 'Ожидает трудоустройства'].map(status => ({ value: status, label: status }));
 const currentYear = new Date().getFullYear();
 const statusNames = { draft: 'Черновик', pending: 'На согласовании', returned: 'На доработке', approved: 'Согласован', cancelled: 'Отменён' };
@@ -209,7 +215,7 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
 .fot-stat-value{display:block;margin-top:6px;font-size:18px;font-weight:400;color:var(--irlix-color-text)}
 .fot-table-shell{min-height:310px;min-width:0;flex:none}
 .fot-table-scroll{overflow:auto;max-height:min(55vh,580px)}
-.fot-matrix{border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums;min-width:1500px;width:100%;font-size:12px}
+.fot-matrix{border-collapse:separate;border-spacing:0;min-width:1500px;width:100%;font-size:12px}
 .fot-matrix th,.fot-matrix td{padding:8px 9px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--irlix-color-border)}
 .fot-matrix td{font-weight:400;color:var(--irlix-color-text)}
 .fot-matrix td{min-width:108px}
