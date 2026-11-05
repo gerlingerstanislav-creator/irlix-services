@@ -46,6 +46,7 @@ COPY database/migrations /app/database/migrations
 COPY tests/role_labels.php /app/tests/role_labels.php
 COPY tests/clients_production_head_aliases.php /app/tests/clients_production_head_aliases.php
 COPY tests/inherited_permission_rules.php /app/tests/inherited_permission_rules.php
+COPY tests/cv_production_heads_access.php /app/tests/cv_production_heads_access.php
 COPY tests/position_catalog.php /app/tests/position_catalog.php
 COPY tests/position_lifecycle.php /app/tests/position_lifecycle.php
 COPY tests/equipment_directory.php /app/tests/equipment_directory.php
@@ -57,7 +58,7 @@ COPY tests/eloquent_services.php /app/tests/eloquent_services.php
 COPY tests/layered_workflows.php /app/tests/layered_workflows.php
 COPY tests/assignment_history_edit.php /app/tests/assignment_history_edit.php
 COPY tests/staff_positions_import.php /app/tests/staff_positions_import.php
-RUN php /app/tests/clients_production_head_aliases.php && php /app/tests/role_labels.php && php /app/tests/inherited_permission_rules.php && php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php && php /app/tests/vacations_historical_directory.php && php /app/tests/platform_roles.php && php /app/tests/eloquent_architecture.php && php /app/tests/eloquent_services.php && php /app/tests/layered_workflows.php && php /app/tests/assignment_history_edit.php && php /app/tests/staff_positions_import.php
+RUN php /app/tests/clients_production_head_aliases.php && php /app/tests/role_labels.php && php /app/tests/inherited_permission_rules.php && php /app/tests/cv_production_heads_access.php && php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php && php /app/tests/vacations_historical_directory.php && php /app/tests/platform_roles.php && php /app/tests/eloquent_architecture.php && php /app/tests/eloquent_services.php && php /app/tests/layered_workflows.php && php /app/tests/assignment_history_edit.php && php /app/tests/staff_positions_import.php
 RUN find /app/app/Models /app/app/Services /app/app/Http/Controllers -name '*.php' -exec php -l {} \; \
     && php -l /app/routes/api.php \
     && php -l /app/routes/self.php \
