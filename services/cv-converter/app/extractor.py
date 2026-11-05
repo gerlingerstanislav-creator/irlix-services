@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import re
-from io import BytesIO
-
 import fitz
-from docx import Document
+from .docx_layout import extract_docx_layout
 
 
 class UnsupportedSourceError(ValueError):
@@ -46,18 +44,8 @@ def _extract_pdf(data: bytes) -> str:
 
 
 def _extract_docx(data: bytes) -> str:
-    document = Document(BytesIO(data))
-    blocks: list[str] = []
-    for paragraph in document.paragraphs:
-        value = _clean_line(paragraph.text)
-        if value:
-            blocks.append(value)
-    for table in document.tables:
-        for row in table.rows:
-            cells = [_clean_line(cell.text) for cell in row.cells if _clean_line(cell.text)]
-            if cells:
-                blocks.append('\n'.join(cells))
-    text = '\n\n'.join(blocks).strip()
+    # Preserve source order and logical project tables before the LLM is invoked.
+    text = extract_docx_layout(data)
     if not text:
         raise UnsupportedSourceError('DOCX не содержит извлекаемого текста.')
     return text
