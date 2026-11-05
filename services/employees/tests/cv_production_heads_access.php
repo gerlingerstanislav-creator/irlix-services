@@ -71,6 +71,8 @@ $lead = $resolve(10);
 $check($lead['services']['cv-converter'] === true, 'Assigned production manager cannot enter CV');
 $check($grant($lead), 'Production manager was not published as a signed CV service entitlement');
 $check(in_array('development-head', $lead['roles'], true), 'Assigned head label missing');
+$check($lead['production_head_roles'] === ['head:development'], 'Production manager identity list incorrect');
+$check($resolve(11)['production_head_roles'] === [], 'Legal head incorrectly marked as production');
 $check($lead['services']['system'] === false, 'CV admission incorrectly grants System privileges');
 
 foreach ([11, 12, 14] as $id) {
