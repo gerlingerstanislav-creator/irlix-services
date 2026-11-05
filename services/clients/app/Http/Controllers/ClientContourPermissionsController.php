@@ -20,6 +20,11 @@ class ClientContourPermissionsController extends Controller
         $access = $resolver->resolve($request);
         abort_unless($access['platform_admin'] || ($resolver->allows($access, 'permissions.view') && $resolver->scope($access, 'permissions.view') === 'all'), 403, 'Недостаточно прав на просмотр матрицы разрешений.');
         $matrix = app(ClientContourPermissionService::class)->matrix();
+        $directory = (array) $request->attributes->get('clients_employees_directory', []);
+        $catalog = array_filter((array) ($directory['role_catalog'] ?? []),
+            static fn ($label, $role): bool => is_string($label)
+                && ClientContourPermissionService::isCanonicalRole((string) $role),
+            ARRAY_FILTER_USE_BOTH);
         // The table is a view of existing canonical V2 matrix roles.
         // Never show old aliases or silently create a new Keycloak role.
         // Display functional business names without introducing retired
@@ -35,15 +40,50 @@ class ClientContourPermissionsController extends Controller
         ];
         $labels = [];
         foreach (array_keys($matrix) as $role) {
-            $labels[$role] = $businessLabels[$role] ?? $role;
+            $labels[$role] = $businessLabels[$role] ?? $catalog[$role] ?? $role;
         }
         return response()->json(['data' => [
             'can_manage' => $access['platform_admin'] || ($resolver->allows($access, 'permissions.manage') && $resolver->scope($access, 'permissions.manage') === 'all'),
             'roles' => collect($labels)->map(fn ($label, $key) => ['key' => $key, 'label' => $label, 'locked' => $key === 'special:platform-admin'])->values(),
+            'available_roles' => collect($catalog)->map(fn ($label, $key) => [
+                'key' => $key, 'label' => $businessLabels[$key] ?? $label,
+                'locked' => $key === 'special:platform-admin',
+            ])->values(),
             'permissions' => collect(ClientContourAccess::PERMISSION_LABELS)->map(fn ($label, $key) => ['key' => $key, 'label' => $label])->values(),
             'matrix' => $matrix,
             'scopes' => [['key' => 'none', 'label' => 'Не назначено'], ['key' => 'own', 'label' => 'Только свои'], ['key' => 'team', 'label' => 'Своё направление'], ['key' => 'all', 'label' => 'Все']],
         ]]);
+    }
+
+    public function addRole(Request $request, ClientContourAccess $resolver)
+    {
+        $access = $resolver->resolve($request);
+        abort_unless($access['platform_admin'] || ($resolver->allows($access, 'permissions.manage') && $resolver->scope($access, 'permissions.manage') === 'all'), 403);
+        $directory = (array) $request->attributes->get('clients_employees_directory', []);
+        $catalog = (array) ($directory['role_catalog'] ?? []);
+        abort_if($catalog === [], 503, 'Каталог ролей Employees недоступен.');
+        $data = $request->validate(['role' => ['required', 'string', Rule::in(array_keys($catalog))]]);
+        abort_unless(ClientContourPermissionService::isCanonicalRole($data['role'])
+            && $data['role'] !== 'special:platform-admin', 422, 'Эту роль нельзя добавлять.');
+
+        $created = app(ClientContourPermissionService::class)->addRole(
+            $data['role'], isset($access['employee']['id']) ? (int) $access['employee']['id'] : null
+        );
+        abort_unless($created, 409, 'Роль уже добавлена.');
+        return $this->index($request, $resolver);
+    }
+
+    public function removeRole(Request $request, ClientContourAccess $resolver, string $role)
+    {
+        $access = $resolver->resolve($request);
+        abort_unless($access['platform_admin'] || ($resolver->allows($access, 'permissions.manage') && $resolver->scope($access, 'permissions.manage') === 'all'), 403);
+        abort_unless(ClientContourPermissionService::isCanonicalRole($role)
+            && $role !== 'special:platform-admin', 422, 'Эту роль нельзя удалить.');
+        $removed = app(ClientContourPermissionService::class)->removeRole(
+            $role, isset($access['employee']['id']) ? (int) $access['employee']['id'] : null
+        );
+        abort_unless($removed, 404, 'Роль не найдена в матрице.');
+        return response()->noContent();
     }
 
     public function update(Request $request, ClientContourAccess $resolver)
