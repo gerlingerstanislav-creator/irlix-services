@@ -75,7 +75,7 @@ final class ServiceEntitlement
                 };
                 $admin=in_array('platform-admin',$roles,true)
                     ||in_array('special:platform-admin',$roles,true);
-                if ($path==='api/role-permissions') {
+                if ($path==='api/role-permissions' || str_starts_with($path, 'api/role-permissions/roles')) {
                     if (!$admin) return response()->json(['message'=>'Forbidden'],403);
                 } elseif ($required===null || !($permissions[$required]['allowed']??false)) {
                     return response()->json(['message'=>'Specialists permission denied'],403);

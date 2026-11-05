@@ -45,3 +45,54 @@
   .content:has(> .table-card--registry) > .page-head{padding:10px 12px}
   .content:has(> .table-card--registry) > .filters{padding:10px 12px}
 }
+
+
+/* Specialists follows the shared compact registry/filter and workspace layout. */
+.dashboard-context{display:flex;justify-content:flex-end;margin-bottom:16px}
+.specialists-filter-bar{border-bottom:1px solid var(--irlix-color-border);background:var(--irlix-color-surface)}
+.specialists-filter-bar>.ui-search-select{flex:1 1 160px;min-width:140px;max-width:240px}
+.specialists-filter-bar>.specialists-search{flex:2 1 260px;min-width:210px;max-width:480px;min-height:36px;border:1px solid var(--irlix-color-border);border-radius:8px;background:var(--irlix-color-surface);padding:7px 12px;font:inherit;font-size:var(--irlix-font-size-table);color:var(--irlix-color-text);outline:none}
+.specialists-search:focus-visible{outline:2px solid var(--irlix-color-primary);outline-offset:1px}
+.specialists-filter-count{font-size:var(--irlix-font-size-caption);color:var(--irlix-color-text-muted);white-space:nowrap;margin-left:auto}
+.content:has(>.table-card--registry)>.specialists-filter-bar{flex:0 0 auto;margin:0;padding:10px 16px;border-top:0;border-left:0;border-right:0;border-radius:0;box-shadow:none}
+.specialists-app .ui-registry-table .irlix-data-table th{text-transform:none;letter-spacing:normal;color:var(--irlix-color-text);font-weight:600}
+.specialists-app .ui-registry-table .irlix-data-table td{border-top:0}
+.specialists-app .table-card--registry tbody tr{cursor:pointer}
+.specialists-app .table-card--registry tbody tr:focus-visible{outline:2px solid var(--irlix-color-primary);outline-offset:-2px}
+.specialists-app .primary{background:var(--irlix-color-primary);color:var(--irlix-color-on-accent)}
+.specialists-app .choice-grid button.selected{background:var(--irlix-color-primary);color:var(--irlix-color-on-accent);border-color:var(--irlix-color-primary)}
+.specialists-app .status.on{background:var(--irlix-color-surface-muted);color:var(--irlix-color-primary-text)}
+.content.irlix-service-content:has(>.specialists-roles){
+  display:flex;flex-direction:column;min-width:0;min-height:0;height:calc(100dvh - var(--irlix-topbar-height,45px));padding:0;overflow:hidden
+}
+.content.irlix-service-content:has(>.specialists-catalog-section){
+  display:flex;flex-direction:column;gap:0;min-width:0;min-height:0;height:calc(100dvh - var(--irlix-topbar-height,45px));padding:0;overflow:hidden
+}
+.specialists-catalog-section{display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--irlix-color-surface)}
+.specialists-catalog-section--technologies{flex:3 1 65%;border-bottom:1px solid var(--irlix-color-border)}
+.specialists-catalog-section--competencies{flex:2 1 35%}
+.specialists-catalog-section>.ui-registry-table{flex:1 1 auto;min-height:0}
+.specialists-catalog-toolbar{display:flex;align-items:center;gap:12px;justify-content:flex-end;flex:0 0 auto;padding:10px 16px;min-height:54px;border-bottom:1px solid var(--irlix-color-border)}
+.specialists-catalog-toolbar>.specialists-filter-count{margin:0 auto 0 0}
+.specialists-catalog-section .technology-name{display:flex;align-items:center;min-width:0;gap:6px}
+.specialists-catalog-section .technology-name-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.specialists-catalog-section .technology-tree-spacer{width:22px;min-width:22px;height:22px}
+.specialists-catalog-section tbody tr{cursor:default}
+.specialists-catalog-section .row-actions{gap:2px;justify-content:flex-end}
+.specialists-catalog-section .row-actions button{width:26px;height:26px;font-size:16px;border:0;background:transparent}
+.specialists-catalog-section .row-actions button:hover{background:var(--irlix-color-surface-muted)}
+.specialists-catalog-section .empty.padded{padding:20px}
+@media(max-width:1100px){
+  .specialists-filter-bar>.ui-search-select{flex:1 1 150px}
+}
+@media(max-width:720px){
+  .content:has(>.table-card--registry)>.specialists-filter-bar{padding:10px 12px}
+  .specialists-filter-bar>.ui-search-select{flex:1 1 145px;max-width:none}
+  .specialists-filter-bar>.specialists-search{max-width:none}
+  .specialists-filter-count{margin-left:0}
+  .specialists-catalog-toolbar{padding:8px 12px}
+}
+
+/* Clear hierarchy and selected states in the shared visual palette. */
+.specialists-app .stat-row .bar i{background:var(--irlix-color-primary)}
+.specialists-roles tbody tr{cursor:default}

@@ -113,6 +113,8 @@ Route::get('/permissions',function(Request $request) {
     ]]);
 });
 Route::get('/role-permissions',[SpecialistsPermissionsController::class,'index']);
+Route::post('/role-permissions/roles',[SpecialistsPermissionsController::class,'addRole']);
+Route::delete('/role-permissions/roles/{role}',[SpecialistsPermissionsController::class,'removeRole']);
 Route::put('/role-permissions',[SpecialistsPermissionsController::class,'update']);
 Route::delete('/role-permissions',[SpecialistsPermissionsController::class,'remove']);
 

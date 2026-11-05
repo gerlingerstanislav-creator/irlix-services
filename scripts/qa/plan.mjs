@@ -11,6 +11,7 @@ export const suites = [
   { id: 'vacations', label: 'Vacations', files: ['apps/vacations/tests'] },
   { id: 'finance', label: 'Finance contracts', files: ['apps/finance/tests'] },
   { id: 'equipment', label: 'Equipment regression', files: ['apps/equipment/tests/contracts.test.mjs'] },
+  { id: 'specialists', label: 'Specialists role screen', files: ['apps/specialists/tests'] },
   { id: 'qa', label: 'QA self-tests', files: ['scripts/qa/tests'] }
 ];
 
@@ -55,7 +56,7 @@ const mapping = [
   ['.github/agents/', ['qa']]
 ];
 const suiteIds = new Set(suites.map(x => x.id));
-const scopeSuiteIds = { storage: ['storage'], vacations: ['vacations'], equipment: ['equipment'], specialists: [], recruitment: [], cv: [], platform: ['portal', 'auth'], ci: ['qa'] };
+const scopeSuiteIds = { storage: ['storage'], vacations: ['vacations'], equipment: ['equipment'], specialists: ['specialists'], recruitment: [], cv: [], platform: ['portal', 'auth'], ci: ['qa'] };
 export function makePlan(changedPaths = null, scope = 'changed') {
   if (scope !== 'all' && scope !== 'changed' && !domains.includes(scope)) {
     throw new Error('Unknown QA scope: ' + scope);
