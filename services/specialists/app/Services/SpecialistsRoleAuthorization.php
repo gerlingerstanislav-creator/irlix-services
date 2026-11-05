@@ -60,10 +60,16 @@ final class SpecialistsRoleAuthorization
             ||in_array('special:platform-admin',$roles,true))return self::evaluate($roles,[]);
         $valid=array_values(array_filter($roles,static fn($role)=>
             is_string($role)&&preg_match('/^(org|head|special):[a-z0-9]+(?:-[a-z0-9]+)*$/D',$role)===1));
-        if (array_filter($valid, static fn($role)=>str_starts_with($role,'head:'))) {
-            $valid[]='head:*';
+        $heads = array_values(array_filter($valid, static fn ($role) => str_starts_with($role, 'head:')));
+        if ($heads) {
+            // Legacy fallback is only for heads that have NEVER been explicitly
+            // configured. Active and removed (tombstoned) columns both suppress
+            // inherited grants, so a removed role cannot silently regain access.
+            $known = \Illuminate\Support\Facades\DB::table('specialists_permission_roles')
+                ->whereIn('role', $heads)->pluck('role')->all();
+            if (array_diff($heads, $known)) $valid[] = 'head:*';
         }
-        return self::evaluate($roles,SpecialistsRolePermission::query()->whereIn('role',$valid)->get()
+        return self::evaluate($valid,SpecialistsRolePermission::query()->whereIn('role',$valid)->get()
             ->map(static fn($row)=>['role'=>$row->role,'permission'=>$row->permission,
                 'allowed'=>(bool)$row->allowed,'scope'=>$row->scope])->all());
     }
