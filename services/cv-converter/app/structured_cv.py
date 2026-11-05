@@ -99,17 +99,18 @@ def _education_languages(lines: list[str]) -> tuple[list[EducationItem], list[La
             if _key(v) not in {'образование'} and v.strip()]
     if educ:
         institution = educ[0]
-        degree = next((v for v in educ[1:]
-                       if re.search(r'бакалавр|магистр|специалист|college|university', v, re.I)), None)
-        specialty_match = re.search(r'["«“](.+?)["»”]', degree or '')
+        degree_line = next((v for v in educ[1:]
+                            if re.search(r'бакалавр|магистр|специалист|college|university', v, re.I)), None)
+        specialty_match = re.search(r'["«“](.+?)["»”]', degree_line or '')
         specialty = specialty_match.group(1).strip() if specialty_match else None
+        degree = degree_line.split(',', 1)[0].strip() if specialty else degree_line
         period = next((v for v in educ[1:] if _DATE_RE.search(v)), None)
         details = [period] if period else []
         # Keep non-duplicate education details that are not represented above.
         for value in educ[1:]:
-            if value == degree or value == period:
+            if value == degree_line or value == period:
                 continue
-            if degree and re.sub(r'[^а-яa-z0-9]', '', value.casefold()) == re.sub(r'[^а-яa-z0-9]', '', degree.casefold()):
+            if degree_line and re.sub(r'[^а-яa-z0-9]', '', value.casefold()) == re.sub(r'[^а-яa-z0-9]', '', degree_line.casefold()):
                 continue
             if value not in details:
                 details.append(value)
