@@ -287,7 +287,7 @@ def preparse_cv(source_text: str) -> PreparsedCv:
     exp_idx = _heading_index(blocks, _EXPERIENCE_HEADINGS)
     if exp_idx is None:
         exp_idx = next((i for i, block in enumerate(blocks)
-                        if len(block) == 1 and re.match(r'^опыт работы\\s*[—–-]', _key(block[0]))), None)
+                        if len(block) == 1 and re.match(r'^опыт работы\s*[—–-]', _key(block[0]))), None)
     projects_idx = _heading_index(blocks, _PROJECT_HEADINGS)
     skills_idx = _heading_index(blocks, _SKILL_HEADINGS)
 
