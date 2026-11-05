@@ -62,8 +62,8 @@ export function orderedRoles(roles, tree, savedOrder = []) {
   return order.map(key => byKey.get(key));
 }
 
-/** Inserts a column at the target's position, preserving every other cell. */
-export function moveRoleBefore(roles, sourceKey, targetKey) {
+/** Moves a column into the target's slot, preserving every cell's role identity. */
+export function moveRoleTo(roles, sourceKey, targetKey) {
   const from = roles.findIndex(role => role.key === sourceKey);
   const to = roles.findIndex(role => role.key === targetKey);
   if (from < 0 || to < 0 || from === to) return roles;
