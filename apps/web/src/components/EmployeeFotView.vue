@@ -33,7 +33,6 @@ const total = field => Object.values(overview.value.summary || {}).reduce((sum, 
 const currentTotal = computed(() => total('current'));
 const plannedTotal = computed(() => total('planned'));
 const difference = computed(() => plannedTotal.value - currentTotal.value);
-const years = computed(() => Array.from({ length: 7 }, (_, i) => currentYear - 2 + i));
 async function api(url, options = {}) {
   const res = await fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...options.headers } });
   const result = await res.json().catch(() => ({}));
