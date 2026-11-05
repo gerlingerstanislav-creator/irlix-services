@@ -48,6 +48,7 @@ final class PermissionRuleService
             'services.finance' => 'Вход: Финансы',
             'services.equipment' => 'Вход: Техника',
             'services.recruitment' => 'Вход: Подбор персонала',
+            'services.cv-converter' => 'Вход: CV конвертер',
             'services.specialists' => 'Вход: Специалисты',
             'services.timesheets' => 'Вход: Табель',
             'services.vacations' => 'Вход: Отпуска',
