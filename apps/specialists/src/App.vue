@@ -456,7 +456,7 @@ const closePerson=()=>navigate('people');
       </div>
     </main>
 
-    <UiDrawer :open="route.section==='person'" :inactive="saving" width="min(760px, 96vw)" :resizable="true" title="Карточка специалиста" @close="closePerson">
+    <UiDrawer :open="route.section==='person' && canViewProfiles" :inactive="saving" width="min(760px, 96vw)" :resizable="true" title="Карточка специалиста" @close="closePerson">
       <template #title><strong>{{ selected?.employee?.full_name || 'Карточка специалиста' }}</strong></template>
       <div class="specialists-profile-drawer">
         <div v-if="profileErrorStatus" class="alert" role="alert">{{ profileErrorStatus }} — {{ error || 'Профиль недоступен' }}</div>
