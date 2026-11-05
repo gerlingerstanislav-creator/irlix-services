@@ -113,7 +113,8 @@ def _authorize_cv(
         if response.status_code == 200:
             payload = response.json()
             access = payload.get('data', payload) if isinstance(payload, dict) else {}
-            if isinstance(access, dict) and access.get('services', {}).get('cv-converter') is True:
+            services = access.get('services') if isinstance(access, dict) else None
+            if isinstance(services, dict) and services.get('cv-converter') is True:
                 if not admin_required or 'platform-admin' in _employees_access_roles(access):
                     return claims
         elif response.status_code == 401:
