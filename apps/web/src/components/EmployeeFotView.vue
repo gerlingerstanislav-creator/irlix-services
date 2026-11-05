@@ -42,18 +42,34 @@ async function api(url, options = {}) {
   if (!res.ok) throw new Error(result.message || Object.values(result.errors || {}).flat()[0] || ('HTTP ' + res.status));
   return result.data;
 }
+let loadSequence = 0;
 async function load() {
+  const sequence = ++loadSequence;
   loading.value = true;
   error.value = '';
   try {
     const qs = fotOverviewQuery(props.year, departmentIds.value, employmentStatuses.value);
-    overview.value = await api('/api/employees/fot/overview?' + qs);
-  } catch (e) { error.value = e.message; overview.value = { summary: {}, employees: [] }; }
+    const data = await api('/api/employees/fot/overview?' + qs);
+    if (sequence === loadSequence) overview.value = data;
+  } catch (e) {
+    if (sequence === loadSequence) {
+      error.value = e.message;
+      overview.value = { summary: {}, employees: [] };
+    }
+  }
+  if (sequence !== loadSequence) return;
   try {
-    reviews.value = await api('/api/employees/fot/reviews');
-    if (canApprove.value) inbox.value = await api('/api/employees/fot/inbox');
-  } catch (e) { error.value = error.value || e.message; }
-  finally { loading.value = false; }
+    const loadedReviews = await api('/api/employees/fot/reviews');
+    if (sequence === loadSequence) reviews.value = loadedReviews;
+    if (canApprove.value) {
+      const loadedInbox = await api('/api/employees/fot/inbox');
+      if (sequence === loadSequence) inbox.value = loadedInbox;
+    }
+  } catch (e) {
+    if (sequence === loadSequence) error.value = error.value || e.message;
+  } finally {
+    if (sequence === loadSequence) loading.value = false;
+  }
 }
 watch([() => props.year, departmentIds, employmentStatuses], load);
 onMounted(load);
