@@ -5,20 +5,24 @@ namespace App\Services;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\EmploymentAssignmentHistory;
+use App\Models\EmploymentPeriod;
 use App\Models\SalaryHistory;
 use App\Models\SalaryReview;
-use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Throwable;
 
 final class PayrollOverviewService
 {
+    public function __construct(private readonly PayrollMonthCalculator $calculator) {}
+
     /**
-     * Read-only year overview. The calendar remains owned by Platform Core;
-     * no direct query crosses an internal-service boundary.
+     * Calculate year FOT from historical employment and assignments. Filtered
+     * parents include only descendants within the caller's authorized scope.
+     * Status filtering uses the employee's current employment status; the
+     * historical register and payroll remain determined by dated records.
      */
-    public function overview(int $year, array $permitted, ?int $departmentId): array
+    public function overview(int $year, array $permitted, array $departmentIds = [], array $statuses = []): array
     {
         try {
             $response = Http::timeout(10)->get(
@@ -35,104 +39,79 @@ final class PayrollOverviewService
         if (!($calendar['available'] ?? false)) {
             return ['status' => 503, 'message' => 'Производственный календарь на этот год пока недоступен'];
         }
+
         $working = [];
         $monthWorkDays = array_fill(1, 12, 0);
         foreach (($calendar['days'] ?? []) as $day => $item) {
-            if (!($item['is_working'] ?? false)) continue;
+            if (!($item['is_working'] ?? false) || substr((string) $day, 0, 4) !== (string) $year) continue;
+            $month = (int) substr((string) $day, 5, 2);
+            if ($month < 1 || $month > 12) continue;
             $working[$day] = true;
-            $monthWorkDays[(int) substr($day, 5, 2)]++;
+            $monthWorkDays[$month]++;
         }
+
         $departments = Department::query()->get(['id', 'name', 'parent_id']);
-        $eligibleDepartments = $departmentId === null ? $permitted : [$departmentId];
-        if ($departmentId !== null) {
-            $children = [];
-            foreach ($departments as $department) {
-                $children[(int) ($department->parent_id ?? 0)][] = (int) $department->id;
-            }
-            $queue = [$departmentId];
-            while ($queue) {
-                $id = array_shift($queue);
-                foreach ($children[$id] ?? [] as $child) {
-                    if (!in_array($child, $eligibleDepartments, true)
-                        && in_array($child, $permitted, true)) {
-                        $eligibleDepartments[] = $child;
-                        $queue[] = $child;
-                    }
-                }
+        $permitted = array_values(array_unique(array_map('intval', $permitted)));
+        $allowed = array_fill_keys($permitted, true);
+        $selected = $departmentIds ?: $permitted;
+        $children = [];
+        foreach ($departments as $department) {
+            $children[(int) ($department->parent_id ?? 0)][] = (int) $department->id;
+        }
+        $eligible = [];
+        $queue = array_values(array_unique(array_map('intval', $selected)));
+        while ($queue) {
+            $id = array_shift($queue);
+            if (!isset($allowed[$id]) || isset($eligible[$id])) continue;
+            $eligible[$id] = true;
+            foreach ($children[$id] ?? [] as $child) {
+                if (isset($allowed[$child]) && !isset($eligible[$child])) $queue[] = $child;
             }
         }
 
-        $eligible = array_flip($eligibleDepartments);
-        $employees = Employee::query()->get([
-            'id', 'full_name', 'department_id', 'hired_at', 'fired_at', 'employment_status',
-        ]);
+        $yearStart = sprintf('%04d-01-01', $year);
+        $yearEnd = sprintf('%04d-12-31', $year);
+        $query = Employee::query()->select(['id', 'full_name', 'employment_status']);
+        if ($statuses) $query->whereIn('employment_status', $statuses);
+        $employees = $query->orderBy('full_name')->get();
+
+        // The employment-period table, not the latest employee status or
+        // assignment alone, decides whether payroll may accrue on a date.
+        $periods = EmploymentPeriod::query()->where('started_at', '<=', $yearEnd)
+            ->where(static fn ($q) => $q->whereNull('ended_at')->orWhere('ended_at', '>=', $yearStart))
+            ->orderBy('started_at')->get()->groupBy('employee_id');
         $salary = SalaryHistory::query()->orderBy('effective_from')->get()->groupBy('employee_id');
         $assignments = EmploymentAssignmentHistory::query()->orderBy('effective_from')
             ->get()->groupBy('employee_id');
         $reviews = SalaryReview::query()->where('status', '<>', 'cancelled')
             ->orderBy('effective_month')->get()->groupBy('employee_id');
+
         $summary = [];
         for ($month = 1; $month <= 12; $month++) $summary[$month] = ['current' => 0, 'planned' => 0];
-
         $rows = [];
         foreach ($employees as $employee) {
+            $employment = $periods->get($employee->id, collect());
             $history = $assignments->get($employee->id, collect());
+
+            // Do not hide a person whose only overlap is a non-working day,
+            // or whose salary history is absent. Their FOT can legitimately be zero.
+            if (!$this->calculator->visible($employment, $history, $eligible, $yearStart, $yearEnd)) {
+                continue;
+            }
             $salaryHistory = $salary->get($employee->id, collect());
             $plans = $reviews->get($employee->id, collect());
-            $monthly = [];
-            $hasVisibleDay = false;
-            for ($month = 1; $month <= 12; $month++) {
-                $current = 0.0;
-                $planned = 0.0;
-                $worked = 0;
-                $start = CarbonImmutable::create($year, $month, 1);
-                for ($date = $start; $date->month === $month; $date = $date->addDay()) {
-                    $day = $date->toDateString();
-                    if (!isset($working[$day])) continue;
-                    $assignment = null;
-                    foreach ($history as $item) {
-                        if ($item->effective_from <= $day
-                            && (!$item->effective_to || $item->effective_to >= $day)) {
-                            $assignment = $item;
-                        }
-                    }
-                    if (!$assignment || !isset($eligible[(int) ($assignment->department_id ?? 0)])) {
-                        continue;
-                    }
-                    $actual = null;
-                    foreach ($salaryHistory as $record) {
-                        if ($record->effective_from <= $day
-                            && (!$record->effective_to || $record->effective_to >= $day)) {
-                            $actual = $record;
-                        }
-                    }
-                    if (!$actual) continue;
-                    $currentAmount = (float) $actual->gross_salary;
-                    $plannedAmount = $currentAmount;
-                    $effective = $actual->effective_from;
-                    foreach ($plans as $plan) {
-                        if ($plan->effective_month <= $day && $plan->effective_month >= $effective) {
-                            $plannedAmount = (float) $plan->gross_salary;
-                            $effective = $plan->effective_month;
-                        }
-                    }
-                    $divisor = $monthWorkDays[$month] ?: 1;
-                    $current += $currentAmount / $divisor;
-                    $planned += $plannedAmount / $divisor;
-                    $worked++;
-                    $hasVisibleDay = true;
-                }
-                $monthly[$month] = [
-                    'current' => round($current, 2),
-                    'planned' => round($planned, 2),
-                    'working_days' => $worked,
-                ];
-                $summary[$month]['current'] += $current;
-                $summary[$month]['planned'] += $planned;
+            $monthly = $this->calculator->calculate(
+                $year, $working, $monthWorkDays, $employment, $history, $salaryHistory, $plans, $eligible
+            );
+
+            foreach ($monthly as $month => $amounts) {
+                $summary[$month]['current'] += $amounts['current'];
+                $summary[$month]['planned'] += $amounts['planned'];
             }
-            if ($hasVisibleDay) $rows[] = [
+            $rows[] = [
                 'id' => $employee->id,
                 'name' => $employee->full_name,
+                'employment_status' => $employee->employment_status,
                 'months' => $monthly,
                 'reviews' => $plans->map(static fn ($plan) => [
                     'id' => $plan->id,
@@ -142,12 +121,14 @@ final class PayrollOverviewService
                 ])->values()->all(),
             ];
         }
+
         foreach ($summary as &$month) {
             $month['current'] = round($month['current'], 2);
             $month['planned'] = round($month['planned'], 2);
             $month['difference'] = round($month['planned'] - $month['current'], 2);
         }
         unset($month);
+
         return ['status' => 200, 'data' => [
             'year' => $year,
             'summary' => $summary,
