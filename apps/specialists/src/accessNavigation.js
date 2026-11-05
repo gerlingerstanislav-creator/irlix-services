@@ -11,7 +11,7 @@ export function accessibleSpecialistsNavigation(permissions, canManageRoleMatrix
     result.push({ id: 'competencies', label: 'Технологии и компетенции', icon: 'code' });
   }
   if (canManageRoleMatrix) {
-    result.push({ id: 'role-permissions', label: 'Разрешения', icon: 'settings' });
+    result.push({ id: 'role-permissions', label: 'Разрешения', icon: 'permissions' });
   }
   return result;
 }
