@@ -13,12 +13,18 @@ const defaultNavItems = [
 
 const roleMatrixAdmin=ref(false);
 const roleAccessPhase=ref('loading');
+const permissionsPhase=ref('loading');
+const effectivePermissions=ref(null);
+const canViewProfiles=computed(()=>effectivePermissions.value?.profiles_view === true);
+const canManageProfiles=computed(()=>effectivePermissions.value?.profiles_manage === true);
+const canViewCatalog=computed(()=>effectivePermissions.value?.catalog_view === true);
+const canEditTechnologyCatalog=computed(()=>effectivePermissions.value?.catalog_manage === true);
 const navItems=computed(()=>[
-  ...defaultNavItems,
+  ...(canViewProfiles.value ? defaultNavItems.slice(0,2) : []),
+  ...(canViewCatalog.value ? defaultNavItems.slice(2) : []),
   ...(roleMatrixAdmin.value?[{id:'role-permissions',label:'Разрешения',icon:'settings'}]:[]),
 ]);
 const loading = ref(true);
-const canEditTechnologyCatalog = ref(false);
 const saving = ref(false);
 const catalogSaving = ref(false);
 const error = ref('');
@@ -65,7 +71,14 @@ const loadWorkspace = async () => {
   loading.value = true;
   error.value = '';
   try {
-    workspace.value = await api('/workspace');
+    if (canViewProfiles.value) {
+      workspace.value = await api('/workspace');
+    } else if (canViewCatalog.value) {
+      // A catalog-only role must not call the protected profiles workspace.
+      // Specialists owns the catalog; access is checked by the backend.
+      const catalog = await api('/catalog');
+      workspace.value = { ...workspace.value, catalog };
+    }
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -96,7 +109,7 @@ const loadPerson = async (id) => {
 };
 
 const savePerson = async () => {
-  if (!selected.value?.employee?.id) return;
+  if (!canManageProfiles.value || !selected.value?.employee?.id) return;
   saving.value = true;
   error.value = '';
   try {
@@ -265,24 +278,35 @@ const deleteTechnology = async (technology) => {
 
 const initials = (name = '') => name.split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]).join('').toUpperCase();
 const toggleTechnology = (id) => {
+  if (!canManageProfiles.value) return;
   id = Number(id);
   editor.technology_ids = editor.technology_ids.includes(id)
     ? editor.technology_ids.filter((value) => value !== id)
     : [...editor.technology_ids, id];
 };
 
-onMounted(async () => {
+const reloadAccess = async () => {
+  loading.value = true;
+  permissionsPhase.value = 'loading';
   try {
-    const permissions=await api('/permissions');
-    canEditTechnologyCatalog.value=permissions?.catalog_manage === true;
-  } catch (_) { canEditTechnologyCatalog.value=false; }
+    effectivePermissions.value = await api('/permissions');
+    permissionsPhase.value = 'allowed';
+  } catch (e) {
+    effectivePermissions.value = null;
+    permissionsPhase.value = e.status === 403 ? 'forbidden' : 'error';
+  }
   await loadRoleAccess();
-  await loadWorkspace();
-  const parents = (workspace.value.catalog.technologies || []).filter((t) => (workspace.value.catalog.technologies || []).some((c) => Number(c.parent_id) === Number(t.id)));
-  expandedTechnologies.value = new Set(parents.map((t) => Number(t.id)));
-  if (route.value.employeeId) await loadPerson(route.value.employeeId);
+  if (permissionsPhase.value === 'allowed') await loadWorkspace();
+  else loading.value = false;
+  const technologies = workspace.value.catalog.technologies || [];
+  const parents = technologies.filter(t => technologies.some(c => Number(c.parent_id) === Number(t.id)));
+  expandedTechnologies.value = new Set(parents.map(t => Number(t.id)));
+  if (canViewProfiles.value && route.value.employeeId) await loadPerson(route.value.employeeId);
+};
+onMounted(reloadAccess);
+watch(() => route.value.employeeId, id => {
+  if (id && canViewProfiles.value && !loading.value) loadPerson(id);
 });
-watch(() => route.value.employeeId, id => { if (id && !loading.value) loadPerson(id); });
 
 const openPerson = id => navigate(`people/${id}`);
 </script>
@@ -312,6 +336,10 @@ const openPerson = id => navigate(`people/${id}`);
       <UiErrorState v-else-if="route.section==='role-permissions' && roleAccessPhase==='error'" :status="503" description="Не удалось проверить права доступа." retryable @retry="loadRoleAccess" />
       <UiErrorState v-else-if="route.section==='role-permissions' && roleAccessPhase==='forbidden'" :status="403"/>
       <SpecialistsRolePermissionsView v-else-if="route.section==='role-permissions' && roleAccessPhase==='allowed'"/>
+      <UiErrorState v-else-if="permissionsPhase==='forbidden'" :status="403" />
+      <UiErrorState v-else-if="permissionsPhase==='error'" :status="503" description="Не удалось загрузить разрешения." retryable @retry="reloadAccess" />
+      <UiErrorState v-else-if="['dashboard','people','person'].includes(route.section) && !canViewProfiles" :status="403" />
+      <UiErrorState v-else-if="route.section==='competencies' && !canViewCatalog" :status="403" />
       <template v-else-if="route.section === 'dashboard'">
         <div class="dashboard-context"><span class="scope-pill">{{ workspace.scope === 'all' ? 'Все направления' : 'Моё направление и дочерние' }}</span></div>
         <section class="metric-grid">
@@ -345,7 +373,7 @@ const openPerson = id => navigate(`people/${id}`);
         <UiLoader v-else-if="!selected" page label="Загрузка профиля специалиста" />
         <template v-else>
           <header class="profile-head"><span class="avatar xl">{{ initials(selected.employee.full_name) }}</span><div><div class="profile-title"><h1>{{ selected.employee.full_name }}</h1><span v-if="selected.employee.employment_status === 'Уволен'" class="status off">Уволен</span></div><p>{{ selected.employee.position || 'Должность не указана' }} · {{ selected.employee.department_name || 'Направление не указано' }}</p></div></header>
-          <section class="profile-grid"><article class="panel form-panel"><h2>Профессиональный профиль</h2><label>Грейд<input v-model="editor.grade" placeholder="Например: Middle" /></label><label>Комментарий руководителя<textarea v-model="editor.manager_note" rows="5" placeholder="Краткий контекст по развитию специалиста"></textarea></label><h3>Технологии</h3><div v-if="workspace.catalog.technologies.length" class="choice-grid"><button v-for="t in workspace.catalog.technologies" :key="t.id" :class="{ selected: editor.technology_ids.includes(Number(t.id)) }" @click="toggleTechnology(t.id)">{{ t.name }}</button></div><div v-else class="empty">Каталог технологий пока пуст.</div><div class="actions"><button class="primary" :disabled="saving" @click="savePerson">{{ saving ? 'Сохраняем…' : 'Сохранить профиль' }}</button></div></article><aside class="stack"><article class="panel"><h2>Компетенции</h2><div v-if="selected.professional.competencies?.length" class="competency-list"><div v-for="c in selected.professional.competencies" :key="c.id"><span><b>{{ c.name }}</b><small>{{ c.technology_name || 'Общая компетенция' }}</small></span><strong>{{ c.level ?? '—' }}</strong></div></div><div v-else class="empty">Компетенции пока не оценены.</div></article><article class="panel future"><h2>Следующие этапы</h2><p>Assessments, обучение и Performance Review будут добавлены следующими итерациями.</p></article></aside></section>
+          <section class="profile-grid"><article class="panel form-panel"><h2>Профессиональный профиль</h2><label>Грейд<input v-model="editor.grade" :disabled="!canManageProfiles" placeholder="Например: Middle" /></label><label>Комментарий руководителя<textarea v-model="editor.manager_note" :disabled="!canManageProfiles" rows="5" placeholder="Краткий контекст по развитию специалиста"></textarea></label><h3>Технологии</h3><div v-if="workspace.catalog.technologies.length" class="choice-grid"><button v-for="t in workspace.catalog.technologies" :key="t.id" :class="{ selected: editor.technology_ids.includes(Number(t.id)) }" :disabled="!canManageProfiles" @click="toggleTechnology(t.id)">{{ t.name }}</button></div><div v-else class="empty">Каталог технологий пока пуст.</div><div v-if="canManageProfiles" class="actions"><button class="primary" :disabled="saving" @click="savePerson">{{ saving ? 'Сохраняем…' : 'Сохранить профиль' }}</button></div></article><aside class="stack"><article class="panel"><h2>Компетенции</h2><div v-if="selected.professional.competencies?.length" class="competency-list"><div v-for="c in selected.professional.competencies" :key="c.id"><span><b>{{ c.name }}</b><small>{{ c.technology_name || 'Общая компетенция' }}</small></span><strong>{{ c.level ?? '—' }}</strong></div></div><div v-else class="empty">Компетенции пока не оценены.</div></article><article class="panel future"><h2>Следующие этапы</h2><p>Assessments, обучение и Performance Review будут добавлены следующими итерациями.</p></article></aside></section>
         </template>
       </template>
 
