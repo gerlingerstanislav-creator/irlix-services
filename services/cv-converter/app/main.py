@@ -76,24 +76,33 @@ def _employees_access_roles(payload: dict | None) -> set[str]:
     return _normalize_roles(access.get('roles', []))
 
 
-def require_platform_admin(
-    claims: dict = Depends(require_user),
-    authorization: str | None = Header(default=None),
-    x_irlix_role_preview: str | None = Header(default=None),
+def _authorize_cv(
+    claims: dict,
+    authorization: str | None,
+    role_preview: str | None,
+    *,
+    admin_required: bool,
 ) -> dict:
-    # FastAPI injects a string for real requests; direct unit calls leave a Header descriptor.
-    if isinstance(x_irlix_role_preview, str) and x_irlix_role_preview.strip():
-        raise HTTPException(status_code=403, detail='Administrative tools are unavailable in role preview')
+    """Enforce Employees-owned CV entitlement, keeping provider settings admin-only.
+
+    Employees resolves production managers from actual manager_id / is_production
+    relationships and syncs the resulting service grant to Keycloak. In JWT mode
+    that signed entitlement is sufficient for CV conversion; an extra platform
+    admin role is required only for settings and provider credentials.
+    """
+    if isinstance(role_preview, str) and role_preview.strip():
+        raise HTTPException(status_code=403, detail='CV operations are unavailable in role preview')
+
     if os.getenv('IRLIX_AUTHZ_JWT_ENABLED', 'false').lower() in {'true', '1', 'yes'}:
-        # require_user already cryptographically verified this signed JWT.
-        # Only the canonical platform administrator may access CV tools.
         roles = _realm_roles(claims)
-        if 'service:cv-converter' in roles and 'platform-admin' in roles:
+        if 'service:cv-converter' in roles and (not admin_required or 'platform-admin' in roles):
             return claims
         raise HTTPException(status_code=403, detail='CV access denied')
-    # Employees is authoritative: neither JWT realm roles nor a stale role cache
-    # can grant service admission after revocation.
-    if not authorization:
+
+    # Legacy authorization uses exactly the same effective Employees service
+    # entitlement as Dashboard and the Keycloak role sync. Fail closed on
+    # negative/unavailable access; do not trust unsigned role names in the JWT.
+    if not isinstance(authorization, str) or not authorization.strip():
         raise HTTPException(status_code=403, detail='CV access denied')
     try:
         with httpx.Client(timeout=5.0) as client:
@@ -102,11 +111,11 @@ def require_platform_admin(
                 headers={'Authorization': authorization, 'Accept': 'application/json'},
             )
         if response.status_code == 200:
-            access = response.json().get('data', {})
-            # Defense in depth: a stale/incorrect service entitlement may not
-            # turn a platform tester into an administrator.
-            if access.get('services', {}).get('cv-converter') is True and 'platform-admin' in _employees_access_roles(access):
-                return claims
+            payload = response.json()
+            access = payload.get('data', payload) if isinstance(payload, dict) else {}
+            if isinstance(access, dict) and access.get('services', {}).get('cv-converter') is True:
+                if not admin_required or 'platform-admin' in _employees_access_roles(access):
+                    return claims
         elif response.status_code == 401:
             raise HTTPException(status_code=401, detail='Authentication required')
         elif response.status_code != 403:
@@ -115,6 +124,21 @@ def require_platform_admin(
         raise HTTPException(status_code=503, detail='Authorization service unavailable') from exc
     raise HTTPException(status_code=403, detail='CV access denied')
 
+
+def require_cv_access(
+    claims: dict = Depends(require_user),
+    authorization: str | None = Header(default=None),
+    x_irlix_role_preview: str | None = Header(default=None),
+) -> dict:
+    return _authorize_cv(claims, authorization, x_irlix_role_preview, admin_required=False)
+
+
+def require_platform_admin(
+    claims: dict = Depends(require_user),
+    authorization: str | None = Header(default=None),
+    x_irlix_role_preview: str | None = Header(default=None),
+) -> dict:
+    return _authorize_cv(claims, authorization, x_irlix_role_preview, admin_required=True)
 
 @app.get('/api/health')
 def health():
@@ -173,7 +197,7 @@ async def _extract_with_provider(provider, source_text: str):
 
 
 @app.post('/api/parse', response_model=ParseResponse)
-async def parse_cv(file: UploadFile = File(...), _user: dict = Depends(require_platform_admin)):
+async def parse_cv(file: UploadFile = File(...), _user: dict = Depends(require_cv_access)):
     started = time.perf_counter()
     data = await file.read(MAX_SOURCE_BYTES + 1)
     if len(data) > MAX_SOURCE_BYTES:
@@ -213,7 +237,7 @@ async def parse_cv(file: UploadFile = File(...), _user: dict = Depends(require_p
 
 
 @app.post('/api/render/docx')
-def download_docx(cv: CanonicalCv, template: Literal['irlix-cv', 'irlix-cv-an'] = 'irlix-cv', _user: dict = Depends(require_platform_admin)):
+def download_docx(cv: CanonicalCv, template: Literal['irlix-cv', 'irlix-cv-an'] = 'irlix-cv', _user: dict = Depends(require_cv_access)):
     payload = render_docx(cv, template=template)
     filename = 'IRLIX_CV_AN' if template == 'irlix-cv-an' else 'IRLIX_CV'
     return Response(
@@ -224,7 +248,7 @@ def download_docx(cv: CanonicalCv, template: Literal['irlix-cv', 'irlix-cv-an'] 
 
 
 @app.post('/api/render/pdf')
-def download_pdf(cv: CanonicalCv, template: Literal['irlix-cv', 'irlix-cv-an'] = 'irlix-cv', _user: dict = Depends(require_platform_admin)):
+def download_pdf(cv: CanonicalCv, template: Literal['irlix-cv', 'irlix-cv-an'] = 'irlix-cv', _user: dict = Depends(require_cv_access)):
     started = time.perf_counter()
     payload = render_pdf(cv, template=template)
     filename = 'IRLIX_CV_AN' if template == 'irlix-cv-an' else 'IRLIX_CV'
