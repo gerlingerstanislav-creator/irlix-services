@@ -24,7 +24,7 @@ DB::swap($db);
 Schema::swap($db->getSchemaBuilder());
 Model::setConnectionResolver($capsule->getDatabaseManager());
 
-$db->statement('CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, alias TEXT, parent_id INTEGER, manager_id INTEGER)');
+$db->statement('CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, alias TEXT, parent_id INTEGER, manager_id INTEGER, is_production INTEGER DEFAULT 0)');
 $db->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, full_name TEXT, login TEXT, department_id INTEGER, position TEXT, employment_status TEXT, keycloak_user_id TEXT)');
 $db->statement('CREATE TABLE employee_access_roles (id INTEGER PRIMARY KEY, employee_id INTEGER, role TEXT)');
 $db->statement('CREATE TABLE employee_permission_rules (id INTEGER PRIMARY KEY, role TEXT, permission TEXT, enabled INTEGER)');
