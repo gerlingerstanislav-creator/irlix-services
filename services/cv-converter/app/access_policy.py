@@ -73,7 +73,8 @@ def matrix() -> list[dict]:
             conn.close()
 
 
-def evaluate(verified_roles: set[str], rows: list[dict], *, admin: bool = False) -> bool:
+def evaluate(verified_roles: set[str], rows: list[dict], *,
+             admin: bool = False, production_heads: set[str] | None = None) -> bool:
     """Only exact V2 identity roles count, and a deny always wins."""
     if admin:
         return True
@@ -82,13 +83,14 @@ def evaluate(verified_roles: set[str], rows: list[dict], *, admin: bool = False)
              and role != 'special:platform-tester'}
     if not roles:
         return False
+    verified_production_heads = roles.intersection(production_heads or set())
     permitted = False
     for row in rows:
         if row.get('permission') != PERMISSION:
             continue
         role = row.get('role')
         applies = role in roles or (role == DEFAULT_ROLE
-                                    and any(item.startswith('head:') for item in roles))
+                                    and any(item.startswith('head:') for item in verified_production_heads))
         if not applies:
             continue
         if row.get('allowed') not in (True, 1) or row.get('scope') != 'all':
@@ -97,8 +99,9 @@ def evaluate(verified_roles: set[str], rows: list[dict], *, admin: bool = False)
     return permitted
 
 
-def can_convert(verified_roles: set[str], *, admin: bool = False) -> bool:
-    return evaluate(verified_roles, matrix(), admin=admin)
+def can_convert(verified_roles: set[str], *, admin: bool = False,
+                production_heads: set[str] | None = None) -> bool:
+    return evaluate(verified_roles, matrix(), admin=admin, production_heads=production_heads)
 
 
 def _validate(role: str, allowed: bool):
