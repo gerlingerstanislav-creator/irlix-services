@@ -151,4 +151,22 @@ try {
 }
 $check($refused && DB::table('client_contour_permissions')->where('role','sales-manager')->exists(),
     'Incompatible old/new policies were silently discarded');
+// A missing canonical Sales column is created once, but admin choices win.
+DB::table('client_contour_permissions')->where('role','org:sales')->delete();
+$salesSeed = require __DIR__.'/../database/migrations/2026_11_05_000001_ensure_sales_v2_matrix_role.php';
+$salesSeed->up();
+$check((string) DB::table('client_contour_permissions')->where('role','org:sales')
+    ->where('permission','leads.view')->value('scope') === 'own',
+    'Missing Sales V2 column did not receive initial own-scope lead access');
+$check((bool) DB::table('client_contour_permissions')->where('role','org:sales')
+    ->where('permission','cashflow.view')->value('allowed') === false,
+    'Sales role gained unauthorized financial access');
+DB::table('client_contour_permissions')->where('role','org:sales')
+    ->where('permission','attempts.view')
+    ->update(['allowed'=>false,'scope'=>'none','denied'=>true]);
+$salesSeed->up();
+$check((bool) DB::table('client_contour_permissions')->where('role','org:sales')
+    ->where('permission','attempts.view')->value('denied') === true,
+    'Reapplying Sales V2 seed overwrote administrator explicit deny');
+
 echo "Clients canonical matrix data migration and API: PASS\n";

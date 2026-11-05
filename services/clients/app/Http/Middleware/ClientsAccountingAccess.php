@@ -129,6 +129,33 @@ class ClientsAccountingAccess
         $ownClients = array_values(array_unique([...$accountClients, ...$funnelClients]));
         $owns = fn (?int $clientId): bool => $clientId !== null && in_array($clientId, $ownClients, true);
         $ownsAccount = fn (?int $clientId): bool => $clientId !== null && in_array($clientId, $accountClients, true);
+        // Cashflow is financial data: its scope is independent of the
+        // broader Clients and Members permissions. Own/team refer to the
+        // account owner and active delegated Account Managers, not Sales.
+        // Only the explicit all scope may include every Client.
+        $cashflowClientIds = [];
+        if ($path === 'api/cash-flow') {
+            $cashflowEmployeeIds = $employeeIdsForPermission('cashflow.view');
+            if ($cashflowEmployeeIds === null) {
+                $cashflowClientIds = null;
+            } elseif ($cashflowEmployeeIds !== []) {
+                $cashflowClientIds = DB::table('clients')
+                    ->whereIn('account_employee_id', $cashflowEmployeeIds)
+                    ->pluck('id')->map(fn ($value) => (int) $value)->all();
+                $delegatedCashflowIds = DB::table('client_account_delegations')
+                    ->whereIn('to_employee_id', $cashflowEmployeeIds)
+                    ->whereNull('revoked_at')
+                    ->whereDate('starts_at', '<=', today())
+                    ->whereDate('ends_at', '>=', today())
+                    ->pluck('client_id')->map(fn ($value) => (int) $value)->all();
+                $cashflowClientIds = array_values(array_unique([
+                    ...$cashflowClientIds, ...$delegatedCashflowIds,
+                ]));
+            }
+            // The use case filters before serialization; the response guard
+            // below provides defense-in-depth for legacy result shapes.
+            $request->attributes->set('clients_cashflow_client_ids', $cashflowClientIds);
+        }
         $clientViewIds = $employeeIdsForPermission('clients.view');
         $clientManageIds = $employeeIdsForPermission('clients.manage');
         $idsForEmployees = function (?array $employeeIds, bool $onlyUnassigned = false): array {
@@ -404,7 +431,9 @@ class ClientsAccountingAccess
             }
             $payload['data']['leads'] = $this->accessResolver->allows($access, 'leads.view') ? array_values(array_filter($payload['data']['leads'] ?? [], fn ($row) => $leadViewIds === null || in_array((int) ($row['responsible_employee_id'] ?? 0), $leadViewIds, true))) : [];
         } elseif ($path === 'api/cash-flow') {
-            $payload['data']['rows'] = array_values(array_filter($payload['data']['rows'] ?? [], fn ($row) => $ownsAccount((int)($row['client_id'] ?? DB::table('client_members')->where('id',$row['client_member_id']??0)->value('client_id')))));
+            $payload['data']['rows'] = array_values(array_filter($payload['data']['rows'] ?? [],
+                fn ($row) => $cashflowClientIds === null
+                    || in_array((int) ($row['client_id'] ?? 0), $cashflowClientIds, true)));
         } elseif (preg_match('#^api/clients/(\d+)/card$#', $path, $cardMatch)) {
             $cardClientId = (int) $cardMatch[1];
             if (isset($payload['data']['client'])) $payload['data']['client']['can_manage'] = $ownsClientManage($cardClientId);

@@ -22,9 +22,20 @@ class ClientContourPermissionsController extends Controller
         $matrix = app(ClientContourPermissionService::class)->matrix();
         // The table is a view of existing canonical V2 matrix roles.
         // Never show old aliases or silently create a new Keycloak role.
+        // Display functional business names without introducing retired
+        // duplicate role keys. Editing still targets the signed V2 identity.
+        $businessLabels = [
+            'org:sales' => 'Сейлз-менеджер',
+            'org:account-management' => 'Аккаунт-менеджер',
+            'org:client-service' => 'Клиентская служба',
+            'head:sales' => 'Руководитель продаж',
+            'head:account-management' => 'Руководитель аккаунтинга',
+            'head:client-service' => 'Руководитель клиентской службы',
+            'special:platform-admin' => 'Администратор платформы',
+        ];
         $labels = [];
         foreach (array_keys($matrix) as $role) {
-            $labels[$role] = $role;
+            $labels[$role] = $businessLabels[$role] ?? $role;
         }
         return response()->json(['data' => [
             'can_manage' => $access['platform_admin'] || ($resolver->allows($access, 'permissions.manage') && $resolver->scope($access, 'permissions.manage') === 'all'),

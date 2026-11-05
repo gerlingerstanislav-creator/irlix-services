@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { sortNewest, positionMatchesStatus, requestDisplayStatus, requestMatchesStatus, attemptStageColors, attemptEmployeeOptions, clientInitial, expectedConnectionLabel, requestLifetimeLabel } from '../src/workflow.js';
 
 test('open filter includes positions in work; newest records appear first without mutating props', () => {
@@ -62,4 +63,11 @@ test('client initials skip common legal forms and request lifetime stays explici
   assert.equal(expectedConnectionLabel('Год'), 'На год');
   assert.equal(expectedConnectionLabel('Пол года'), 'На пол года');
   assert.equal(expectedConnectionLabel('Неизвестно'), '');
+});
+
+test('cashflow uses the Clients integration directory without Employees administrative access', () => {
+  const source = readFileSync(new URL('../src/components/CashFlowView.vue', import.meta.url), 'utf8');
+  assert.match(source, /api\('\/api\/employees\/clients-directory'\)/);
+  assert.doesNotMatch(source, /\/api\/employees\/departments/);
+  assert.match(source, /departments\.value = peoplePayload\.data\?\.departments \|\| \[\]/);
 });

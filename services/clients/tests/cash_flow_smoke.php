@@ -54,4 +54,39 @@ clientCheck($rows[201]['final_approved']===false&&(float)$rows[201]['confirmed_h
 clientCheck(DB::table('project_assignments')->count()===0,'Cash flow must not create project assignments');
 clientCheck(Http::recorded()->count()===1,'Only one Timesheets snapshot request is needed');
 clientCheck(str_contains(Http::recorded()->first()[0]->url(),'/internal/cash-flow-facts?'), 'Cash flow must not call the recursive commercial-data endpoint');
+// The page may show own/team/all money depending on cashflow.view.
+// Filtering must be on its independent authorized client set, not on
+// clients.view or an unrestricted returned list.
+DB::table('clients')->insert(['id'=>2,'name'=>'Synthetic Other Client']);
+DB::table('client_members')->insert([
+    'id'=>30, 'client_id'=>2, 'employee_id'=>6,
+    'partner_specialist_id'=>null, 'specialist_name'=>'Synthetic Other Staff',
+]);
+DB::table('member_terms')->insert([
+    'id'=>301, 'client_member_id'=>30, 'project_member_id'=>null,
+    'valid_from'=>'2026-10-01', 'valid_to'=>null,
+    'technology'=>'Go', 'level'=>'Middle', 'hourly_rate'=>300, 'hours_per_day'=>8,
+    'created_at'=>now(), 'updated_at'=>now(),
+]);
+$own = \Illuminate\Http\Request::create('/api/clients/cash-flow?month=2026-10', 'GET', ['month'=>'2026-10']);
+$own->attributes->set('clients_cashflow_client_ids', [1]);
+$ownRows = app(\App\Services\CashFlowReportService::class)->report($own,'2026-10')['rows'];
+clientCheck(count($ownRows)===3 && collect($ownRows)->every(fn ($row) => $row['client_id']===1),
+    'Cashflow own scope disclosed another client');
+$team = \Illuminate\Http\Request::create('/api/clients/cash-flow?month=2026-10', 'GET', ['month'=>'2026-10']);
+$team->attributes->set('clients_cashflow_client_ids', [2]);
+$teamRows = app(\App\Services\CashFlowReportService::class)->report($team,'2026-10')['rows'];
+clientCheck(count($teamRows)===1 && $teamRows[0]['client_id']===2,
+    'Cashflow team scope did not restrict terms to selected clients');
+$all = \Illuminate\Http\Request::create('/api/clients/cash-flow?month=2026-10', 'GET', ['month'=>'2026-10']);
+$all->attributes->set('clients_cashflow_client_ids', null);
+$allRows = app(\App\Services\CashFlowReportService::class)->report($all,'2026-10')['rows'];
+clientCheck(count($allRows)===4, 'Cashflow all scope incorrectly truncated authorized clients');
+$none = \Illuminate\Http\Request::create('/api/clients/cash-flow?month=2026-10', 'GET', ['month'=>'2026-10']);
+$none->attributes->set('clients_cashflow_client_ids', []);
+$requestsBefore = Http::recorded()->count();
+$noneRows = app(\App\Services\CashFlowReportService::class)->report($none,'2026-10')['rows'];
+clientCheck($noneRows===[] && Http::recorded()->count()===$requestsBefore,
+    'Cashflow empty scope must not call Timesheets or expose rows');
+
 echo "CashFlow canonical monthly rates, approvals, partners and projectless members PASS\n";

@@ -130,14 +130,15 @@ async function load() {
   loading.value = true;
   error.value = '';
   try {
-    const [peoplePayload, departmentsPayload, overviewPayload, timesheetPayload] = await Promise.all([
+    // The Clients integration directory already contains departments. Do not
+    // request Employees' restricted administrative directory from this screen.
+    const [peoplePayload, overviewPayload, timesheetPayload] = await Promise.all([
       api('/api/employees/clients-directory'),
-      api('/api/employees/departments'),
       api('/api/clients/overview'),
       api(`/api/clients/cash-flow?month=${encodeURIComponent(month.value)}`),
     ]);
     employees.value = peoplePayload.data?.employees || [];
-    departments.value = departmentsPayload.data || [];
+    departments.value = peoplePayload.data?.departments || [];
     clients.value = overviewPayload.data?.clients || [];
     timesheetRows.value = timesheetPayload.data?.rows || [];
 
