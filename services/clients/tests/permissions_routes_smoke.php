@@ -11,6 +11,8 @@ foreach ([
     ['GET', '/api/permissions/me', 'me'],
     ['GET', '/api/permissions', 'index'],
     ['PUT', '/api/permissions', 'update'],
+    ['POST', '/api/permissions/roles', 'addRole'],
+    ['DELETE', '/api/permissions/roles/org:example', 'removeRole'],
 ] as [$method, $path, $action]) {
     $route = $app['router']->getRoutes()->match(\Illuminate\Http\Request::create($path, $method));
     if ($route->getActionName() !== $controller.'@'.$action
