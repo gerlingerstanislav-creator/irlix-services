@@ -38,6 +38,7 @@ final class SalaryReviewController extends Controller
         $access = $this->access($request, 'employees.fot.view');
         $data = Validator::make($request->query(), [
             'year' => ['required', 'integer', 'between:2000,2100'],
+            'department_id' => ['nullable', 'integer', 'exists:departments,id'], // legacy single-select clients
             'department_ids' => ['sometimes', 'array', 'max:500'],
             'department_ids.*' => ['integer', 'distinct', 'exists:departments,id'],
             'employment_statuses' => ['sometimes', 'array', 'max:3'],
@@ -47,6 +48,9 @@ final class SalaryReviewController extends Controller
         ])->validate();
         $permitted = array_map('intval', $access['department_ids'] ?? []);
         $departments = array_map('intval', $data['department_ids'] ?? []);
+        if (!$departments && isset($data['department_id'])) {
+            $departments = [(int) $data['department_id']];
+        }
         foreach ($departments as $departmentId) {
             if (!in_array($departmentId, $permitted, true)) {
                 return response()->json(['message' => 'Подразделение недоступно'], 403);
