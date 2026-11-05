@@ -28,7 +28,9 @@ permissions:
 jobs:
   brandbook:
     name: Gated app build and standalone preview smoke
-    runs-on: ubuntu-latest
+    # Playwright 1.55.0 cannot install Chromium on ubuntu-26.04 (current latest).
+    # Keep the existing browser smoke on a supported runner image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4

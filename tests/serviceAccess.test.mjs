@@ -21,3 +21,10 @@ test('platform tester does not inherit Migration entitlement', () => {
   assert.ok(visible.includes('equipment'));
   assert.ok(!visible.includes('migration'));
 });
+
+test('CV converter appears only when Employees grants the service, including production heads', () => {
+  const lead = { roles: ['development', 'development-head'], services: { dashboard: true, 'cv-converter': true } };
+  assert.ok(keys(lead).includes('cv-converter'));
+  assert.ok(!keys({ ...lead, services: { dashboard: true, 'cv-converter': false } }).includes('cv-converter'));
+  assert.ok(!keys({ roles: ['platform-tester'], services: { dashboard: true, 'cv-converter': false } }).includes('cv-converter'));
+});
