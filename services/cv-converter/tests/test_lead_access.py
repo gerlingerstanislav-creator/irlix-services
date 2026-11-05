@@ -21,6 +21,9 @@ def live_access(*, actor=10, roles=None, claims=None, allowed=True, status=200):
         'employee_id': actor,
         'roles': roles or [],
         'role_claims': claims if claims is not None else ['head:development', 'org:backend'],
+        'production_head_roles': ['head:development'] if claims is None else [
+            role for role in claims if role == 'head:development'
+        ],
         'services': {'cv-converter': allowed},
     }}
     return response
@@ -39,8 +42,9 @@ class CvPermissionMatrixTest(unittest.TestCase):
         self.addCleanup(self.patcher.stop)
 
     def test_only_verified_heads_have_seed_grant_and_admin_is_immutable(self):
-        self.assertTrue(access_policy.can_convert({'head:development'}))
-        self.assertTrue(access_policy.can_convert({'head:backend', 'org:backend'}))
+        self.assertTrue(access_policy.can_convert({'head:development'}, production_heads={'head:development'}))
+        self.assertTrue(access_policy.can_convert({'head:backend', 'org:backend'}, production_heads={'head:backend'}))
+        self.assertFalse(access_policy.can_convert({'head:legal'}, production_heads=set()))
         self.assertFalse(access_policy.can_convert({'development-head'}))
         self.assertFalse(access_policy.can_convert({'org:development'}))
         self.assertFalse(access_policy.can_convert({'special:platform-tester'}))
@@ -50,16 +54,16 @@ class CvPermissionMatrixTest(unittest.TestCase):
     def test_explicit_deny_overrides_wildcard_and_unrelated_grant(self):
         access_policy.update('head:backend', False, 42)
         access_policy.update('org:backend', True, 42)
-        self.assertFalse(access_policy.can_convert({'head:backend', 'org:backend'}))
-        self.assertTrue(access_policy.can_convert({'head:development'}))
+        self.assertFalse(access_policy.can_convert({'head:backend', 'org:backend'}, production_heads={'head:backend'}))
+        self.assertTrue(access_policy.can_convert({'head:development'}, production_heads={'head:development'}))
         self.assertFalse(access_policy.can_convert({'org:recruitment'}))
         access_policy.update('head:backend', True, 42)
-        self.assertTrue(access_policy.can_convert({'head:backend'}))
+        self.assertTrue(access_policy.can_convert({'head:backend'}, production_heads={'head:backend'}))
 
     def test_audit_and_customization_survive_store_reopen(self):
         access_policy.update('head:*', False, 1)
         access_policy.update('org:recruitment', True, 1)
-        self.assertFalse(access_policy.can_convert({'head:development'}))
+        self.assertFalse(access_policy.can_convert({'head:development'}, production_heads={'head:development'}))
         self.assertTrue(access_policy.can_convert({'org:recruitment'}))
         with sqlite3.connect(access_policy.DB_PATH) as db:
             count, = db.execute('SELECT COUNT(*) FROM cv_permission_audit').fetchone()
@@ -67,7 +71,7 @@ class CvPermissionMatrixTest(unittest.TestCase):
         self.assertEqual(len(access_policy.matrix()), 2)
         self.assertTrue(access_policy.DB_PATH.is_file())
         access_policy.remove('head:*', 1)
-        self.assertFalse(access_policy.can_convert({'head:development'}))
+        self.assertFalse(access_policy.can_convert({'head:development'}, production_heads={'head:development'}))
         self.assertEqual(len(access_policy.matrix()), 1)  # No re-seeding after delete.
 
     def test_rejects_untrusted_role_formats_or_special_roles(self):
@@ -136,7 +140,7 @@ class CvPermissionMatrixTest(unittest.TestCase):
         # but only the local role policy decides business conversion.
         context = _verified_cv_context(signed('head:legal', 'service:cv-converter'),
                                        'Bearer synthetic', None)
-        access_policy.update('head:legal', False, 1)  # explicit local deny
+        self.assertEqual(context['production_heads'], set())
         with self.assertRaises(HTTPException) as exc:
             require_cv_access(context)
         self.assertEqual(exc.exception.status_code, 403)
@@ -162,7 +166,7 @@ class CvPermissionMatrixTest(unittest.TestCase):
         client_cls.return_value.__enter__.return_value.get.return_value = live_access()
         claims = {'realm_access': {'roles': ['unmanaged-head']}}
         ctx = _verified_cv_context(claims, 'Bearer synthetic', None)
-        self.assertTrue(access_policy.can_convert(ctx['roles']))
+        self.assertTrue(access_policy.can_convert(ctx['roles'], production_heads=ctx['production_heads']))
         self.assertIs(require_cv_access(ctx), claims)
 
     @patch.dict(os.environ, {'IRLIX_AUTHZ_JWT_ENABLED': 'true'})
