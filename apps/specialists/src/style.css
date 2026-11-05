@@ -92,3 +92,7 @@
   .specialists-filter-count{margin-left:0}
   .specialists-catalog-toolbar{padding:8px 12px}
 }
+
+/* Clear hierarchy and selected states in the shared visual palette. */
+.specialists-app .stat-row .bar i{background:var(--irlix-color-primary)}
+.specialists-roles tbody tr{cursor:default}
