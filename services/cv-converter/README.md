@@ -23,7 +23,24 @@ API:
 - `POST /api/render/docx?template=irlix-cv|irlix-cv-an` — принимает `CanonicalCv`, возвращает DOCX;
 - `POST /api/render/pdf?template=irlix-cv|irlix-cv-an` — принимает `CanonicalCv`, возвращает PDF из того же template-specific DOCX renderer и header `X-CV-Render-Ms` с серверным временем renderer. Без параметра выбирается существующий `irlix-cv`.
 
-`parse`, render и settings endpoints требуют platform Bearer JWT. Health endpoints используются инфраструктурой.
+## Локальная AuthZ V2 матрица CV Converter
+
+Employees назначает роли и определяет общий доступ `services.cv-converter`; Keycloak публикует подписанные `org:<alias>`, `head:<alias>`, `special:<role>`, `employee-id:<id>`, `service:cv-converter`. Сам CV Converter независимо оценивает permission `cv.convert` по своей локальной матрице. Отсутствие записи означает запрет; явное отрицательное правило перекрывает положительные правила других ролей. `platform-admin` — неизменяемый суперпользователь, а `platform-tester` не получает привилегий.
+
+В первом запуске однократно создаётся запись `head:* / cv.convert = all`. Wildcard применяется только к **актуально назначенным производственным** руководителям из `Employees.data.production_head_roles`, сопоставленным с подписанным `head:<alias>`; обычный `head:legal` сам по себе не подходит. Администратор может добавить точные `org:...`/`head:...`/`special:...` разрешения и запреты при сохранении обязательного общего service gateway. Конвертер не хранит CV-объекты, поэтому `own/team` не применимы: только `all/none`.
+
+На каждом CV API-запросе проверяется подписанный JWT, issuer, azp, `employee-id:<id>` и service grant. Employees вызывается для проверки **текущей идентичности и отзывов**; бизнес-право `cv.convert` вычисляет исключительно CV. Ошибка Employees или несовпадение подписанного руководителя — отказ. Role-preview не может конвертировать документы.
+
+Матрица и её аудит хранятся в `/data/cv_permissions.sqlite3` в существующем volume `cv_settings`; настройки не перезаписываются при повторных релизах и не содержат CV кандидатов. Управляет ей только текущий `platform-admin`.
+
+- `GET /api/permissions/me` — собственные эффективные права;
+- `GET /api/permissions` — администратор читает матрицу;
+- `PUT /api/permissions` — запись `{role,allowed}` с аудитом;
+- `DELETE /api/permissions` — удаление `{role}` с аудитом.
+- `POST /api/parse` и `/api/render/*` требуют `cv.convert`;
+- `GET/PUT /api/settings` и `POST /api/settings/test` строго admin-only.
+
+Существующим сотрудникам новое `service:cv-converter` публикует штатная очередь синхронизации Keycloak после миграции; обновление JWT требует новой авторизации/обновления токена. Новых ручных ролей не создаётся. Health остаётся инфраструктурным.
 
 ## Irlix CV AN — визуальный эталон
 
