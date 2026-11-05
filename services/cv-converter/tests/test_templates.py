@@ -2,6 +2,7 @@
 import shutil
 import unittest
 from io import BytesIO
+from zipfile import ZipFile
 
 from docx import Document
 
@@ -66,6 +67,38 @@ class CvTemplateTest(unittest.TestCase):
         footer = document.sections[0].footer.paragraphs[0].text
         self.assertIn('Тестовый Кандидат', footer)
         self.assertIn('Системный аналитик', footer)
+
+    def test_an_reference_layout_has_header_brand_and_no_forced_page_break(self):
+        rendered = render_docx(sample_cv(), template='irlix-cv-an')
+        document = Document(BytesIO(rendered))
+        section = document.sections[0]
+        self.assertAlmostEqual(section.left_margin.mm, 21.5, places=1)
+        self.assertAlmostEqual(section.top_margin.mm, 17.5, places=1)
+        self.assertIn('w:drawing', section.header.paragraphs[0]._p.xml)
+        self.assertEqual(document.paragraphs[1].runs[0].font.color.rgb.__str__(), '008F8D')
+        self.assertEqual(document.paragraphs[1].runs[0].font.size.pt, 12)
+        with ZipFile(BytesIO(rendered)) as archive:
+            xml = archive.read('word/document.xml').decode('utf-8')
+            self.assertNotIn('w:type="page"', xml)
+
+    def test_an_results_are_prose_not_task_bullets(self):
+        rendered = render_docx(sample_cv(), template='irlix-cv-an')
+        document = Document(BytesIO(rendered))
+        paragraphs = document.paragraphs
+        label_index = next(i for i, p in enumerate(paragraphs) if p.text == 'Результат')
+        self.assertEqual(paragraphs[label_index + 1].text, 'Подготовлена согласованная спецификация')
+        self.assertFalse(paragraphs[label_index + 1].text.startswith('•'))
+        self.assertEqual(paragraphs[label_index].runs[0].font.color.rgb.__str__(), '008F8D')
+
+    def test_an_second_sparse_cv_omits_absent_sections(self):
+        sparse = CanonicalCv(full_name='Другой тестовый кандидат')
+        rendered = render_docx(sparse, template='irlix-cv-an')
+        text = paragraphs(rendered)
+        self.assertIn('Другой тестовый кандидат', text)
+        self.assertNotIn('О СЕБЕ', text)
+        self.assertNotIn('ОПЫТ РАБОТЫ', text)
+        self.assertNotIn('Результат', text)
+        self.assertIn('w:drawing', Document(BytesIO(rendered)).sections[0].header.paragraphs[0]._p.xml)
 
     def test_unknown_template_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'Unsupported CV template'):
