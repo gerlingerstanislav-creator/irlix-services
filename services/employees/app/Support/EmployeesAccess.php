@@ -322,6 +322,15 @@ class EmployeesAccess
         }
         $isProductionManager = $previewProductionManager ?? ($employee && Department::query()
             ->where('manager_id', $employee->id)->where('is_production', true)->exists());
+        // A concrete, current eligibility set for local CV head:* policies.
+        // A signed head:legal claim does not make Legal a production direction.
+        $productionHeadRoles = $employee?->id
+            ? Department::query()->where('manager_id', $employee->id)
+                ->where('is_production', true)->pluck('alias')
+                ->filter(static fn ($alias) => is_string($alias)
+                    && preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $alias) === 1)
+                ->map(static fn ($alias) => 'head:'.$alias)->unique()->values()->all()
+            : [];
         $canClients = $employee !== null
             && ($privileged || $inClientTeams || $isProductionManager);
         $canSpecialists = $employee !== null && ($privileged || $isProductionManager);
@@ -374,6 +383,7 @@ class EmployeesAccess
         return [
             'staff_positions_salary_departments' => array_values(array_unique(array_map('intval', $managedSalaryDepartments))),
             'staff_positions_salary_all' => $accountingDepartment,
+            'production_head_roles' => $productionHeadRoles,
             'services' => $serviceAccess,
             'allowed' => $readEmployees,
             'employee_id' => $employee?->id,
