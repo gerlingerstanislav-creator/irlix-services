@@ -140,6 +140,13 @@ def _verified_cv_context(
     live_roles = live.get('roles')
     if not isinstance(live_roles, list):
         raise HTTPException(status_code=503, detail='Current role assignments unavailable')
+    live_production_heads = live.get('production_head_roles')
+    if not isinstance(live_production_heads, list) or not all(
+        isinstance(role, str) and role.startswith('head:')
+        and access_policy.IDENTITY_RE.fullmatch(role)
+        for role in live_production_heads
+    ):
+        raise HTTPException(status_code=503, detail='Current production head identities unavailable')
     active_admin = 'platform-admin' in live_roles
 
     if jwt_mode:
@@ -155,6 +162,7 @@ def _verified_cv_context(
             {'platform-admin', 'special:platform-admin'} & signed)
     return {
         'employee_id': actor_id, 'roles': verified,
+        'production_heads': verified.intersection(live_production_heads),
         'admin': active_admin, 'claims': claims,
     }
 
@@ -169,7 +177,8 @@ def require_cv_service(
 
 def require_cv_access(context: dict = Depends(require_cv_service)) -> dict:
     try:
-        allowed = access_policy.can_convert(context['roles'], admin=context['admin'])
+        allowed = access_policy.can_convert(context['roles'], admin=context['admin'],
+                                            production_heads=context['production_heads'])
     except (OSError, ValueError, sqlite3.Error) as exc:
         raise HTTPException(status_code=503, detail='CV permission matrix unavailable') from exc
     if not allowed:
@@ -195,7 +204,8 @@ class CvRoleRemoval(BaseModel):
 @app.get('/api/permissions/me')
 def my_permissions(context: dict = Depends(require_cv_service)):
     try:
-        can_convert = access_policy.can_convert(context['roles'], admin=context['admin'])
+        can_convert = access_policy.can_convert(context['roles'], admin=context['admin'],
+                                            production_heads=context['production_heads'])
     except (OSError, ValueError, sqlite3.Error) as exc:
         raise HTTPException(status_code=503, detail='CV permission matrix unavailable') from exc
     return {'data': {'permissions': {
