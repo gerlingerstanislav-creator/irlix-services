@@ -347,7 +347,17 @@ const openPerson = id => navigate(`people/${id}`);
     />
 
     <main class="irlix-service-workspace">
-      <UiAppTopbar service="specialists" :section="sidebarSection" :items="navItems" :loading="loading" />
+      <UiAppTopbar service="specialists" :section="sidebarSection" :items="navItems" :loading="loading">
+        <template #actions>
+          <UiSearchSelect v-if="route.section==='dashboard' && canFilterDashboard"
+            class="specialists-topbar-departments" :model-value="selectedDashboardDepartments"
+            :options="dashboardDepartmentOptions" multiple teleport placeholder="Направления"
+            search-placeholder="Поиск направления" aria-label="Фильтр направлений дашборда"
+            @update:model-value="rememberDashboardDepartments" />
+          <UiButton v-if="route.section==='competencies' && canEditTechnologyCatalog"
+            type="button" @click="openCreateTechnology()">+ Технология</UiButton>
+        </template>
+      </UiAppTopbar>
       <div class="content irlix-service-content">
       <div v-if="error" class="alert">{{ error }}</div>
       <UiLoader v-if="loading || (route.section==='role-permissions' && roleAccessPhase==='loading')" page label="Загрузка данных направления" />
@@ -362,7 +372,7 @@ const openPerson = id => navigate(`people/${id}`);
       <UiErrorState v-else-if="['dashboard','people','person'].includes(route.section) && !canViewProfiles" :status="403" />
       <UiErrorState v-else-if="route.section==='competencies' && !canViewCatalog" :status="403" />
       <template v-else-if="route.section === 'dashboard'">
-        <div class="dashboard-context"><span class="scope-pill">{{ workspace.scope === 'all' ? 'Все направления' : 'Моё направление и дочерние' }}</span></div>
+        <div class="dashboard-context"><span class="scope-pill">{{ selectedDashboardDepartments.length ? 'Выбранные направления' : (workspace.scope === 'all' ? 'Все направления' : 'Моё направление и дочерние') }}</span></div>
         <section class="metric-grid">
           <article class="metric"><span>Работают</span><strong>{{ activePeople.length }}</strong><small>специалистов в доступном дереве</small></article>
           <article class="metric"><span>Уволены</span><strong>{{ dismissedPeople.length }}</strong><small>профили сохранены</small></article>
@@ -376,7 +386,7 @@ const openPerson = id => navigate(`people/${id}`);
         <section class="panel attention-panel"><div class="panel-head"><div><h2>Требуют внимания</h2><p>Профили, которые стоит заполнить в первую очередь</p></div><button class="ghost" @click="navigate('people')">Все специалисты →</button></div><div class="people-mini"><button v-for="person in activePeople.filter((p) => !p.grade || !(p.technologies || []).length).slice(0, 6)" :key="person.id" @click="openPerson(person.id)"><span class="avatar">{{ initials(person.full_name) }}</span><span><b>{{ person.full_name }}</b><small>{{ person.department_name }} · {{ person.position || 'Должность не указана' }}</small></span><em>Заполнить</em></button><div v-if="!incompleteCount" class="empty">У всех активных специалистов заполнены базовые профессиональные данные.</div></div></section>
       </template>
 
-      <template v-else-if="route.section === 'people'">
+      <template v-else-if="route.section === 'people' || route.section === 'person'">
         <UiFilterBar class="specialists-filter-bar">
           <input v-model="filters.search" class="specialists-search irlix-search" type="search" aria-label="Поиск специалистов" placeholder="Поиск по имени, должности или направлению" />
           <UiSearchSelect v-model="filters.department" :options="departmentOptions" placeholder="Все направления" search-placeholder="Поиск направления" aria-label="Направление" />
