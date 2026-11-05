@@ -456,6 +456,38 @@ const closePerson=()=>navigate('people');
       </div>
     </main>
 
+    <UiDrawer :open="route.section==='person'" :inactive="saving" width="min(760px, 96vw)" :resizable="true" title="Карточка специалиста" @close="closePerson">
+      <template #title><strong>{{ selected?.employee?.full_name || 'Карточка специалиста' }}</strong></template>
+      <div class="specialists-profile-drawer">
+        <div v-if="profileErrorStatus" class="alert" role="alert">{{ profileErrorStatus }} — {{ error || 'Профиль недоступен' }}</div>
+        <UiLoader v-else-if="!selected" page label="Загрузка профиля специалиста" />
+        <template v-else>
+          <div class="specialists-profile-identity">
+            <span class="avatar xl">{{ initials(selected.employee.full_name) }}</span>
+            <div>
+              <strong>{{ selected.employee.full_name }}</strong>
+              <p>{{ selected.employee.position || 'Должность не указана' }}</p>
+              <p>{{ selected.employee.department_name || 'Направление не указано' }}</p>
+              <span v-if="selected.employee.employment_status==='Уволен'" class="status off">Уволен</span>
+            </div>
+          </div>
+          <section class="specialists-profile-section">
+            <h3>Профессиональный профиль</h3>
+            <label>Грейд
+              <select v-model="editor.grade" :disabled="!canManageProfiles" aria-label="Грейд специалиста">
+                <option value="">Не указан</option>
+                <option v-if="editor.grade && !gradeChoices.includes(editor.grade)" :value="editor.grade">{{ editor.grade }} (ранее указанный)</option>
+                <option v-for="grade in gradeChoices" :key="grade" :value="grade">{{ grade }}</option>
+              </select>
+            </label>
+            <label>Комментарий руководителя
+              <textarea v-model="editor.manager_note" :disabled="!canManageProfiles" rows="3" placeholder="Контекст развития специалиста"></textarea>
+            </label>
+          </section>
+        </template>
+      </div>
+    </UiDrawer>
+
     <div v-if="canEditTechnologyCatalog && technologyModalOpen" class="modal-backdrop" @click.self="closeTechnologyModal">
       <form class="modal-card" @submit.prevent="saveTechnology">
         <div class="modal-head"><div><div class="eyebrow">Каталог</div><h2>{{ technologyEditor.id ? 'Редактировать технологию' : 'Новая технология' }}</h2></div><button type="button" class="modal-close" @click="closeTechnologyModal">×</button></div>
