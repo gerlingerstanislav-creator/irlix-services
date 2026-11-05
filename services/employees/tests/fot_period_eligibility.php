@@ -39,6 +39,12 @@ $target = $calc->calculate(2026, $working, $monthDays, $halfMonth, $transfers, $
 same($source[1]['current'], 20000.0, 'Transfer keeps source department FOT');
 same($target[1]['current'], 20000.0, 'Transfer assigns subsequent FOT to target department');
 
+$legacy = [row(['started_at' => '2026-01-07', 'ended_at' => '2026-01-08', 'department_id' => 10])];
+same($calc->visible($legacy, [], [10 => true], '2026-01-01', '2026-12-31'), true,
+    'Pre-assignment-migration employment department is still visible');
+same($calc->calculate(2026, $working, $monthDays, $legacy, [], $salary, [], [10 => true])[1]['current'],
+    40000.0, 'Legacy departmental employment accrues in its historical department');
+
 $weekendHire = [row(['started_at' => '2026-01-03', 'ended_at' => '2026-01-03'])];
 same($calc->visible($weekendHire, $assignment, [10 => true], '2026-01-01', '2026-12-31'), true,
     'One-day non-working employment must remain in register');
