@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { UiAppTopbar, UiAppSidebar, UiRegistryTable, UiFilterBar, UiSearchSelect, UiTreeToggle, UiErrorState, UiLoader } from '@irlix/ui';
 import { auth } from './auth';
 import SpecialistsRolePermissionsView from './SpecialistsRolePermissionsView.vue';
-import { accessibleSpecialistsNavigation } from './accessNavigation.js';
+import { accessibleSpecialistsNavigation, specialistsLandingPath } from './accessNavigation.js';
 
 const roleMatrixAdmin=ref(false);
 const roleAccessPhase=ref('loading');
@@ -287,8 +287,13 @@ const reloadAccess = async () => {
     permissionsPhase.value = e.status === 403 ? 'forbidden' : 'error';
   }
   await loadRoleAccess();
-  if (permissionsPhase.value === 'allowed') await loadWorkspace();
-  else loading.value = false;
+  if (permissionsPhase.value === 'allowed') {
+    await loadWorkspace();
+    const landing = specialistsLandingPath(effectivePermissions.value);
+    if (landing && landing !== '/' && route.value.section === 'dashboard') {
+      await router.replace({ path: landing });
+    }
+  } else loading.value = false;
   const technologies = workspace.value.catalog.technologies || [];
   const parents = technologies.filter(t => technologies.some(c => Number(c.parent_id) === Number(t.id)));
   expandedTechnologies.value = new Set(parents.map(t => Number(t.id)));
