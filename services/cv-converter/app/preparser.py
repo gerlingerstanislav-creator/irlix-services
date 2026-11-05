@@ -14,10 +14,11 @@ _PAGE_FOOTER_RE = re.compile(r'^(.+?)\s+(\d{1,3})$')
 
 _EXPERIENCE_HEADINGS = {'опыт работы', 'опыт', 'work experience', 'experience'}
 _PROJECT_HEADINGS = {'проекты', 'projects', 'project experience'}
-_SKILL_HEADINGS = {'skills', 'навыки', 'ключевые навыки', 'skills & tools', 'technologies'}
+_SKILL_HEADINGS = {'skills', 'навыки', 'навыки и умения', 'ключевые навыки', 'skills & tools', 'technologies'}
 _STOP_HEADINGS = {
     'образование', 'education', 'языки', 'languages', 'иностранные языки',
     'дополнительная информация', 'additional information', 'сертификаты', 'certifications',
+    'образование и языки',
 }
 _PROFILE_LABELS = ('формат', 'telegram', 'email', 'телефон', 'phone', 'английский', 'english', 'location', 'локация')
 
@@ -201,6 +202,67 @@ def _parse_projects(blocks: list[list[str]]) -> list[ProjectItem]:
     return result
 
 
+def _parse_an_projects(blocks: list[list[str]]) -> list[ProjectItem]:
+    """Recognize one-column project CVs with role/date metadata and explicit result sections.
+
+    Only match when a project title is immediately followed by a role/date line.
+    A plain job history must not be reclassified as projects by this fallback.
+    """
+    starts: list[int] = []
+    for index in range(len(blocks) - 1):
+        title, metadata = blocks[index], blocks[index + 1]
+        if len(title) != 1 or len(title[0]) > 160 or len(metadata) != 1:
+            continue
+        if _key(title[0]) in {'описание проекта', 'выполняемые задачи', 'результат', 'результаты'}:
+            continue
+        line = metadata[0]
+        if '|' in line and re.search(r'\b(?:19|20)\d{2}\b', line):
+            starts.append(index)
+
+    parsed: list[ProjectItem] = []
+    for number, start in enumerate(starts):
+        end = starts[number + 1] if number + 1 < len(starts) else len(blocks)
+        subset = blocks[start + 2:end]
+        if not any(_key(line) == 'описание проекта' for block in subset for line in block):
+            continue
+        fields = [value.strip() for value in blocks[start + 1][0].split('|') if value.strip()]
+        item = ProjectItem(name=blocks[start][0], role=fields[0] if fields else None)
+        detail = []
+        if len(fields) > 1:
+            item.dates = fields[1]
+        for value in fields[2:]:
+            if value.casefold().startswith('команда:'):
+                item.team = value.split(':', 1)[1].strip()
+            elif value.casefold().startswith(('инструменты:', 'технологии:', 'стек:')):
+                item.technologies = [s.strip() for s in value.split(':', 1)[1].split(',') if s.strip()]
+            else:
+                detail.append(value)
+
+        mode = 'description'
+        description = detail
+        for block in subset:
+            if len(block) == 1 and _key(block[0]) in {
+                'описание проекта', 'выполняемые задачи', 'результат', 'результаты',
+            }:
+                label = _key(block[0])
+                mode = ('description' if label == 'описание проекта'
+                        else 'responsibilities' if label == 'выполняемые задачи' else 'results')
+                continue
+            for line in block:
+                value = line.lstrip(' •–-').strip()
+                if not value:
+                    continue
+                if mode == 'description':
+                    description.append(value)
+                elif mode == 'responsibilities':
+                    item.responsibilities.append(value)
+                else:
+                    item.results.append(value)
+        item.description = ' '.join(description) or None
+        parsed.append(item)
+    return parsed
+
+
 def _parse_skills(blocks: list[list[str]]) -> list[str]:
     values: list[str] = []
     seen: set[str] = set()
@@ -223,6 +285,9 @@ def preparse_cv(source_text: str) -> PreparsedCv:
     blocks = [block for block in blocks if not _looks_like_footer(block, first_words)]
 
     exp_idx = _heading_index(blocks, _EXPERIENCE_HEADINGS)
+    if exp_idx is None:
+        exp_idx = next((i for i, block in enumerate(blocks)
+                        if len(block) == 1 and re.match(r'^опыт работы\\s*[—–-]', _key(block[0]))), None)
     projects_idx = _heading_index(blocks, _PROJECT_HEADINGS)
     skills_idx = _heading_index(blocks, _SKILL_HEADINGS)
 
@@ -250,6 +315,12 @@ def preparse_cv(source_text: str) -> PreparsedCv:
     contacts, summary, languages = _parse_profile(profile_blocks)
     work_experience = _parse_work_experience(experience_blocks)
     projects = _parse_projects(project_blocks)
+    if not projects and experience_blocks and not work_experience:
+        # In AN-style CVs projects live under the 'Опыт работы — N лет' heading.
+        projects = _parse_an_projects(experience_blocks)
+        if projects:
+            project_blocks = experience_blocks
+            experience_blocks = []
     tools = _parse_skills(skill_blocks)
 
     seed = CanonicalCv(
