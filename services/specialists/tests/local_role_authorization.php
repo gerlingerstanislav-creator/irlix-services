@@ -35,4 +35,13 @@ $base[]=['role'=>'head:backend','permission'=>'specialists.profiles.view','allow
 $check(!Authz::evaluate(['head:backend'],$base)['specialists.profiles.view']['allowed'],
     'Explicit exact-head deny failed to override manager baseline');
 
+$computedRole='special:production-direction-head';
+$computedRules=[['role'=>$computedRole,'permission'=>'specialists.profiles.view','allowed'=>true,'scope'=>'team']];
+$check(Authz::evaluate([$computedRole],$computedRules)['specialists.profiles.view']['scope']==='team',
+    'Automatic production manager role must be accepted as team-scoped V2 identity');
+$check(!Authz::evaluate(['org:legal'],$computedRules)['specialists.profiles.view']['allowed'],
+    'Automatic role cannot be inherited by unrelated organization members');
+$check(!Authz::evaluate(['service:specialists'],$computedRules)['specialists.profiles.view']['allowed'],
+    'Service admission alone cannot impersonate the automatic manager role');
+
 echo "Specialists independent local scope authorization: PASS\n";
