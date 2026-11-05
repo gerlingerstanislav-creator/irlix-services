@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libreoffice-writer fonts-dejavu-core ca-certificates curl \
+    && apt-get install -y --no-install-recommends libreoffice-writer fonts-dejavu-core fonts-inter ca-certificates curl \
     && curl --fail --silent --show-error --location --insecure \
         https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt \
         --output /usr/local/share/ca-certificates/russian_trusted_root_ca.crt \

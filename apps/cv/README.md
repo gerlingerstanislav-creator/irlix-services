@@ -1,6 +1,6 @@
 # CV конвертер frontend
 
-Iteration 2 сервиса: загрузка произвольного текстового PDF/DOCX, LLM-нормализация в canonical CV и генерация IRLIX CV из единого шаблона.
+Iteration 2 сервиса: загрузка произвольного текстового PDF/DOCX, LLM-нормализация в canonical CV и генерация IRLIX CV по выбранному шаблону.
 
 ## Доступ
 
@@ -19,8 +19,8 @@ Iteration 2 сервиса: загрузка произвольного текс
 - файл отправляется в `cv-converter` backend только на время запроса и не сохраняется;
 - backend извлекает текст и передаёт его выбранному `CvExtractionProvider`;
 - результат валидируется как canonical CV;
-- справа автоматически появляется PDF-preview шаблона `IRLIX CV`;
-- DOCX и PDF генерируются из одной canonical-модели и одного renderer.
+- справа автоматически появляется PDF-preview выбранного шаблона `Irlix CV` или `Irlix CV AN`;
+- DOCX и PDF для выбранного шаблона генерируются из одной canonical-модели и одного DOCX-based renderer; смена шаблона перестраивает PDF без повторного обращения к LLM.
 
 ## LLM providers
 

@@ -1,6 +1,8 @@
 """Offline CV regression check; no Keycloak, model or real CV required."""
 import unittest
 
+import fitz
+
 from .models import CanonicalCv, ExperienceSummary, SkillGroup, ProjectItem
 from .renderer import render_docx, render_pdf
 
@@ -22,12 +24,18 @@ def main():
         skill_groups=[SkillGroup(title='Анализ', items=['Сбор требований', 'BPMN'])],
         tools=['Jira', 'Confluence'],
         projects=[ProjectItem(role='Системный аналитик', dates='2024–2026', name='Тестовый проект',
-                              description='Описание', responsibilities=['Сбор требований'])],
+                              description='Описание', responsibilities=['Сбор требований'],
+                              results=['Согласована спецификация'])],
     )
-    docx, pdf = render_docx(cv), render_pdf(cv)
-    assert docx.startswith(b'PK') and len(docx) > 1000
-    assert pdf.startswith(b'%PDF') and len(pdf) > 1000
-    print(f'DOCX={len(docx)} PDF={len(pdf)}')
+    for template in ('irlix-cv', 'irlix-cv-an'):
+        docx, pdf = render_docx(cv, template=template), render_pdf(cv, template=template)
+        assert docx.startswith(b'PK') and len(docx) > 1000
+        assert pdf.startswith(b'%PDF') and len(pdf) > 1000
+        with fitz.open(stream=pdf, filetype='pdf') as generated:
+            text = ' '.join(page.get_text() for page in generated).replace('\n', ' ')
+            assert 'Тестовый специалист' in text
+            assert 'Согласована спецификация' in text
+        print(f'{template}: DOCX={len(docx)} PDF={len(pdf)}')
 
 
 if __name__ == '__main__':

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from typing import Literal
 
 import httpx
 import jwt
@@ -212,25 +213,27 @@ async def parse_cv(file: UploadFile = File(...), _user: dict = Depends(require_p
 
 
 @app.post('/api/render/docx')
-def download_docx(cv: CanonicalCv, _user: dict = Depends(require_platform_admin)):
-    payload = render_docx(cv)
+def download_docx(cv: CanonicalCv, template: Literal['irlix-cv', 'irlix-cv-an'] = 'irlix-cv', _user: dict = Depends(require_platform_admin)):
+    payload = render_docx(cv, template=template)
+    filename = 'IRLIX_CV_AN' if template == 'irlix-cv-an' else 'IRLIX_CV'
     return Response(
         content=payload,
         media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        headers={'Content-Disposition': 'attachment; filename="IRLIX_CV.docx"'},
+        headers={'Content-Disposition': f'attachment; filename="{filename}.docx"'},
     )
 
 
 @app.post('/api/render/pdf')
-def download_pdf(cv: CanonicalCv, _user: dict = Depends(require_platform_admin)):
+def download_pdf(cv: CanonicalCv, template: Literal['irlix-cv', 'irlix-cv-an'] = 'irlix-cv', _user: dict = Depends(require_platform_admin)):
     started = time.perf_counter()
-    payload = render_pdf(cv)
+    payload = render_pdf(cv, template=template)
+    filename = 'IRLIX_CV_AN' if template == 'irlix-cv-an' else 'IRLIX_CV'
     render_ms = round((time.perf_counter() - started) * 1000)
     return Response(
         content=payload,
         media_type='application/pdf',
         headers={
-            'Content-Disposition': 'attachment; filename="IRLIX_CV.pdf"',
+            'Content-Disposition': f'attachment; filename="{filename}.pdf"',
             'X-CV-Render-Ms': str(render_ms),
         },
     )

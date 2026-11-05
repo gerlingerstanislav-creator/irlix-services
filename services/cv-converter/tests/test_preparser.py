@@ -69,5 +69,71 @@ class PreparserRegressionTest(unittest.TestCase):
         )
 
 
+    def test_an_one_column_project_history_keeps_explicit_outcomes(self):
+        source = """Тестовый Кандидат
+
+Системный аналитик
+
+О СЕБЕ
+
+Анализирует требования.
+
+НАВЫКИ И УМЕНИЯ
+
+Анализ
+ • BPMN
+
+ОБРАЗОВАНИЕ И ЯЗЫКИ
+
+Английский язык: B2
+
+ОПЫТ РАБОТЫ – БОЛЕЕ 4 ЛЕТ
+
+Тестовый проект А
+
+Системный аналитик | 01.2021 – 02.2023 | Направления: интеграции
+
+Описание проекта
+
+Синтетический проект для проверки структурного извлечения.
+
+Выполняемые задачи
+
+ • Описал API
+ • Проанализировал требования
+
+Результат
+
+Согласована спецификация.
+
+Тестовый проект Б
+
+Системный аналитик | 03.2023 – 04.2025
+
+Описание проекта
+
+Второй синтетический проект с отдельными задачами.
+
+Выполняемые задачи
+
+ • Согласовал схему
+
+Результат
+
+Подготовлена документация.
+"""
+        parsed = preparse_cv(source)
+        self.assertEqual(parsed.expected_projects, 2)
+        self.assertEqual(len(parsed.seed.work_experience), 0)
+        self.assertEqual([item.name for item in parsed.seed.projects], ['Тестовый проект А', 'Тестовый проект Б'])
+        self.assertEqual(parsed.seed.projects[0].dates, '01.2021 – 02.2023')
+        self.assertEqual(parsed.seed.projects[0].results, ['Согласована спецификация.'])
+        self.assertIn('Направления: интеграции', parsed.seed.projects[0].description)
+        merged = merge_preparsed(CanonicalCv(), parsed)
+        self.assertEqual(len(merged.projects), 2)
+        self.assertEqual(merged.projects[1].results, ['Подготовлена документация.'])
+
+
+
 if __name__ == '__main__':
     unittest.main()

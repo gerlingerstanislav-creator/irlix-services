@@ -55,6 +55,7 @@ class ProjectItem(BaseModel):
     name: str | None = None
     description: str | None = None
     responsibilities: list[str] = Field(default_factory=list)
+    results: list[str] = Field(default_factory=list)
 
 
 class AdditionalItem(BaseModel):
