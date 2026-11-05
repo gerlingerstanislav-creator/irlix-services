@@ -153,7 +153,13 @@ def _project_table(document: Document, project: ProjectItem):
     document.add_paragraph().paragraph_format.space_after = Pt(8)
 
 
-def render_docx(cv: CanonicalCv) -> bytes:
+def render_docx(cv: CanonicalCv, template: str = 'irlix-cv') -> bytes:
+    if template == 'irlix-cv-an':
+        from .renderer_an import render_docx_an
+        return render_docx_an(cv)
+    if template != 'irlix-cv':
+        raise ValueError(f'Unsupported CV template: {template}')
+
     document = Document()
     section = document.sections[0]
     section.top_margin = Mm(16)
@@ -241,8 +247,8 @@ def render_docx(cv: CanonicalCv) -> bytes:
     return output.getvalue()
 
 
-def render_pdf(cv: CanonicalCv) -> bytes:
-    docx_bytes = render_docx(cv)
+def render_pdf(cv: CanonicalCv, template: str = 'irlix-cv') -> bytes:
+    docx_bytes = render_docx(cv, template=template)
     with tempfile.TemporaryDirectory(prefix='irlix-cv-') as tmp:
         tmp_path = Path(tmp)
         docx_path = tmp_path / 'cv.docx'
