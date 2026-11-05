@@ -91,6 +91,29 @@ final class RoleLabels
         return $claims;
     }
 
+    /**
+     * The same V2 identity keys that Employees publishes in signed JWTs.
+     * Role selectors in business services must never invent local aliases or
+     * expose the retired platform-tester role as an authorization grant.
+     */
+    public static function canonicalRoleCatalog(array $departments): array
+    {
+        $catalog = [];
+        foreach ($departments as $department) {
+            $alias = self::canonicalOrganizationAlias($department, $departments);
+            if ($alias === null) continue;
+            $name = trim((string) ($department->name ?? $alias));
+            $catalog['org:'.$alias] = 'Подразделение: '.$name;
+            $catalog['head:'.$alias] = 'Руководитель: '.$name;
+        }
+        foreach (SpecialRoles::catalog() as $role => $definition) {
+            if ($role === SpecialRoles::PlatformTester) continue;
+            $catalog['special:'.$role] = $definition['label'];
+        }
+        asort($catalog, SORT_NATURAL | SORT_FLAG_CASE);
+        return $catalog;
+    }
+
     private static function canonicalOrganizationAlias(object $department, array $departments): ?string
     {
         $alias = (string) ($department->alias ?? '');

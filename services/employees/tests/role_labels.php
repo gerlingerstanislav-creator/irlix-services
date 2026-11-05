@@ -33,6 +33,13 @@ $check(RoleLabels::publishedRoleClaims((object)['id'=>100,'department_id'=>1], $
     ['head:irlix','org:irlix']);
 $check(RoleLabels::publishedRoleClaims((object)['id'=>101,'department_id'=>2], $departments,
     ['platform-tester']), ['org:accounting','org:irlix']);
+$roleCatalog = RoleLabels::canonicalRoleCatalog($departments);
+$check(isset($roleCatalog['org:account-management']), true);
+$check(isset($roleCatalog['head:sales']), true);
+$check(isset($roleCatalog['special:platform-admin']), true);
+$check(isset($roleCatalog['special:system-admin']), true);
+$check(isset($roleCatalog['special:platform-tester']), false);
+$check(isset($roleCatalog['account-manager']), false);
 $noHead = [(object)['id'=>88,'alias'=>'finance','parent_id'=>null,'manager_id'=>null]];
 $check(RoleLabels::publishedRoleClaims((object)['id'=>0,'department_id'=>88],$noHead),
     ['org:finance']); // missing employee id cannot turn null manager into a head grant

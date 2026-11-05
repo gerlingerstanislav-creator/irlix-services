@@ -252,6 +252,14 @@ Sending a reporting period first acquires a persistent Timesheets freeze, checks
 
 Regression checks run from `Dockerfile`: canonical membership/partner behavior, migration coalescing/refusal/lineage, permission scopes, and freeze/revision/history, alongside existing workflow, reporting and unknown-rate checks. PostgreSQL trigger/constraint checks require the PostgreSQL integration job; SQLite smoke results do not replace that verification.
 
+## Clients permission matrix role columns (05.11.2026)
+
+The matrix screen at `/clients/permissions/` shows configured Clients role columns and a searchable selector of canonical `org:*`, `head:*`, `special:*` identity roles. The selector's catalog is provided by Employees in its authenticated `clients-directory.role_catalog` response; Clients never creates identity roles in Keycloak. `special:platform-tester` is excluded and the virtual `special:platform-admin` column is always present, fully granted and immutable.
+
+`GET /permissions` includes `roles` (configured columns) and `available_roles` (platform roles). `POST /permissions/roles` with `{ "role": "org:example" }` initializes all Clients permission cells as unassigned, without grants. `DELETE /permissions/roles/{role}` atomically deletes all of that role's Clients matrix rows, including explicit denies, and audits every deletion. The identity itself, employee assignments and other services' permission matrices remain unchanged. The existing `PUT /permissions` refuses to resurrect a removed column.
+
+Reading and changing the matrix require `permissions.view/all` and `permissions.manage/all` respectively, or platform-admin. The matrix viewport fills the service work area with a sticky first column, sticky group labels and compact role columns. Regression checks cover the role catalog, API routes, removal audit, default-deny and clean re-add.
+
 ## Roles V2 — per-service matrix cutover (28.10.2026, not activated)
 
 Clients keeps its existing independently editable permission matrix. The new `IRLIX_CLIENTS_LOCAL_AUTHZ_ENABLED=false` (default) guards a **different role source and admission mode**, not a new central authorization service. When enabled together with verified JWT mode, business permissions are computed **only** from explicitly configured `org:*`, `head:*`, `special:*` matrix rows, plus the system-wide platform superuser. Existing legacy role columns and settings remain stored and unchanged; they are not automatically interpreted as V2 permissions. Employees' trusted directory verifies current organizational ancestry and manager assignments before `org/head` labels are accepted from signed tokens. Scope still uses current organizational IDs and the Clients domain's own business relationships.

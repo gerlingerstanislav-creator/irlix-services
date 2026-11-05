@@ -89,3 +89,14 @@
 .irlix-app-shell__workspace:has(> .content--roster){height:100dvh;min-height:0;overflow:hidden}
 .content--roster{flex:1 1 auto;height:auto;min-height:0;padding:0;overflow:hidden;display:flex;flex-direction:column}
 .content--roster>.specialists-roster{flex:1;min-height:0}
+
+/* Permission matrix occupies the remaining viewport below the shared topbar. */
+.content:has(> .permissions-page) {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - var(--irlix-topbar-height, 45px));
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+}

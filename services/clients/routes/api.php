@@ -24,6 +24,8 @@ Route::get('/health', \App\Http\Controllers\ClientsHealthController::class);
 Route::get('/permissions/me', [ClientContourPermissionsController::class, 'me']);
 Route::get('/permissions', [ClientContourPermissionsController::class, 'index']);
 Route::put('/permissions', [ClientContourPermissionsController::class, 'update']);
+Route::post('/permissions/roles', [ClientContourPermissionsController::class, 'addRole']);
+Route::delete('/permissions/roles/{role}', [ClientContourPermissionsController::class, 'removeRole']);
 Route::get('/production-calendar', \App\Http\Controllers\ProductionCalendarController::class);
 Route::get('/specialists/filter-clients', [ClientSpecialistsController::class, 'clients']);
 Route::get('/specialists/client-members', [ClientSpecialistsController::class, 'members']);
