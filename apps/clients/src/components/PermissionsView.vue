@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { UiButton, UiLoader, UiSearchSelect } from '@irlix/ui';
-import { moveRoleBefore, orderedRoles, roleTreeOptions, shiftRole } from '../permissionRoleLayout.js';
+import { moveRoleTo, orderedRoles, roleTreeOptions, shiftRole } from '../permissionRoleLayout.js';
 
 const data = ref({ roles: [], available_roles: [], role_tree: [], permissions: [], matrix: {}, scopes: [], can_manage: false });
 const loading = ref(false);
@@ -44,7 +44,7 @@ function dropColumn(role, event) {
   event.preventDefault();
   const source = draggedRole.value;
   if (source && source !== role.key) {
-    const next = moveRoleBefore(displayedRoles.value, source, role.key);
+    const next = moveRoleTo(displayedRoles.value, source, role.key);
     if (next !== displayedRoles.value) keepColumnOrder(next);
   }
   draggedRole.value = '';
