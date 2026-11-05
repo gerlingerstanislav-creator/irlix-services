@@ -251,14 +251,13 @@ def _parse_an_projects(blocks: list[list[str]]) -> list[ProjectItem]:
         mode = 'description'
         description = detail
         for block in subset:
-            if len(block) == 1 and _key(block[0]) in {
-                'описание проекта', 'выполняемые задачи', 'результат', 'результаты',
-            }:
-                label = _key(block[0])
-                mode = ('description' if label == 'описание проекта'
-                        else 'responsibilities' if label == 'выполняемые задачи' else 'results')
-                continue
             for line in block:
+                # PDF extraction may keep a heading and its first item in one text block.
+                label = _key(line)
+                if label in {'описание проекта', 'выполняемые задачи', 'результат', 'результаты'}:
+                    mode = ('description' if label == 'описание проекта'
+                            else 'responsibilities' if label == 'выполняемые задачи' else 'results')
+                    continue
                 value = line.lstrip(' •–-').strip()
                 if not value:
                     continue
