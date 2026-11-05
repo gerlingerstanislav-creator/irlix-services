@@ -55,7 +55,10 @@ final class EmployeeDeletionService
                 ];
             }
             if (!$response->successful()) return [
-                'status' => 502, 'message' => 'Cross-service employee purge failed',
+                // Protected financial history is an expected business refusal, not
+                // an unavailable upstream. Keep the 423 status for the admin UI.
+                'status' => $response->status() === 423 ? 423 : 502,
+                'message' => 'Cross-service employee purge failed',
                 'service' => $service, 'upstream_status' => $response->status(),
             ];
         }
