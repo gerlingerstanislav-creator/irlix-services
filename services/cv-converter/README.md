@@ -20,8 +20,8 @@ API:
 - `PUT /api/settings` — сохранить provider и его параметры;
 - `POST /api/settings/test` — проверить сохранённого provider;
 - `POST /api/parse` — multipart `file`, возвращает `CanonicalCv` и metrics;
-- `POST /api/render/docx` — принимает `CanonicalCv`, возвращает DOCX;
-- `POST /api/render/pdf` — принимает `CanonicalCv`, возвращает PDF из того же DOCX renderer и header `X-CV-Render-Ms` с серверным временем renderer.
+- `POST /api/render/docx?template=irlix-cv|irlix-cv-an` — принимает `CanonicalCv`, возвращает DOCX;
+- `POST /api/render/pdf?template=irlix-cv|irlix-cv-an` — принимает `CanonicalCv`, возвращает PDF из того же template-specific DOCX renderer и header `X-CV-Render-Ms` с серверным временем renderer. Без параметра выбирается существующий `irlix-cv`.
 
 `parse`, render и settings endpoints требуют platform Bearer JWT. Health endpoints используются инфраструктурой.
 
@@ -49,7 +49,7 @@ Env-переменные остаются fallback/default-конфигурац�
 - `contacts` — email, phone, Telegram, location, work format, links;
 - `summary` — профессиональное описание кандидата;
 - `work_experience[]` — работодатель, роль, период, описание, responsibilities, achievements, technologies;
-- `projects[]` — проектный опыт отдельно от работодателей.
+- `projects[]` — проектный опыт отдельно от работодателей; `results[]` содержит только явно заявленные результаты, отдельно от `responsibilities[]`.
 
 Разделение `work_experience` и `projects` принципиально: если исходное CV не связывает конкретный проект с конкретным работодателем, converter не должен придумывать эту связь.
 
@@ -90,6 +90,13 @@ PDF extraction использует PyMuPDF `blocks` с сохранением �
 DOCX extraction сохраняет границы абзацев и строк таблиц как отдельные блоки.
 
 Сканированные PDF без text layer по-прежнему требуют OCR и возвращают понятную ошибку.
+
+## Templates
+
+- `irlix-cv` (`Irlix CV`) — прежний двухколоночный шаблон, применяется по умолчанию.
+- `irlix-cv-an` (`Irlix CV AN`) — одноколоночный формат с профилем «О себе», блоками навыков, объединёнными образованием/языками и последовательными карточками проектов с описанием, задачами и результатами.
+
+Выбор шаблона происходит только на этапе renderer: source extraction и CanonicalCv не зависят от него. Переключение в интерфейсе не повторяет LLM extraction. Проектные результаты отображаются в обоих форматах, если присутствуют в исходном CV. В публичный репозиторий не включаются реальные кандидатские CV и их исходные файлы.
 
 ## Data policy
 
