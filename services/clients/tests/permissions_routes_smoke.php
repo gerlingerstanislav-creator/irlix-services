@@ -62,6 +62,18 @@ if ($check(['service:timesheets','org:client-service'])!==403)
     throw new \RuntimeException('Timesheets admission leaked into Clients');
 if ($check(['org:client-service'])!==403)
     throw new \RuntimeException('Missing signed Clients admission was accepted');
+
+// Specialists project lookup is an isolated GET-only projection: its signed
+// service role grants no other Clients access and has a separate Employees scope gate.
+if ($check(['service:specialists'],'/api/specialists/people/42/projects')!==200)
+    throw new \RuntimeException('Specialists project projection denied signed service role');
+if ($check(['service:clients'],'/api/specialists/people/42/projects')!==403)
+    throw new \RuntimeException('Clients role alone granted the Specialists project projection');
+if ($check(['service:specialists'],'/api/clients')!==403)
+    throw new \RuntimeException('Specialists projection granted generic Clients admission');
+if ($check(['service:specialists'],'/api/specialists/people/42/projects/extra')!==403)
+    throw new \RuntimeException('Specialists project route exception widened beyond its path');
+
 $fakeAccess->permissions=[];
 if ($check(['service:clients','org:client-service'])!==403)
     throw new \RuntimeException('Clients V2 business access bypassed empty local matrix');
