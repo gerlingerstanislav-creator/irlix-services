@@ -20,7 +20,7 @@ Backend access is enforced separately for each request. The Equipment backend va
 - Employees: locally enforces its permissions and scope; its self/access routes remain available for cross-service authorization.
 - Vacations, Clients, Timesheets, Specialists, Recruitment: the API middleware verifies the user's current Employees service entitlement on every authenticated request. Domain-specific authorization follows; a service entitlement is not permission to perform every operation.
 - Equipment: checks the same contract at the API boundary.
-- CV Converter: its FastAPI endpoints require the Employees entitlement, with no Keycloak realm-role shortcut.
+- CV Converter: the Employees-owned `services.cv-converter` entitlement admits platform administrators and actual production department managers (`departments.manager_id` with `is_production=true`). Keycloak publishes this as the signed `service:cv-converter` grant; CV parse/render verify it in JWT mode and Employees itself in legacy mode. Provider settings and credentials remain strictly `platform-admin` only. CV mutations are forbidden in role-preview mode; removing a department head or an explicit service denial revokes the effective grant on the next authorization reconciliation/token refresh.
 - Migration: authorizes through Employees and checks `services.migration` in addition to its existing console-state checks.
 - Design System: static frontend showcase checks the Employees entitlement before mounting; it has no business-data API.
 - Portal/Dashboard: reads Employees entitlements and only advertises authorized services; every frontend also checks the entitlement on direct entry.
