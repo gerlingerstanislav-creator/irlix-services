@@ -409,7 +409,7 @@ class EmployeesAccess
 
     private function departments(): array
     {
-        return Department::query()->select(['id', 'parent_id', 'name', 'alias', 'manager_id'])->get()->all();
+        return Department::query()->select(['id', 'parent_id', 'name', 'alias', 'manager_id', 'is_production'])->get()->all();
     }
 
     private function allDepartmentIds(): array
