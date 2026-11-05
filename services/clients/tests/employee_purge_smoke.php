@@ -34,7 +34,7 @@ $columns = [
     'employee_purge_files' => ['employee_id', 'filename'],
 ];
 foreach ($columns as $table => $names) {
-    $schema->create($table, static function ($t) use ($names): void {
+    $schema->create($table, static function ($t) use ($names, $table): void {
         $t->id();
         foreach ($names as $name) {
             if (in_array($name, ['period_start', 'period_end', 'valid_from', 'valid_to'], true)) $t->date($name)->nullable();
@@ -59,10 +59,12 @@ DB::table('client_members')->insert([['id'=>100, 'client_id'=>10, 'employee_id'=
 DB::table('member_terms')->insert([['id'=>200,'client_member_id'=>100, 'project_member_id'=>300,
         'valid_from'=>'2026-01-01', 'valid_to'=>'2026-01-31'],
     ['id'=>201,'client_member_id'=>101,'project_member_id'=>301,
-        'valid_from'=>'2026-01-01', 'valid_to'=>'2026-01-31'],
-    // Archived historical term has no direct ClientMember, but references its canonical term.
-    ['id'=>203,'project_member_id'=>302,'superseded_by_term_id'=>200,
         'valid_from'=>'2026-01-01', 'valid_to'=>'2026-01-31']]);
+    // Archived historical term has no direct ClientMember, but references its canonical term.
+DB::table('member_terms')->insert([
+    'id'=>203,'client_member_id'=>null,'project_member_id'=>302,'superseded_by_term_id'=>200,
+    'valid_from'=>'2026-01-01', 'valid_to'=>'2026-01-31',
+]);
 DB::table('member_term_lineage')->insert(['canonical_term_id'=>200]);
 DB::table('client_member_feedbacks')->insert(['client_member_id'=>100, 'created_by_username'=>'synthetic.employee']);
 DB::table('project_assignments')->insert(['client_member_id'=>100]);
