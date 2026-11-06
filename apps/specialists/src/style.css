@@ -117,7 +117,7 @@
 .specialists-profile-section :is(select,textarea):disabled{background:var(--irlix-color-surface-muted)}
 .specialists-profile-section textarea{resize:vertical}
 .specialists-projects{display:grid;gap:0}
-.specialists-projects>div{display:grid;gap:4px;padding:10px 0;border-bottom:1px solid var(--irlix-color-border)}
+.specialists-projects>div{display:grid;gap:4px;padding:8px 0;border:0}
 .specialists-projects>div:last-child{border-bottom:0}
 .specialists-projects strong{font-size:var(--irlix-font-size-table)}
 .specialists-projects span{font-size:var(--irlix-font-size-caption);color:var(--irlix-color-text-muted)}
