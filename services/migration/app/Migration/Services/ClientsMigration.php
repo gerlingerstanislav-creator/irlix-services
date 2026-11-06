@@ -86,6 +86,49 @@ class ClientsMigration extends SchemaMigration
         }
         $result['tables']['lead_request_origins'] = $origins;
         $result['ok'] = $result['ok'] && $origins['changed'] === 0;
+
+        // In particular, confirm that a legacy sales_manager_id was mapped
+        // to the CURRENT Employees ID and written to the client's Sales field.
+        // A null source assignment is reported separately, never guessed.
+        $userMappings = DB::table('migration_mappings')->where('service', 'clients')
+            ->where('entity_type', 'users')->pluck('target_id', 'legacy_id');
+        $clientMappings = DB::table('migration_mappings')->where('service', 'clients')
+            ->where('entity_type', 'clients')->pluck('target_id', 'legacy_id');
+        $clientOwners = collect();
+        foreach ($clientMappings->values()->unique()->chunk(500) as $ids) {
+            $clientOwners = $clientOwners->merge($target->table('clients')
+                ->whereIn('id', $ids->all())->get(['id', 'sales_employee_id']));
+        }
+        $currentClientOwners = $clientOwners->keyBy('id');
+        $employeeIds = [];
+        foreach ($userMappings->values()->unique()->chunk(500) as $ids) {
+            foreach (DB::connection('target_employees')->table('employees')
+                ->whereIn('id', $ids->all())->pluck('id') as $employeeId) {
+                $employeeIds[(int) $employeeId] = true;
+            }
+        }
+        $sales = ['source_assigned' => 0, 'source_unassigned' => 0,
+            'matched' => 0, 'unresolved' => 0, 'mismatched' => 0];
+        foreach ($this->source['clients'] as $row) {
+            $legacySalesId = $row['sales_manager_id'] ?? null;
+            if ($legacySalesId === null || $legacySalesId === '') {
+                $sales['source_unassigned']++;
+                continue;
+            }
+            $sales['source_assigned']++;
+            $employeeId = $userMappings[(string) $legacySalesId] ?? null;
+            $targetClientId = $clientMappings[(string) $row['id']] ?? null;
+            $targetClient = $targetClientId === null ? null : $currentClientOwners->get((int) $targetClientId);
+            if ($employeeId === null || $targetClient === null || !isset($employeeIds[(int) $employeeId])) {
+                $sales['unresolved']++;
+            } elseif ((int) $targetClient->sales_employee_id !== (int) $employeeId) {
+                $sales['mismatched']++;
+            } else {
+                $sales['matched']++;
+            }
+        }
+        $result['tables']['sales_assignments'] = $sales;
+        $result['ok'] = $result['ok'] && $sales['unresolved'] === 0 && $sales['mismatched'] === 0;
         return $result;
     }
 
