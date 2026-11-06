@@ -3,6 +3,7 @@ WORKDIR /app
 RUN composer create-project laravel/laravel:^12.0 . --no-dev --prefer-dist --no-interaction \
     && composer require php-amqplib/php-amqplib:^3.7 --update-no-dev --prefer-dist --no-interaction --ignore-platform-req=ext-sockets \
     && sed -i "s/'search_path' => 'public'/'search_path' => env('DB_SEARCH_PATH', 'public')/" /app/config/database.php
+RUN apk add --no-cache sqlite-dev && docker-php-ext-install -j"$(nproc)" pdo_sqlite
 RUN echo audit-events-v1 > /app/.irlix-build-generation \
     && mkdir -p /app/app/Support /app/app/Http/Middleware /app/app/Http/Controllers /app/app/Models /app/app/Services /app/bin
 COPY app/Http/Middleware/KeycloakBearer.php /app/app/Http/Middleware/KeycloakBearer.php
@@ -22,6 +23,7 @@ COPY app/Support/BrandbookGate.php /app/app/Support/BrandbookGate.php
 COPY app/Support/StoragePilotGate.php /app/app/Support/StoragePilotGate.php
 COPY app/Support/EmployeeOnboardingService.php /app/app/Support/EmployeeOnboardingService.php
 COPY app/Support/StaffPositionImporter.php /app/app/Support/StaffPositionImporter.php
+COPY app/Support/EmployeePurgeRepository.php /app/app/Support/EmployeePurgeRepository.php
 COPY routes/api.php /app/routes/api.php
 COPY routes/fot.php /app/routes/fot.php
 COPY routes/finance.php /app/routes/finance.php
@@ -59,7 +61,9 @@ COPY tests/layered_workflows.php /app/tests/layered_workflows.php
 COPY tests/assignment_history_edit.php /app/tests/assignment_history_edit.php
 COPY tests/staff_positions_import.php /app/tests/staff_positions_import.php
 COPY tests/specialists_history_smoke.php /app/tests/specialists_history_smoke.php
-RUN php /app/tests/clients_production_head_aliases.php && php /app/tests/role_labels.php && php /app/tests/inherited_permission_rules.php && php /app/tests/cv_production_heads_access.php && php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php && php /app/tests/vacations_historical_directory.php && php /app/tests/platform_roles.php && php /app/tests/eloquent_architecture.php && php /app/tests/eloquent_services.php && php /app/tests/layered_workflows.php && php /app/tests/assignment_history_edit.php && php /app/tests/staff_positions_import.php && php /app/tests/specialists_history_smoke.php
+COPY tests/employee_purge_orchestration.php /app/tests/employee_purge_orchestration.php
+COPY tests/employee_local_purge_smoke.php /app/tests/employee_local_purge_smoke.php
+RUN php /app/tests/clients_production_head_aliases.php && php /app/tests/role_labels.php && php /app/tests/inherited_permission_rules.php && php /app/tests/cv_production_heads_access.php && php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php && php /app/tests/vacations_historical_directory.php && php /app/tests/platform_roles.php && php /app/tests/eloquent_architecture.php && php /app/tests/eloquent_services.php && php /app/tests/layered_workflows.php && php /app/tests/assignment_history_edit.php && php /app/tests/staff_positions_import.php && php /app/tests/specialists_history_smoke.php && php /app/tests/employee_purge_orchestration.php && php /app/tests/employee_local_purge_smoke.php
 RUN find /app/app/Models /app/app/Services /app/app/Http/Controllers -name '*.php' -exec php -l {} \; \
     && php -l /app/routes/api.php \
     && php -l /app/routes/self.php \

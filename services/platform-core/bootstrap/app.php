@@ -10,6 +10,10 @@ return Application::configure(basePath: dirname(__DIR__))
         api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
+        then: static function (): void {
+            \Illuminate\Support\Facades\Route::prefix('internal/system')
+                ->group(base_path('routes/internal.php'));
+        },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // Platform middleware is added as authentication/permissions are implemented.

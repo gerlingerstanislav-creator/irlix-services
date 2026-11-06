@@ -37,7 +37,11 @@ export const links = [
  ['clients','clients-api'],['timesheets','timesheets-api'],['specialists','specialists-api'],
  ['equipment','equipment-api'],['finance','finance-api'],['recruitment','recruitment-api'],['cv-converter','cv-api'],
  ['migration-api','migration-ops'],['migration-ops','volumes'],
- ['employees-api','platform-core'],['vacations-api','employees-api'],['clients-api','employees-api'],
+ ['employees-api','platform-core'],
+  // Admin hard-delete is a token-authenticated write dependency on each data owner.
+  ...['timesheets-api','clients-api','vacations-api','specialists-api',
+    'recruitment-api','finance-api','equipment-api','storage-api'].map(id=>['employees-api',id]),
+  ['vacations-api','employees-api'],['clients-api','employees-api'],
  ['timesheets-api','clients-api'],['timesheets-api','employees-api'],['timesheets-api','vacations-api'],
  ['specialists-api','employees-api'],['equipment-api','employees-api'],['finance-api','employees-api'],['finance-api','clients-api'],['finance-api','timesheets-api'],['recruitment-api','employees-api'],
  ['migration-api','employees-api'],['migration-api','vacations-api'],['migration-api','clients-api'],

@@ -13,6 +13,9 @@ Route::get('/finance/commercial-terms', [\App\Http\Controllers\FinanceClientsCon
 Route::get('/finance/reporting-periods/{period}', [\App\Http\Controllers\FinanceClientsController::class, 'period'])->whereNumber('period');
 Route::post('/finance/reporting-periods/{period}/paid', [\App\Http\Controllers\FinanceClientsController::class, 'paid'])->whereNumber('period');
 
+Route::post('/employees/{employee}/purge/preflight', [\App\Http\Controllers\EmployeePurgeController::class, 'preflight'])
+    ->whereNumber('employee');
+
 Route::post('/employees/{employee}/purge', \App\Http\Controllers\EmployeePurgeController::class)
     ->whereNumber('employee');
 

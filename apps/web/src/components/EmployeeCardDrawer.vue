@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { UiActionMenu, UiBadge, UiButton, UiCheckbox, UiSearchSelect } from '@irlix/ui';
 import { departmentOptions, positionsForDepartment, shortEmployeeName } from '../staffTree';
 import { employeeManagementActions } from '../employeeManagementActions';
+import { employeeDeletionErrorMessage } from '../employeeDeletionError';
 
 const props = defineProps({
   employeeId: { type: Number, required: true },
@@ -237,13 +238,7 @@ const deleteEmployee = async () => {
     await request(`/api/employees/employees/${props.employeeId}`, { method: 'DELETE' });
     emit('updated'); emit('close');
   } catch (e) {
-    const serviceName = {
-      vacations: 'Vacations', timesheets: 'Timesheets', clients: 'Clients',
-      specialists: 'Specialists', recruitment: 'Recruitment',
-    }[e.service] || e.service;
-    error.value = serviceName
-      ? `Не удалось удалить сотрудника: ошибка очистки ${serviceName} (HTTP ${e.upstreamStatus}). ${e.message === 'Cross-service employee purge failed' ? 'Попробуйте повторить операцию; если ошибка повторится, передайте название сервиса администратору.' : e.message}`
-      : e.message;
+    error.value = employeeDeletionErrorMessage(e);
   }
   finally { deleting.value = false; }
 };
