@@ -32,6 +32,7 @@ const normalized = computed(() => props.options.map((option) => {
       disabled: Boolean(option.disabled),
       kind: option.kind === 'group' ? 'group' : 'option',
       depth: Math.max(0, Number(option.depth || 0)),
+      parentValue: option.parentValue === null || option.parentValue === undefined ? null : String(option.parentValue),
       meta: String(option.meta || ''),
     };
   }
@@ -72,7 +73,23 @@ const filtered = computed(() => {
       ancestors.forEach(group => matched.add(group));
     }
   }
-  return normalized.value.filter(option => matched.has(option));
+  // Selectable department tree nodes preserve their ancestors on search.
+  // This is intentionally generic: non-tree pickers keep the old behavior.
+  const byValue = new Map(normalized.value.filter(o => o.kind === 'option').map(o => [String(o.value), o]));
+  const matchedKeys = new Set([...matched]);
+  for (const node of normalized.value) {
+    if (node.kind !== 'option' || !node.parentValue || !node.label.toLocaleLowerCase('ru').includes(needle)) continue;
+    matchedKeys.add(node);
+    let cursor = node.parentValue;
+    const visited = new Set();
+    while (cursor && byValue.has(cursor) && !visited.has(cursor)) {
+      visited.add(cursor);
+      const parent = byValue.get(cursor);
+      matchedKeys.add(parent);
+      cursor = parent.parentValue;
+    }
+  }
+  return normalized.value.filter(option => matchedKeys.has(option));
 });
 
 const updateMenuPosition = () => {
