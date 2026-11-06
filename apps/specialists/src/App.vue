@@ -20,8 +20,10 @@ const mainNavItems=computed(()=>navItems.value.filter(item=>item.id!=='role-perm
 const bottomNavItems=computed(()=>navItems.value.filter(item=>item.id==='role-permissions'));
 // One employee-scoped tree selection is shared by all Specialists people views.
 const selectedDepartments = ref([]);
-const canFilterDepartments = computed(() => canViewProfiles.value
-  && (workspace.value.scope === 'all' || (workspace.value.departments || []).length > 1));
+const canFilterDepartments = computed(() => canViewProfiles.value && (
+  ['people','person'].includes(route.value.section) || workspace.value.scope === 'all'
+  || (workspace.value.managed_department_ids || []).length > 1
+));
 const scopedPeople = computed(() => employeesWithinDepartments(
   workspace.value.people, workspace.value.departments, selectedDepartments.value));
 const departmentStorageKey = () => 'irlix.specialists.departments.v2.' + (workspace.value.actor?.id || 'unknown');
