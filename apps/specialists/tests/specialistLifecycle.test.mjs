@@ -42,7 +42,11 @@ test('professional card autosaves all technology edits without overall grade or 
   assert.match(body, /autosave\.queue/);
   assert.match(body, /queueProfessionalSave\(\)/);
   assert.match(body, /onBeforeUnmount\(\(\) => \{ void autosave\.close\(\)/);
-  assert.match(body, /Повторить сохранение/);
+  assert.match(body, /UiToast/);
+  assert.match(body, /action-label="toast.actionLabel"/);
+  assert.match(body, /@action="autosave.retry\(\)"/);
+  assert.match(body, /Изменения сохранены/);
+  assert.doesNotMatch(body, /Повторить сохранение/);
   assert.match(body, /teleport compact/);
   assert.doesNotMatch(body, /Общий грейд/);
   assert.doesNotMatch(body, /generalGrade/);
