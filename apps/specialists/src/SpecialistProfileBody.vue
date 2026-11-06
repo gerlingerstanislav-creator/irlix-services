@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { createProfessionalAutosave } from './professionalAutosave.js';
 import { UiButton, UiHistoryTimeline, UiSearchSelect, UiTabs, UiTechnologyGrade, UiToast } from '@irlix/ui';
 
@@ -15,6 +15,9 @@ const emit = defineEmits(['profile-updated', 'catalog-updated']);
 const grades = ['Junior', 'Middle', 'Middle+', 'Senior'];
 const tabs = [{ value: 'history', label: 'История' }, { value: 'about', label: 'О специалисте' }];
 const tab = ref('history');
+const scrollArea = ref(null);
+// Tab changes must start at the top of their own content, not inherit the old scroll offset.
+watch(tab, async () => { await nextTick(); if (scrollArea.value) scrollArea.value.scrollTop = 0; });
 const busy = ref(false);
 const toast = ref(null);
 let toastSequence = 0;
@@ -186,13 +189,15 @@ const comment = async text => {
 
 <template>
   <div class="specialist-profile-body">
-    <UiTabs v-model="tab" :items="tabs" />
+    <div class="specialist-profile-tabs"><UiTabs v-model="tab" :items="tabs" /></div>
     <UiToast v-if="toast" :key="toast.id" :tone="toast.tone" :message="toast.message"
       :action-label="toast.actionLabel" @close="toast = null" @action="autosave.retry()" />
+    <div ref="scrollArea" class="specialist-profile-scroll" role="region"
+      aria-label="Содержимое вкладки специалиста" tabindex="0">
     <section v-if="tab === 'history'" class="specialist-tab-history">
       <p v-if="timelineLoading" class="specialist-muted">Загрузка истории…</p>
       <p v-if="timelinePartial" class="specialist-profile-feedback error" role="status">{{ timelinePartial }}</p>
-      <UiHistoryTimeline :events="timeline" :editable="editable" :busy="busy"
+      <UiHistoryTimeline :events="timeline" :editable="editable" :busy="busy" :scroll-feed="false"
         placeholder="Комментарий руководителя…" @submit="comment" />
     </section>
     <template v-else>
@@ -250,11 +255,16 @@ const comment = async text => {
         <p v-else class="specialist-muted">Проекты не найдены.</p>
       </section>
     </template>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.specialist-profile-body{display:flex;flex-direction:column;min-height:0;gap:0}
+.specialist-profile-body{display:flex;flex:1 1 auto;flex-direction:column;width:100%;min-height:0;overflow:hidden;gap:0}
+.specialist-profile-tabs{flex:none}
+/* The only vertical scroll surface in the specialist drawer lives below its fixed tabs. */
+.specialist-profile-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch}
+.specialist-profile-scroll:focus-visible{outline:2px solid var(--irlix-color-primary);outline-offset:-2px}
 .specialist-tab-history{display:flex;flex-direction:column;min-height:330px;padding:18px 20px}
 .specialist-primary-list{display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;min-height:32px}
 .specialist-primary-row{display:inline-flex;align-items:center;gap:3px;padding:3px 0;border:0;min-width:0;white-space:nowrap}
