@@ -17,8 +17,8 @@ export const suites = [
 
 export const domains = ['ui', 'auth', 'employees', 'clients', 'timesheets', 'migration', 'portal', 'vacations', 'equipment', 'finance', 'specialists', 'recruitment', 'cv', 'storage', 'platform', 'ci'];
 const mapping = [
-  ['packages/ui/', ['ui', 'employees', 'clients', 'timesheets', 'portal', 'migration', 'equipment', 'finance']],
-  ['packages/auth/', ['auth', 'ui', 'employees', 'clients', 'timesheets', 'portal', 'migration', 'equipment', 'finance']],
+  ['packages/ui/', ['ui', 'employees', 'clients', 'timesheets', 'portal', 'migration', 'equipment', 'finance', 'specialists']],
+  ['packages/auth/', ['auth', 'ui', 'employees', 'clients', 'timesheets', 'portal', 'migration', 'equipment', 'finance', 'specialists']],
   ['apps/design-system/', ['ui']],
   ['apps/web/', ['employees']],
   ['services/employees/', ['employees', 'clients', 'timesheets', 'finance']],
