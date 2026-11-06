@@ -112,6 +112,8 @@ const groupOpen = ref(true);
 const childGroupOpen = ref(true);
 const drawerOpen = ref(false);
 const nestedDrawerOpen = ref(false);
+const fixedDrawerOpen = ref(false);
+const fixedDrawerTab = ref('info');
 const registryState = ref('data');
 const preloaderVariants = [
   { variant: 'assembly', label: 'Assembly', description: 'Диагональное раздвижение и соединение частей без вращения.' },
@@ -245,7 +247,7 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         <p class="ds-hint">В сервисе реестр занимает оставшуюся высоту окна, заголовок закреплён внутри скролла. Здесь показан ограниченный образец для проверки поведения таблицы.</p>
         </template>
         <template v-if="entry.id === 'drawers'">
-          <UiPanel class="ds-row"><UiButton @click="drawerOpen = true">Открыть карточку</UiButton><span class="ds-hint">Начальная ширина 40% и 30% окна; обе карточки растягиваются до 90%. Крестик центрирован независимо от шрифта.</span></UiPanel>
+          <UiPanel class="ds-row"><UiButton @click="drawerOpen = true">Открыть карточку</UiButton><UiButton variant="secondary" @click="fixedDrawerOpen = true">Фиксированные вкладки + прокрутка</UiButton><span class="ds-hint">Обычная карточка прокручивается целиком; альтернативный режим оставляет шапку и вкладки на месте, прокручивая только содержимое ниже.</span></UiPanel>
         </template>
         <template v-if="entry.id === 'topbar'">
           <UiAppTopbar service="clients" service-name="Клиентский сервис" :breadcrumbs="[{label:'Запросы'}]">
@@ -270,6 +272,16 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         :message="toastPreview.message" :action-label="toastPreview.actionLabel"
         @close="toastPreview = null" @action="showToastPreview('success')" />
       <UiDrawer :open="drawerOpen" :inactive="nestedDrawerOpen" title="Демо-проект · Карточка" width="40vw" :min-width="320" @close="drawerOpen = false"><UiTabs v-model="drawerTab" :items="[{ value: 'info', label: 'Информация' }, { value: 'history', label: 'История', count: 2 }]" /><div class="ds-drawer-content"><template v-if="drawerTab === 'info'"><p>Демо-клиент Север · Frontend</p><UiButton @click="nestedDrawerOpen = true">Открыть вложенную карточку</UiButton></template><p v-else>Демонстрационная запись истории.</p></div></UiDrawer>
+
+      <UiDrawer :open="fixedDrawerOpen" title="Демо-специалист · Фиксированные вкладки" width="min(600px,96vw)" :scroll-body="false" @close="fixedDrawerOpen = false">
+        <div class="ds-fixed-drawer">
+          <div class="ds-fixed-drawer__identity"><strong>Демо-специалист</strong><p>Инженер · Демо-направление</p></div>
+          <UiTabs v-model="fixedDrawerTab" :items="[{ value: 'info', label: 'О специалисте' }, { value: 'history', label: 'История' }]" />
+          <div class="ds-fixed-drawer__scroll" tabindex="0" aria-label="Содержимое демонстрационной вкладки">
+            <p v-for="n in 35" :key="n">{{ fixedDrawerTab === 'history' ? 'Запись истории' : 'Демо-сведения' }} №{{ n }} — текст длинного списка для прокрутки колесом и тачпадом.</p>
+          </div>
+        </div>
+      </UiDrawer>
       <UiDrawer :open="nestedDrawerOpen" title="Демо-специалист 01" width="30vw" :min-width="240" :z-index="1050" @close="nestedDrawerOpen = false"><p>Предыдущая карточка недоступна до закрытия этой.</p><UiBadge tone="success">На проекте</UiBadge></UiDrawer>
     </template>
     </main>
