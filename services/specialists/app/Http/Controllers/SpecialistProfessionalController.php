@@ -94,7 +94,7 @@ final class SpecialistProfessionalController extends Controller
             return response()->json(['data' => $existing->getAttributes(), 'created' => false]);
         }
         try {
-            $technology = Technology::query()->create([
+            $technology = AdditionalTechnology::query()->create([
                 'name' => $name, 'active' => true,
             ]);
         } catch (QueryException $e) {
