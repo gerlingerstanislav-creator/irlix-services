@@ -23,11 +23,13 @@ final class DepartmentService
             ])
             ->selectSub(fn ($query) => $query->from('employees as department_employee')
                 ->selectRaw('COUNT(*)::int')
-                ->whereColumn('department_employee.department_id', 'd.id'), 'employee_count')
+                ->whereColumn('department_employee.department_id', 'd.id')
+                ->where('department_employee.account_type', Employee::TYPE_EMPLOYEE), 'employee_count')
             ->selectSub(fn ($query) => $query->from('employees as active_employee')
                 ->selectRaw('COUNT(*)::int')
                 ->whereColumn('active_employee.department_id', 'd.id')
-                ->where('active_employee.employment_status', 'Трудоустроен'), 'active_employee_count')
+                ->where('active_employee.employment_status', 'Трудоустроен')
+                ->where('active_employee.account_type', Employee::TYPE_EMPLOYEE), 'active_employee_count')
             ->orderBy('d.name')->get()
             ->map(static fn (Department $department): object => (object) $department->getRawOriginal());
     }
@@ -91,7 +93,7 @@ final class DepartmentService
         $current = Department::query()->whereKey($department)->first();
         if (!$current) return ['status' => 404, 'message' => 'Подразделение не найдено.'];
 
-        $employeeCount = Employee::query()->where('department_id', $department)->count();
+        $employeeCount = Employee::query()->business()->where('department_id', $department)->count();
         $childCount = Department::query()->where('parent_id', $department)->count();
         $positionCount = StaffPosition::query()->where('direction_id', $department)->count();
         if ($employeeCount > 0 || $childCount > 0 || $positionCount > 0) {

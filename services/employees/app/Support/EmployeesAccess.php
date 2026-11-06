@@ -286,7 +286,7 @@ class EmployeesAccess
     {
         if (!($access['permissions']['employees.read'] ?? false)) return false;
         if (($access['scope'] ?? 'none') === 'all') return true;
-        $departmentId = Employee::query()->where('id', $employeeId)->value('department_id');
+        $departmentId = Employee::query()->business()->where('id', $employeeId)->value('department_id');
         return $departmentId !== null && in_array((int) $departmentId, $access['department_ids'] ?? [], true);
     }
 
