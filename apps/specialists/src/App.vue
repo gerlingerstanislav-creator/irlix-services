@@ -361,6 +361,11 @@ const confirmAdditionalDeletion = async () => {
   additionalDeleteError.value = '';
   const source = deletingAdditional.value;
   const replacement = sortedAdditionalTechnologies.value.find(t => String(t.id) === replacementAdditional.value);
+  if (replacementAdditional.value && !replacement) {
+    additionalDeleteError.value = 'Выбранная технология для замены больше недоступна.';
+    catalogSaving.value = false;
+    return;
+  }
   try {
     const result = await api(`/catalog/additional-technologies/${source.id}`, {
       method: 'DELETE',
