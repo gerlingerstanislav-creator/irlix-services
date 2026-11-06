@@ -60,7 +60,7 @@ final class ClientWorkflowVisibility
     public static function requestAllowed(array|object $request, array $scope): bool
     {
         if (!($scope['allowed'] ?? false)) return false;
-        if (($scope['employees'] ?? []) === null) return true;
+        if (array_key_exists('employees', $scope) && $scope['employees'] === null) return true;
         $row = (array) $request;
         return in_array((int) ($row['responsible_employee_id'] ?? 0), $scope['employees'], true)
             || ((int) ($row['client_id'] ?? 0) > 0
@@ -101,6 +101,8 @@ final class ClientWorkflowVisibility
         if ($access['platform_admin'] ?? false) return;
 
         $query->where(function (Builder $visible) use ($access, $scopes): void {
+            // A missing/narrow scope must never become an unfiltered SQL page.
+            $visible->whereRaw('1 = 0');
             foreach ($scopes as $permission => $scope) {
                 if (!($scope['allowed'] ?? false)) continue;
                 if ($permission !== 'requests.view' && self::productionOnly($access)) continue;
@@ -131,10 +133,6 @@ final class ClientWorkflowVisibility
                             });
                     });
                 }
-            }
-            // No matching grant leaves this grouped predicate false.
-            if (!array_filter($scopes, static fn ($scope) => (bool) ($scope['allowed'] ?? false))) {
-                $visible->whereRaw('1 = 0');
             }
         });
     }
