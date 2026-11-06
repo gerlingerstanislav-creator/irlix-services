@@ -101,7 +101,13 @@ class LegacyAuthzImportTests(unittest.TestCase):
                 "2026_10_29_000001_import_legacy_manager_grants.php").read_text()
         self.assertNotIn("'specialists.catalog.manage'=>'all'", seed)
         route = (ROOT / "services/specialists/routes/api.php").read_text()
-        self.assertIn("in_array('platform-admin', $roles, true)", route)
+        authorizer = (ROOT / "services/specialists/app/Support/SpecialistsCatalogAuthorizer.php").read_text()
+        delete_controller = (ROOT / "services/specialists/app/Http/Controllers/AdditionalTechnologyCatalogController.php").read_text()
+        self.assertIn("app(SpecialistsCatalogAuthorizer::class)->assertCanManage($request)", route)
+        self.assertIn("in_array('platform-admin', $roles, true)", authorizer)
+        self.assertIn("'specialists.catalog.manage'", authorizer)
+        self.assertIn("'scope'] ?? '') === 'all'", authorizer)
+        self.assertIn("assertCanManage($request)", delete_controller)
 
     def test_private_clients_timesheets_policy_transfer_is_owner_isolated(self):
         src = (ROOT / "services/clients/bin/export-timesheets-legacy-policy.php").read_text()
