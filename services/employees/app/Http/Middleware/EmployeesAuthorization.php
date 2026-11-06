@@ -55,6 +55,10 @@ class EmployeesAuthorization
             || $request->is('api/vacations-directory')
             || $request->is('api/clients-directory')
             || $request->is('api/specialists-directory')
+            // Narrow history projection has its own live production-manager
+            // entitlement and per-employee tree check in the controller.
+            // No general Employees.read is implied by Specialists access.
+            || ($request->isMethod('GET') && $request->is('api/specialists-history/*'))
             || ($request->isMethod('GET') && $request->is('api/equipment-directory', 'api/equipment-directory/*'))
             || $request->is('api/access/me')
             || $request->is('api/access/preview')) return $next($request);
