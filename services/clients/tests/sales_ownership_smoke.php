@@ -56,8 +56,8 @@ DB::table('client_requests')->insert([
     ['id'=>103,'client_id'=>3,'responsible_employee_id'=>99,'title'=>'Delegated request','status'=>'Открыт','created_at'=>'2026-01-03 00:00:00'],
 ]);
 DB::table('positions')->insert([
-    ['id'=>1,'client_request_id'=>101,'direction_department_id'=>20],
-    ['id'=>2,'client_request_id'=>100,'direction'=>'Legacy production'],
+    ['id'=>1,'client_request_id'=>101,'direction_department_id'=>20,'direction'=>null],
+    ['id'=>2,'client_request_id'=>100,'direction_department_id'=>null,'direction'=>'Legacy production'],
 ]);
 
 $visibility = new ClientWorkflowVisibility();
