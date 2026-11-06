@@ -34,9 +34,9 @@ final class EmployeePurgeService
      * records or protected reporting history. Database cleanup is atomic locally;
      * pending CV-file removals survive a crash and are retried before success.
      */
-    public function purge(int $employeeId, string $username): void
+    public function purge(int $employeeId, string $username, bool $preflight = false): void
     {
-        DB::transaction(static function () use ($employeeId, $username): void {
+        DB::transaction(static function () use ($employeeId, $username, $preflight): void {
             $members = ClientMember::query()->where('employee_id', $employeeId)->get();
             $memberOwners = $members->pluck('client_id', 'id')->all();
             // Older project-member rows can still be referenced by terms even
@@ -111,10 +111,16 @@ final class EmployeePurgeService
                 abort_unless($filename !== '' && $filename !== '.' && $filename !== '..'
                     && basename($filename) === $filename && !str_contains($filename, '\\'),
                     409, 'Unsafe stored CV filename requires reconciliation');
-                EmployeePurgeFile::query()->firstOrCreate([
-                    'employee_id' => $employeeId, 'filename' => $filename,
-                ]);
+                if (!$preflight) {
+                    EmployeePurgeFile::query()->firstOrCreate([
+                        'employee_id' => $employeeId, 'filename' => $filename,
+                    ]);
+                }
             }
+
+            // Preflight is strictly read-only. Call before Timesheets starts its
+            // irreversible purge so protected Clients periods reject early.
+            if ($preflight) return;
 
             ConnectionAttempt::query()->where('specialist_id', $employeeId)->delete();
             foreach ($members as $member) {
@@ -158,6 +164,8 @@ final class EmployeePurgeService
                     ->update(['updated_by' => null]);
             }
         });
+
+        if ($preflight) return;
 
         // A failure leaves the file ledger intact and prevents Employees from
         // deleting the identity. Retrying purge drains the ledger idempotently.
