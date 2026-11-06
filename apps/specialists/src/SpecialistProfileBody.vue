@@ -1,5 +1,6 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { createProfessionalAutosave } from './professionalAutosave.js';
 import { UiButton, UiHistoryTimeline, UiSearchSelect, UiTabs, UiTechnologyGrade } from '@irlix/ui';
 
 const props = defineProps({
@@ -16,7 +17,7 @@ const tabs = [{ value: 'history', label: 'История' }, { value: 'about', l
 const tab = ref('history');
 const busy = ref(false);
 const message = ref('');
-const generalGrade = ref('');
+const autosaveStatus = ref('idle');
 const primary = ref([]);
 const secondary = ref([]);
 const editing = ref(null);
@@ -44,7 +45,6 @@ const fetchData = async (url, options = {}) => parseResponse(await fetch(url, {
   headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers || {}) },
 }));
 const initProfile = () => {
-  generalGrade.value = props.profile?.professional?.grade || '';
   const values = props.profile?.professional?.technologies || [];
   primary.value = values.filter(t => t.kind === 'primary')
     .map(t => ({ technology_id: Number(t.id), grade: t.grade || '' }));
@@ -55,6 +55,7 @@ const initProfile = () => {
   showSecondarySelect.value = false;
   tab.value = 'history';
   message.value = '';
+  autosaveStatus.value = 'idle';
 };
 const loadTimeline = async () => {
   const id = employeeId.value;
@@ -77,6 +78,31 @@ const loadTimeline = async () => {
     : 'Часть событий истории недоступна. Попробуйте обновить карточку.';
   timelineLoading.value = false;
 };
+// Professional changes are persisted without a form submit. The API replaces
+// the full set, so writes are serialized and only the latest selection wins.
+const autosave = createProfessionalAutosave({
+  persist: (id, data) => fetchData(`/api/specialists/people/${id}/professional`, {
+    method: 'PUT', body: JSON.stringify(data),
+  }),
+  onStatus: state => { autosaveStatus.value = state; message.value = ''; },
+  onSaved: () => {
+    autosaveStatus.value = 'saved';
+    emit('profile-updated');
+    void loadTimeline();
+  },
+  onError: error => {
+    autosaveStatus.value = 'error';
+    message.value = error?.message || 'Не удалось сохранить технологии.';
+  },
+});
+const queueProfessionalSave = () => {
+  if (!props.editable || !employeeId.value) return;
+  autosave.queue(employeeId.value, {
+    primary: primary.value,
+    secondary_ids: secondary.value,
+  });
+};
+onBeforeUnmount(() => { void autosave.close(); });
 watch(employeeId, () => { initProfile(); loadTimeline(); }, { immediate: true });
 watch(() => props.profile?.professional, () => { const currentTab = tab.value; initProfile(); tab.value = currentTab; });
 const startPrimary = index => {
@@ -98,15 +124,18 @@ const commitPrimary = () => {
   secondary.value = secondary.value.filter(value => value !== id);
   editing.value = null;
   message.value = '';
+  queueProfessionalSave();
 };
 const removePrimary = index => {
   if (!props.editable) return;
   primary.value.splice(index, 1);
   editing.value = null;
+  queueProfessionalSave();
 };
 const chooseSecondary = values => {
   const primarySet = new Set(primary.value.map(x => x.technology_id));
   secondary.value = [...new Set(values.map(Number).filter(id => id && !primarySet.has(id)))];
+  queueProfessionalSave();
 };
 const quickCreate = async name => {
   if (!props.editable) return;
@@ -118,27 +147,6 @@ const quickCreate = async name => {
     });
     chooseSecondary([...secondary.value, Number(technology.id)]);
     await emit('catalog-updated');
-  } catch (e) {
-    message.value = e.message;
-  } finally {
-    busy.value = false;
-  }
-};
-const save = async () => {
-  if (!props.editable || !employeeId.value) return;
-  busy.value = true;
-  message.value = '';
-  try {
-    await fetchData(`/api/specialists/people/${employeeId.value}/professional`, {
-      method: 'PUT', body: JSON.stringify({
-        ...(grades.includes(generalGrade.value) || !generalGrade.value
-          ? { grade: generalGrade.value || null } : {}),
-        primary: primary.value, secondary_ids: secondary.value,
-      }),
-    });
-    message.value = 'Профиль сохранён.';
-    emit('profile-updated');
-    await loadTimeline();
   } catch (e) {
     message.value = e.message;
   } finally {
@@ -165,7 +173,12 @@ const comment = async text => {
 <template>
   <div class="specialist-profile-body">
     <UiTabs v-model="tab" :items="tabs" />
-    <p v-if="message" :class="['specialist-profile-feedback', message === 'Профиль сохранён.' ? 'success' : 'error']" role="status">{{ message }}</p>
+    <p v-if="message" class="specialist-profile-feedback error" role="alert">
+      {{ message }}
+      <button v-if="autosaveStatus === 'error'" type="button" class="specialist-autosave-retry" @click="autosave.retry()">Повторить сохранение</button>
+    </p>
+    <p v-if="autosaveStatus === 'saving'" class="specialist-profile-feedback" role="status">Сохраняем изменения…</p>
+    <p v-else-if="autosaveStatus === 'saved'" class="specialist-profile-feedback success" role="status">Изменения сохранены</p>
     <section v-if="tab === 'history'" class="specialist-tab-history">
       <p v-if="timelineLoading" class="specialist-muted">Загрузка истории…</p>
       <p v-if="timelinePartial" class="specialist-profile-feedback error" role="status">{{ timelinePartial }}</p>
@@ -187,8 +200,8 @@ const comment = async text => {
         </div>
         <button v-if="editable && editing === null" type="button" class="specialist-inline-add" @click="startPrimary(-1)">+ Добавить основную технологию</button>
         <div v-if="editing !== null" class="specialist-primary-editor">
-          <UiSearchSelect v-model="draftTech" :options="technologyOptions" teleport placeholder="Выберите технологию" search-placeholder="Поиск технологии" aria-label="Основная технология" />
-          <UiSearchSelect v-model="draftGrade" :options="gradeOptions" teleport placeholder="Выберите грейд" aria-label="Грейд основной технологии" />
+          <UiSearchSelect v-model="draftTech" :options="technologyOptions" teleport compact placeholder="Выберите технологию" search-placeholder="Поиск технологии" aria-label="Основная технология" />
+          <UiSearchSelect v-model="draftGrade" :options="gradeOptions" teleport compact placeholder="Выберите грейд" aria-label="Грейд основной технологии" />
           <UiButton compact :disabled="!draftTech || !draftGrade" @click="commitPrimary">Применить</UiButton>
           <UiButton compact variant="secondary" @click="editing = null">Отмена</UiButton>
         </div>
@@ -198,7 +211,7 @@ const comment = async text => {
         <div class="specialist-aux-layout">
           <button v-if="editable" type="button" class="specialist-aux-plus" aria-label="Добавить вспомогательные технологии" title="Добавить технологии" @click="showSecondarySelect = !showSecondarySelect">+</button>
           <div v-if="editable && showSecondarySelect" class="specialist-aux-select">
-            <UiSearchSelect :model-value="secondary.map(String)" :options="technologyOptions" multiple teleport creatable
+            <UiSearchSelect :model-value="secondary.map(String)" :options="technologyOptions" multiple teleport compact creatable
               placeholder="Выберите технологии" search-placeholder="Поиск или новая технология" aria-label="Вспомогательные технологии"
               @update:model-value="chooseSecondary" @create="quickCreate" />
           </div>
@@ -211,19 +224,6 @@ const comment = async text => {
           </div>
         </div>
       </section>
-      <section class="specialists-profile-section">
-        <h3>Общий грейд</h3>
-        <label>Грейд специалиста
-          <select v-model="generalGrade" :disabled="!editable">
-            <option value="">Не указан</option>
-            <option v-if="generalGrade && !grades.includes(generalGrade)" :value="generalGrade">{{ generalGrade }} (ранее указанный)</option>
-            <option v-for="grade in grades" :key="grade" :value="grade">{{ grade }}</option>
-          </select>
-        </label>
-      </section>
-      <div v-if="editable" class="specialists-profile-footer">
-        <UiButton :disabled="busy || editing !== null" @click="save">{{ busy ? 'Сохраняем…' : 'Сохранить изменения' }}</UiButton>
-      </div>
       <section class="specialists-profile-section">
         <h3>История проектов</h3>
         <p v-if="projectsLoading" class="specialist-muted">Загрузка проектов…</p>
@@ -260,5 +260,6 @@ const comment = async text => {
 .specialist-profile-feedback{padding:8px 20px;margin:0;font-size:var(--irlix-font-size-table)}
 .specialist-profile-feedback.error{color:var(--irlix-status-danger-text)}
 .specialist-profile-feedback.success{color:var(--irlix-status-success-text)}
+.specialist-autosave-retry{margin-left:10px;border:0;background:transparent;color:var(--irlix-color-primary-text);font:inherit;text-decoration:underline;cursor:pointer}
 @media(max-width:720px){.specialist-primary-editor{grid-template-columns:1fr 1fr}.specialist-tab-history{padding:12px}}
 </style>
