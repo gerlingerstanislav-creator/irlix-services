@@ -26,9 +26,9 @@ Model::setConnectionResolver($capsule->getDatabaseManager());
 
 $definitions = [
  'employees' => 'id INTEGER PRIMARY KEY,login TEXT,full_name TEXT,keycloak_user_id TEXT,created_at TEXT,updated_at TEXT',
- 'salary_reviews' => 'id INTEGER PRIMARY KEY,employee_id INTEGER,created_by INTEGER',
+ 'salary_reviews' => 'id INTEGER PRIMARY KEY,employee_id INTEGER,created_by INTEGER,updated_at TEXT',
  'salary_review_versions' => 'id INTEGER PRIMARY KEY,review_id INTEGER,changed_by INTEGER',
- 'salary_review_approvals' => 'id INTEGER PRIMARY KEY,review_id INTEGER,approver_id INTEGER',
+ 'salary_review_approvals' => 'id INTEGER PRIMARY KEY,review_id INTEGER,approver_id INTEGER,updated_at TEXT',
  'audit_log' => 'id INTEGER PRIMARY KEY,actor_employee_id INTEGER,actor_sub TEXT,target_type TEXT,target_id TEXT,before TEXT,after TEXT,metadata TEXT',
  'outbox_events' => 'id TEXT PRIMARY KEY,aggregate_type TEXT,aggregate_id TEXT,payload TEXT',
  'keycloak_auth_sync' => 'employee_id INTEGER PRIMARY KEY',
