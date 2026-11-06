@@ -52,6 +52,8 @@ final class EmployeePurgeRepository
                 'budget_versions' => ['created_by', 'approved_by'],
                 'accrual_payment_links' => ['created_by'],
                 'finance_audit_log' => ['actor'],
+                'cash_transfers' => ['created_by'],
+                'finance_permission_audit' => ['actor'],
             ] as $table => $columns) {
                 foreach ($columns as $column) {
                     DB::table($table)->where($column, $identity)
