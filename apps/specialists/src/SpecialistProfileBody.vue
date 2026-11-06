@@ -33,10 +33,19 @@ const technologies = computed(() => [...(props.catalog?.technologies || [])].sor
 const additionalTechnologies = computed(() => [...(props.catalog?.additional_technologies || [])].sort((a,b) =>
   a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })));
 const gradeOptions = grades.map(value => ({ value, label: value }));
-const technologyOptions = computed(() => technologies.value.map(t => ({ value: String(t.id), label: t.name })));
-const additionalTechnologyOptions = computed(() => additionalTechnologies.value.map(t => ({ value: String(t.id), label: t.name })));
 const byId = computed(() => new Map(technologies.value.map(t => [Number(t.id), t])));
 const additionalById = computed(() => new Map(additionalTechnologies.value.map(t => [Number(t.id), t])));
+const normalizedName = value => String(value || '').trim().toLocaleLowerCase('ru');
+const technologyOptions = computed(() => {
+  const alreadyExtra = new Set(secondary.value.map(id => normalizedName(additionalById.value.get(id)?.name)));
+  return technologies.value.filter(t => !alreadyExtra.has(normalizedName(t.name)))
+    .map(t => ({ value: String(t.id), label: t.name }));
+});
+const additionalTechnologyOptions = computed(() => {
+  const alreadyMain = new Set(primary.value.map(t => normalizedName(byId.value.get(t.technology_id)?.name)));
+  return additionalTechnologies.value.filter(t => !alreadyMain.has(normalizedName(t.name)))
+    .map(t => ({ value: String(t.id), label: t.name }));
+});
 const sortedPrimary = computed(() => primary.value.map((entry,index) => ({ ...entry,index })));
 const secondaryTags = computed(() => secondary.value.map(id => additionalById.value.get(id)).filter(Boolean));
 const parseResponse = async response => {
@@ -142,6 +151,10 @@ const chooseSecondary = values => {
 };
 const quickCreate = async name => {
   if (!props.editable) return;
+  if (primary.value.some(entry => normalizedName(byId.value.get(entry.technology_id)?.name) === normalizedName(name))) {
+    message.value = 'Эта технология уже указана как основная.';
+    return;
+  }
   busy.value = true;
   message.value = '';
   try {
