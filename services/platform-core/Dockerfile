@@ -5,6 +5,7 @@ RUN composer create-project laravel/laravel:^12.0 . --no-dev --prefer-dist --no-
 COPY routes/api.php /app/routes/api.php
 COPY routes/web.php /app/routes/web.php
 COPY bootstrap/app.php /app/bootstrap/app.php
+RUN apk add --no-cache sqlite-dev && docker-php-ext-install -j"$(nproc)" pdo_sqlite
 COPY app/Resources /app/app/Resources
 COPY app/Reports /app/app/Reports
 COPY app/Http/Controllers /app/app/Http/Controllers
@@ -23,7 +24,7 @@ RUN apk add --no-cache postgresql-dev sqlite-dev oniguruma-dev \
     && docker-php-ext-install -j"$(nproc)" pdo_pgsql pdo_sqlite mbstring
 WORKDIR /app
 COPY --from=app /app /app
-RUN php /app/tests/keycloak_jwt_auth.php && php /app/tests/resources_smoke.php
+RUN php /app/tests/keycloak_jwt_auth.php && php /app/tests/resources_smoke.php && php /app/tests/employee_purge_smoke.php
 ENV APP_ENV=production APP_DEBUG=false LOG_CHANNEL=stderr
 EXPOSE 8000
 CMD ["php", "-S", "0.0.0.0:8000", "-t", "public", "public/index.php"]
