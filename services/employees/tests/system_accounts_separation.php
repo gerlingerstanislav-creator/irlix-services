@@ -25,7 +25,7 @@ DB::swap($db);
 Model::setConnectionResolver($capsule->getDatabaseManager());
 
 $db->statement('CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, parent_id INTEGER, alias TEXT, manager_id INTEGER, is_production INTEGER)');
-$db->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, full_name TEXT, login TEXT, account_type TEXT DEFAULT "employee", keycloak_user_id TEXT, department_id INTEGER, position TEXT, employment_status TEXT, identity_status TEXT)');
+$db->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, full_name TEXT, login TEXT, account_type TEXT DEFAULT "employee", keycloak_user_id TEXT, work_email TEXT, department_id INTEGER, position TEXT, employment_status TEXT, identity_status TEXT)');
 $db->statement('CREATE TABLE employee_access_roles (id INTEGER PRIMARY KEY, employee_id INTEGER, role TEXT, created_at TEXT)');
 $db->statement('CREATE TABLE salary_history (id INTEGER PRIMARY KEY, employee_id INTEGER, effective_from TEXT, effective_to TEXT, gross_salary NUMERIC, status TEXT)');
 $db->table('departments')->insert(['id'=>1,'name'=>'Synthetic Team','alias'=>'engineering','parent_id'=>null,'manager_id'=>null,'is_production'=>1]);
