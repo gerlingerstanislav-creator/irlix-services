@@ -65,6 +65,29 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const modal=page.getByRole('dialog',{name:'Удалить «Legacy Demo»?'});
     await modal.waitFor({state:'visible'});
     assert.match(await modal.innerText(),/всех специалистов/);
+    // Regress the owner's screenshot: dialog typography matches the platform,
+    // rather than inheriting the oversized page-heading / unstyled 16px body.
+    const type = await modal.evaluate(element => {
+      const root = getComputedStyle(document.documentElement);
+      const read = css => root.getPropertyValue(css).trim();
+      const size = selector => getComputedStyle(element.querySelector(selector)).fontSize;
+      return {
+        family: getComputedStyle(element).fontFamily,
+        modal: getComputedStyle(element).fontSize,
+        heading: size('h2'),
+        description: size('.specialists-delete-description'),
+        label: size('.specialists-delete-replacement-label'),
+        expectedHeading: read('--irlix-font-size-section-title'),
+        expectedBody: read('--irlix-font-size-body'),
+        expectedCaption: read('--irlix-font-size-caption'),
+      };
+    });
+    assert.equal(type.modal, type.expectedBody, 'dialog root must use normal body typography');
+    assert.equal(type.heading, type.expectedHeading, 'dialog heading must NOT use page title scale');
+    assert.equal(type.description, type.expectedBody, 'paragraph must match platform body');
+    assert.equal(type.label, type.expectedCaption, 'replacement label must use platform caption');
+    assert.match(type.family, /Onest/i, 'dialog must use the platform font family');
+
     const replacement=modal.getByRole('button',{name:'Дополнительная технология для замены'});
     await replacement.click();
     assert.equal(await page.getByRole('option',{name:'Legacy Demo'}).count(),0,
@@ -73,6 +96,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await modal.getByRole('button',{name:'Заменить и удалить'}).click();
     await modal.getByRole('alert').waitFor({state:'visible'});
     assert.match(await modal.getByRole('alert').innerText(),/Конфликт назначений/);
+    const errorSize = await modal.getByRole('alert').evaluate(element=>getComputedStyle(element).fontSize);
+    assert.equal(errorSize, '13px', 'inline validation error must not be oversized');
     assert.equal(await entries.count(),4,'backend conflict must not mutate catalog UI or close dialog');
     await modal.getByRole('button',{name:'Заменить и удалить'}).click();
     await modal.waitFor({state:'hidden'});

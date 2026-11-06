@@ -560,7 +560,7 @@ const refreshSelectedProfile = async () => {
 
     <div v-if="deletingAdditional && canEditTechnologyCatalog" class="modal-backdrop"
       @click.self="closeAdditionalDeletion" @keydown.esc="closeAdditionalDeletion">
-      <form class="modal-card" role="dialog" aria-modal="true"
+      <form class="modal-card specialists-additional-delete-modal" role="dialog" aria-modal="true"
         aria-labelledby="specialists-delete-additional-title" @submit.prevent="confirmAdditionalDeletion">
         <div class="modal-head">
           <div>
@@ -575,7 +575,7 @@ const refreshSelectedProfile = async () => {
           При необходимости можно заменить её другой дополнительной технологией у всех, кто её использовал.
         </p>
         <div class="specialists-delete-replacement">
-          <label class="specialists-delete-replacement-label">Заменить на</label>
+          <span class="specialists-delete-replacement-label">Заменить на</span>
           <UiSearchSelect v-model="replacementAdditional" :options="additionalReplacementOptions"
             teleport compact placeholder="Без замены — удалить из всех карточек"
             search-placeholder="Найти дополнительную технологию"

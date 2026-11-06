@@ -105,6 +105,11 @@ final class ServiceEntitlement
                     in_array($method,['POST','PUT','DELETE'],true)
                         &&preg_match('#^api/catalog/technologies(?:/[0-9]+)?$#',$path)
                         =>'specialists.catalog.manage',
+                    // The global replacement endpoint must pass the same catalog
+                    // authorization gate as the primary catalog mutations.
+                    $method==='DELETE'
+                        &&preg_match('#^api/catalog/additional-technologies/[0-9]+$#',$path)
+                        =>'specialists.catalog.manage',
                     default=>null,
                 };
                 $admin=in_array('platform-admin',$roles,true)
