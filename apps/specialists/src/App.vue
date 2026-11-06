@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { UiAppTopbar, UiAppSidebar, UiRegistryTable, UiFilterBar, UiSearchSelect, UiTreeToggle, UiErrorState, UiLoader, UiDrawer, UiButton, UiDepartmentTreeSelect, UiTechnologyGrade, UiToast, employeesWithinDepartments, normalizeDepartmentSelection } from '@irlix/ui';
 import { auth } from './auth';
@@ -57,6 +57,10 @@ const projectError=ref('');
 const filters = reactive({ search: '', grade: '', technology: '', status: 'active' });
 const technologyEditor = reactive({ id: null, name: '', alias: '', category: '', parent_id: '' });
 const technologyModalOpen = ref(false);
+const editingAdditionalId = ref(null);
+const editingAdditionalName = ref('');
+const additionalRenameError = ref('');
+const additionalRenameInput = ref(null);
 const deletingAdditional = ref(null);
 const replacementAdditional = ref('');
 const additionalDeleteError = ref('');
@@ -343,6 +347,74 @@ const sortedAdditionalTechnologies = computed(() => [...(workspace.value.catalog
 const additionalReplacementOptions = computed(() => sortedAdditionalTechnologies.value
   .filter(technology => Number(technology.id) !== Number(deletingAdditional.value?.id))
   .map(technology => ({ value: String(technology.id), label: technology.name })));
+
+const startAdditionalRename = async technology => {
+  if (!canEditTechnologyCatalog.value || catalogSaving.value || deletingAdditional.value) return;
+  editingAdditionalId.value = Number(technology.id);
+  editingAdditionalName.value = technology.name;
+  additionalRenameError.value = '';
+  await nextTick();
+  // The only active field is inside a v-for; Vue exposes it as an array ref.
+  const input = Array.isArray(additionalRenameInput.value)
+    ? additionalRenameInput.value[0] : additionalRenameInput.value;
+  input?.focus();
+  input?.select();
+};
+const cancelAdditionalRename = () => {
+  if (catalogSaving.value) return;
+  editingAdditionalId.value = null;
+  editingAdditionalName.value = '';
+  additionalRenameError.value = '';
+};
+const saveAdditionalRename = async () => {
+  if (editingAdditionalId.value === null || !canEditTechnologyCatalog.value || catalogSaving.value) return;
+  const technology = sortedAdditionalTechnologies.value.find(t => Number(t.id) === editingAdditionalId.value);
+  if (!technology) {
+    additionalRenameError.value = 'Технология больше не доступна в каталоге.';
+    return;
+  }
+  const name = editingAdditionalName.value.trim();
+  if (!name) {
+    additionalRenameError.value = 'Введите название технологии.';
+    return;
+  }
+  if (name === technology.name) {
+    cancelAdditionalRename();
+    return;
+  }
+  additionalRenameError.value = '';
+  catalogSaving.value = true;
+  try {
+    const updated = await api(`/catalog/additional-technologies/${technology.id}`, {
+      method: 'PUT', body: JSON.stringify({ name }),
+    });
+    // Render the successful rename immediately even if the separate catalog
+    // refresh temporarily fails. The association ID stays unchanged.
+    workspace.value = {
+      ...workspace.value,
+      catalog: {
+        ...workspace.value.catalog,
+        additional_technologies: (workspace.value.catalog.additional_technologies || [])
+          .map(t => Number(t.id) === Number(updated.id) ? { ...t, name: updated.name } : t),
+      },
+    };
+    editingAdditionalId.value = null;
+    editingAdditionalName.value = '';
+    catalogToast.value = {
+      id: ++catalogToastSequence, tone: 'success',
+      message: `Технология «${technology.name}» переименована в «${updated.name}».`,
+    };
+    try {
+      await refreshCatalog();
+    } catch (refreshError) {
+      console.warn('Specialists catalog refresh failed after rename', refreshError);
+    }
+  } catch (error) {
+    additionalRenameError.value = error.message || 'Не удалось переименовать технологию.';
+  } finally {
+    catalogSaving.value = false;
+  }
+};
 const openAdditionalDeletion = technology => {
   if (!canEditTechnologyCatalog.value || catalogSaving.value) return;
   deletingAdditional.value = technology;
@@ -476,12 +548,39 @@ const refreshSelectedProfile = async () => {
           <UiRegistryTable :columns="canEditTechnologyCatalog ? ['88%','12%'] : ['100%']" min-width="520px" density="compact" aria-label="Дополнительные технологии по алфавиту">
             <template #head><tr><th>Технология</th><th v-if="canEditTechnologyCatalog" aria-label="Действия"></th></tr></template>
             <tr v-for="technology in sortedAdditionalTechnologies" :key="technology.id">
-              <td>{{ technology.name }}</td>
+              <td>
+                <div v-if="editingAdditionalId === Number(technology.id)" class="specialists-additional-inline-editor">
+                  <input ref="additionalRenameInput" v-model="editingAdditionalName"
+                    class="specialists-additional-inline-input" maxlength="255" type="text"
+                    :aria-label="'Новое название технологии ' + technology.name"
+                    :aria-invalid="!!additionalRenameError" :disabled="catalogSaving"
+                    @input="additionalRenameError = ''"
+                    @keydown.enter.prevent="saveAdditionalRename"
+                    @keydown.esc.stop.prevent="cancelAdditionalRename" />
+                  <span v-if="additionalRenameError" class="specialists-additional-inline-error" role="alert">{{ additionalRenameError }}</span>
+                </div>
+                <span v-else>{{ technology.name }}</span>
+              </td>
               <td v-if="canEditTechnologyCatalog">
                 <div class="row-actions">
-                  <button type="button" class="danger-icon" title="Удалить технологию"
-                    :aria-label="'Удалить дополнительную технологию ' + technology.name"
-                    :disabled="catalogSaving" @click="openAdditionalDeletion(technology)">×</button>
+                  <template v-if="editingAdditionalId === Number(technology.id)">
+                    <button type="button" class="specialists-additional-save" title="Сохранить название"
+                      :aria-label="'Сохранить название ' + technology.name"
+                      :disabled="catalogSaving" @click="saveAdditionalRename">✓</button>
+                    <button type="button" title="Отменить редактирование"
+                      :aria-label="'Отменить редактирование ' + technology.name"
+                      :disabled="catalogSaving" @click="cancelAdditionalRename">×</button>
+                  </template>
+                  <template v-else>
+                    <button type="button" title="Редактировать название"
+                      :aria-label="'Редактировать название ' + technology.name"
+                      :disabled="catalogSaving || editingAdditionalId !== null"
+                      @click="startAdditionalRename(technology)">✎</button>
+                    <button type="button" class="danger-icon" title="Удалить технологию"
+                      :aria-label="'Удалить дополнительную технологию ' + technology.name"
+                      :disabled="catalogSaving || editingAdditionalId !== null"
+                      @click="openAdditionalDeletion(technology)">×</button>
+                  </template>
                 </div>
               </td>
             </tr>
