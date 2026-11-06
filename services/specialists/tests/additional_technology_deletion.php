@@ -127,8 +127,9 @@ $check($db->table('specialist_technologies')->where('employee_id',12)->where('te
 $check(SpecialistTimelineEvent::query()->whereIn('employee_id',[11,12,13,15])
     ->where('title','Замена дополнительной технологии')->count() === 4,
     'Every affected specialist must receive an auditable history event');
-$check(SpecialistTimelineEvent::query()->where('employee_id',15)->count() === 1,
-    'Former/out-of-scope specialist must receive the same global catalog operation');
+$check(SpecialistTimelineEvent::query()->where('employee_id',15)
+    ->where('title','Замена дополнительной технологии')->count() === 1,
+    'Former/out-of-scope specialist must receive the same global catalog replacement');
 $check(SpecialistTimelineEvent::query()->where('employee_id',11)->first()->author_employee_id === 100,
     'Global change history must retain actor attribution');
 
