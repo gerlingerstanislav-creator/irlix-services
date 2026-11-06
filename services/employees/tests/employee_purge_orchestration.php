@@ -48,10 +48,14 @@ foreach ($factory->recorded() as [$request]) {
     $url = $request->url();
     $host = parse_url($url, PHP_URL_HOST);
     $seen[] = $host;
-    $check(str_ends_with(parse_url($url, PHP_URL_PATH), '/internal/system/employees/777/purge'),
+    $path = parse_url($url, PHP_URL_PATH);
+    $check(str_ends_with($path, '/internal/system/employees/777/purge')
+            || str_ends_with($path, '/internal/system/employees/777/purge/preflight'),
         'A purge request used a wrong internal endpoint');
 }
-$check($seen === $expected,
+$check($seen === ['clients', ...$expected],
+    'Preflight must always precede the first irreversible service mutation');
+$check($seen === ['clients', ...$expected],
     'Employee hard delete did not require every service in canonical order: '.implode(', ', $seen));
 
 $factory2 = new Factory();
@@ -69,4 +73,19 @@ $seen2 = array_map(static fn ($r) => parse_url($r[0]->url(), PHP_URL_HOST),
 $check(!in_array('storage-api', $seen2, true),
     'Orchestrator continued deleting after a downstream protected refusal');
 
-echo "Employee erasure orchestration across all nine services: PASS\n";
+$factory3 = new Factory();
+Http::swap($factory3);
+$factory3->preventStrayRequests();
+$factory3->fake(static function ($request) {
+    return (new Factory())->response(['message' => 'Protected reporting period'],
+        str_ends_with($request->url(), '/purge/preflight') ? 423 : 200);
+});
+$locked = (new EmployeeDeletionService())->purge($person);
+$check($locked['status'] === 423 && $locked['service'] === 'clients',
+    'Read-only Clients preflight did not stop protected deletion');
+$requests = $factory3->recorded()->all();
+$check(count($requests) === 1
+    && str_ends_with($requests[0][0]->url(), '/purge/preflight'),
+    'An irreversible downstream purge was called after a failed Clients preflight');
+
+echo "Employee erasure orchestration, protected preflight and retry isolation: PASS\n";
