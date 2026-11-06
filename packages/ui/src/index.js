@@ -47,3 +47,4 @@ import './styles/client-summary.css';
 export { renderNavigationError } from './navigationError.js';
 
 export { default as UiErrorState } from './components/UiErrorState.vue';
+export { default as UiToast } from './components/UiToast.vue';
