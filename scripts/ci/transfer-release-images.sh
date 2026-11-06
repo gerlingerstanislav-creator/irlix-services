@@ -57,7 +57,7 @@ transferred=0
 batches=0
 declare -a pending=()
 for image in "${images[@]}"; do
-  if ssh "${ssh_args[@]}" "$remote" "if [ \"\\$(id -u)\" -eq 0 ]; then docker image inspect '$image' >/dev/null 2>&1; else sudo -n docker image inspect '$image' >/dev/null 2>&1; fi"; then
+  if ssh "${ssh_args[@]}" "$remote" "if [ \"\$(id -u)\" -eq 0 ]; then docker image inspect '$image' >/dev/null 2>&1; else sudo -n docker image inspect '$image' >/dev/null 2>&1; fi"; then
     echo "Already present on server: $image"
     already=$((already + 1))
   else
@@ -83,7 +83,7 @@ flush_batch() {
   # pipefail ensures a failed save/compression/SSH/load cannot pass as deployed.
   docker save "${batch[@]}" | gzip -1 | ssh "${ssh_args[@]}" "$remote" 'set -e; if [ "$(id -u)" -eq 0 ]; then gzip -dc | docker load >/dev/null; else gzip -dc | sudo -n docker load >/dev/null; fi'
   for image in "${batch[@]}"; do
-    ssh "${ssh_args[@]}" "$remote" "if [ \"\\$(id -u)\" -eq 0 ]; then docker image inspect '$image' >/dev/null; else sudo -n docker image inspect '$image' >/dev/null; fi"
+    ssh "${ssh_args[@]}" "$remote" "if [ \"\$(id -u)\" -eq 0 ]; then docker image inspect '$image' >/dev/null; else sudo -n docker image inspect '$image' >/dev/null; fi"
     echo "Transferred and verified: $image"
     docker image rm "$image" >/dev/null 2>&1 || true
     transferred=$((transferred + 1))
