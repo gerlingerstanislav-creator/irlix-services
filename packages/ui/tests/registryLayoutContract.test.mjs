@@ -18,7 +18,8 @@ test('employees permissions and all employee data registries use bounded scrolle
   const permissions = read('apps/web/src/components/EmployeePermissionsView.vue');
   assert.match(app, /registry-scroll-panel irlix-registry-panel/);
   assert.match(permissions, /irlix-registry-panel employee-permissions-panel/);
-  assert.match(permissions, /UiCheckbox/);
+  assert.match(permissions, /permissions-wrap irlix-registry-scroll/);
+  assert.match(permissions, /<select/);
   for (const path of ['StaffPositionsView.vue', 'PositionsCatalogView.vue', 'AuditLogView.vue']) {
     assert.match(read('apps/web/src/components/' + path), /irlix-registry-scroll/);
   }
