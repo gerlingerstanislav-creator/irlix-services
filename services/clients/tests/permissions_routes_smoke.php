@@ -73,6 +73,15 @@ if ($check(['service:specialists'],'/api/clients')!==403)
     throw new \RuntimeException('Specialists projection granted generic Clients admission');
 if ($check(['service:specialists'],'/api/specialists/people/42/projects/extra')!==403)
     throw new \RuntimeException('Specialists project route exception widened beyond its path');
+// Historical project events use the same narrow GET-only Specialists gate.
+// A Clients-only account must never read a specialist's aggregated history.
+if ($check(['service:specialists'],'/api/specialists/people/42/history')!==200)
+    throw new \RuntimeException('Specialists history projection denied signed service role');
+if ($check(['service:clients'],'/api/specialists/people/42/history')!==403)
+    throw new \RuntimeException('Clients role alone granted Specialists history');
+if ($check(['service:specialists'],'/api/specialists/people/42/history/extra')!==403)
+    throw new \RuntimeException('Specialists history route exception widened');
+
 
 $fakeAccess->permissions=[];
 if ($check(['service:clients','org:client-service'])!==403)
