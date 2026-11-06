@@ -48,6 +48,28 @@ final class EmployeeDeletionService
             'storage' => rtrim((string) env('STORAGE_INTERNAL_URL', 'http://storage-api:8000'), '/'),
         ];
 
+        // Before Timesheets deletes even an unlocked hour, ensure Clients will
+        // not reject the eventual term/membership cleanup as a protected period.
+        // This is a read-only early guard, not a distributed ACID transaction:
+        // services can still change between preflight and their purge calls.
+        try {
+            $check = Http::acceptJson()
+                ->withHeaders(['X-Irlix-Internal-Purge-Token' => $purgeToken])
+                ->retry(2, 200, throw: false)
+                ->timeout(60)
+                ->post($targets['clients']."/internal/system/employees/{$employeeId}/purge/preflight", $payload);
+        } catch (Throwable $error) {
+            return [
+                'status' => 502, 'message' => 'Cross-service employee preflight failed',
+                'service' => 'clients', 'reason' => $error->getMessage(),
+            ];
+        }
+        if (!$check->successful()) return [
+            'status' => in_array($check->status(), [409, 423], true) ? $check->status() : 502,
+            'message' => 'Cross-service employee preflight failed',
+            'service' => 'clients', 'upstream_status' => $check->status(),
+        ];
+
         foreach ($targets as $service => $base) {
             try {
                 $response = Http::acceptJson()
