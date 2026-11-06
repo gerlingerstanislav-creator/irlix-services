@@ -30,7 +30,8 @@ RUN php /app/tests/legacy_head_role_bridge.php \
     && php /app/tests/registry_and_legacy_members_smoke.php \
     && php /app/tests/lead_lifecycle_eloquent_smoke.php \
     && php /app/tests/eloquent_architecture_slices.php \
-    && php /app/tests/employee_purge_smoke.php
+    && php /app/tests/employee_purge_smoke.php \
+    && php /app/tests/specialists_history_smoke.php
 RUN find /app/app /app/routes /app/bootstrap /app/database/migrations /app/bin -name '*.php' -print0 | xargs -0 -n1 php -l
 
 FROM php:8.4-cli-alpine
