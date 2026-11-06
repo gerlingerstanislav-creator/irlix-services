@@ -29,7 +29,7 @@ final class EmployeeDirectoryService
     public function equipmentDirectory(bool $includeFormer, ?int $employee): mixed
     {
         // Projected allowlist: never send HR private profile or salary fields.
-        $query = Employee::query()->from('employees as e')
+        $query = Employee::query()->from('employees as e')->business('e')
             ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
             ->select(['e.id', 'e.full_name', 'e.position', 'e.employment_status',
                 'd.name as department_name']);
@@ -44,7 +44,7 @@ final class EmployeeDirectoryService
 
     public function absenceApprovalContext(int $employeeId): ?array
     {
-        $employee = Employee::query()->whereKey($employeeId)
+        $employee = Employee::query()->business()->whereKey($employeeId)
             ->first(['id', 'full_name', 'department_id', 'employment_status']);
         if (!$employee) return null;
 
@@ -76,7 +76,7 @@ final class EmployeeDirectoryService
                 $managerId = (int) $department->manager_id;
                 if ($managerId !== $employeeId && !isset($seenManagers[$managerId])) {
                     $seenManagers[$managerId] = true;
-                    $manager = Employee::query()->whereKey($managerId)->first([
+                    $manager = Employee::query()->business()->whereKey($managerId)->first([
                         'id', 'full_name', 'department_id', 'employment_status',
                     ]);
                     if ($manager) $managerChain[] = [
@@ -92,11 +92,12 @@ final class EmployeeDirectoryService
             $currentDepartmentId = $department->parent_id === null ? null : (int) $department->parent_id;
         }
 
-        $hrApprover = $hrApproverId === null ? null : Employee::query()
+        $hrApprover = $hrApproverId === null ? null : Employee::query()->business()
             ->whereKey($hrApproverId)->first(['id','full_name','department_id','employment_status']);
         $personnelOfficers = EmployeeAccessRole::query()->from('employee_access_roles as r')
             ->join('employees as e', 'e.id', '=', 'r.employee_id')
             ->where('r.role', SpecialRoles::PersonnelOfficer)
+            ->where('e.account_type', Employee::TYPE_EMPLOYEE)
             ->where('e.employment_status', 'Трудоустроен')
             ->select(['e.id', 'e.full_name', 'e.department_id', 'e.employment_status'])
             ->orderBy('e.full_name')->get()
@@ -143,7 +144,7 @@ final class EmployeeDirectoryService
                 // same resolver also assigns Keycloak roles in Employees.
                 'functional_roles' => RoleLabels::functionalClientRoles($actor, $allDepartments->all()),
             ],
-            'employees' => Employee::query()->from('employees as e')
+            'employees' => Employee::query()->from('employees as e')->business('e')
                 ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
                 ->where('e.employment_status', 'Трудоустроен')
                 ->select(['e.id', 'e.full_name', 'e.position', 'e.department_id',
@@ -160,7 +161,7 @@ final class EmployeeDirectoryService
 
     public function clientSpecialistProfile(int $employeeId): ?array
     {
-        $employee = Employee::query()->from('employees as e')
+        $employee = Employee::query()->from('employees as e')->business('e')
             ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
             ->where('e.id', $employeeId)->where('e.employment_status', 'Трудоустроен')
             ->first(['e.id', 'e.full_name', 'e.work_email', 'e.city', 'e.phone', 'e.telegram',
@@ -203,7 +204,7 @@ final class EmployeeDirectoryService
             || in_array('hr', $roles, true);
 
         $departmentsQuery = Department::query()->select(['id', 'name', 'parent_id']);
-        $employeesQuery = Employee::query()->from('employees as e')
+        $employeesQuery = Employee::query()->from('employees as e')->business('e')
             ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
             ->where('e.employment_status', 'Трудоустроен')
             ->select(['e.id', 'e.full_name', 'e.department_id', 'e.position',
@@ -266,7 +267,7 @@ final class EmployeeDirectoryService
         $departments = Department::query()->whereIn('id', $departmentIds)
             ->orderBy('name')->get(['id','name','parent_id','manager_id'])
             ->map(static fn (Department $row) => (object) $row->getRawOriginal());
-        $employees = Employee::query()->from('employees as e')
+        $employees = Employee::query()->from('employees as e')->business('e')
             ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
             ->whereIn('e.department_id', $departmentIds)
             ->select(['e.id', 'e.full_name', 'e.department_id', 'e.position',

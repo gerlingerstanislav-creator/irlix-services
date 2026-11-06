@@ -16,12 +16,9 @@ final class StorageV1DirectoryService
     /** Only safe recipient lookup columns; no salary, contacts, or other HR data. */
     public function people(): array
     {
-        return Employee::query()
+        return Employee::query()->business()
             ->whereNotNull('keycloak_user_id')
-            ->where(function ($query) {
-                $query->where('employment_status', 'Трудоустроен')
-                    ->orWhere('login', 'admin');
-            })
+            ->where('employment_status', 'Трудоустроен')
             ->orderBy('full_name')
             ->get(['id','full_name','department_id'])
             ->map(static fn ($row) => [

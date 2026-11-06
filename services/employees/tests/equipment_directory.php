@@ -28,7 +28,7 @@ DB::swap($db);
 // Standalone SQLite regression must provide the Eloquent model connection resolver.
 \Illuminate\Database\Eloquent\Model::setConnectionResolver($capsule->getDatabaseManager());
 $db->statement('CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, alias TEXT, parent_id INTEGER, manager_id INTEGER, hr_id INTEGER, is_production INTEGER DEFAULT 0)');
-$db->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, keycloak_user_id TEXT, login TEXT, full_name TEXT, first_name TEXT, last_name TEXT, work_email TEXT, city TEXT, phone TEXT, telegram TEXT, position TEXT, department_id INTEGER, employment_status TEXT, salary INTEGER, passport TEXT)');
+$db->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, keycloak_user_id TEXT, login TEXT, full_name TEXT, first_name TEXT, last_name TEXT, work_email TEXT, city TEXT, phone TEXT, telegram TEXT, position TEXT, department_id INTEGER, employment_status TEXT, salary INTEGER, passport TEXT, account_type TEXT DEFAULT "employee")');
 $db->statement('CREATE TABLE employee_access_roles (employee_id INTEGER, role TEXT)');
 $db->table('departments')->insert([['id'=>1,'name'=>'Synthetic engineering','alias'=>'development','parent_id'=>null,'manager_id'=>null],['id'=>2,'name'=>'Бухгалтерия','alias'=>'accounting','parent_id'=>null,'manager_id'=>null],['id'=>3,'name'=>'Клиентский аккаунтинг','alias'=>'account-management','parent_id'=>null,'manager_id'=>null]]);
 $db->table('employees')->insert([
@@ -36,6 +36,9 @@ $db->table('employees')->insert([
     ['id'=>2,'keycloak_user_id'=>'synthetic-user','login'=>'synthetic.user','full_name'=>'Synthetic Employee','position'=>'Developer','department_id'=>1,'employment_status'=>'Трудоустроен','salary'=>456,'passport'=>'private'],
     ['id'=>3,'keycloak_user_id'=>'synthetic-former','login'=>'synthetic.former','full_name'=>'Synthetic Former Employee','position'=>'Developer','department_id'=>1,'employment_status'=>'Уволен','salary'=>789,'passport'=>'private'],
 ]);
+$db->table('employees')->insert(['id'=>4, 'keycloak_user_id'=>'synthetic-bootstrap', 'login'=>'admin',
+    'full_name'=>'Synthetic Bootstrap', 'department_id'=>1, 'employment_status'=>'Трудоустроен',
+    'account_type'=>'system']);
 $db->table('employee_access_roles')->insert(['employee_id'=>1,'role'=>'system-admin']);
 $router->prefix('api')->group(__DIR__.'/../routes/self.php');
 $middleware = new EmployeesAuthorization(new EmployeesAccess());
@@ -68,6 +71,7 @@ $check($run('/api/equipment-directory/2', 'synthetic-user')->getStatusCode() ===
 $check($run('/api/equipment-directory/2', 'synthetic-admin')->getData(true)['data']['employee']['employment_status'] === 'Трудоустроен', 'Assignment validation failed');
 $check(($run('/api/equipment-directory/3', 'synthetic-admin')->getData(true)['data']['employee']['employment_status'] ?? null) === 'Уволен', 'Historical equipment lookup must find former employees');
 $check($run('/api/equipment-directory/999', 'synthetic-admin')->getStatusCode() === 404, 'Missing employee accepted');
+$check($run('/api/equipment-directory/4', 'synthetic-admin')->getStatusCode() === 404, 'System account exposed as equipment recipient');
 // The directory trusts Employees' effective roles, never a claimed realm role.
 foreach (['platform-admin','sysadmin','accounting','accountant','system_admin'] as $role) {
     $check($run('/api/equipment-directory', 'synthetic-user', [$role])->getStatusCode() === 403, 'Unassigned realm role grants directory access: '.$role);

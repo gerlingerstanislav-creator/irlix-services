@@ -12,6 +12,13 @@ final class RoleLabels
     public static function resolve(?object $employee, array $departments, array $specialRoles = []): array
     {
         if (!$employee) return [];
+        // A technical account can have explicit grants but never an organizational identity.
+        if (($employee->account_type ?? 'employee') === 'system') {
+            $special = array_values(array_filter(array_map('strval', $specialRoles),
+                static fn (string $role): bool => !SpecialRoles::isAutomatic($role)));
+            sort($special, SORT_STRING);
+            return array_values(array_unique($special));
+        }
         // Automatic roles come only from current organizational facts.
         $labels = array_values(array_filter(array_map('strval', $specialRoles),
             static fn (string $role): bool => !SpecialRoles::isAutomatic($role)));
@@ -64,6 +71,18 @@ final class RoleLabels
     public static function publishedRoleClaims(?object $employee, array $departments, array $specialRoles = []): array
     {
         if (!$employee) return [];
+        if (($employee->account_type ?? 'employee') === 'system') {
+            $claims = [];
+            foreach ($specialRoles as $role) {
+                if (is_string($role) && SpecialRoles::exists($role)
+                    && $role !== SpecialRoles::PlatformTester && !SpecialRoles::isAutomatic($role)) {
+                    $claims[] = 'special:'.$role;
+                }
+            }
+            $claims = array_values(array_unique($claims));
+            sort($claims, SORT_STRING);
+            return $claims;
+        }
 
         $byId = [];
         foreach ($departments as $department) $byId[(int) $department->id] = $department;
@@ -107,6 +126,7 @@ final class RoleLabels
      */
     public static function managesProductionDirection(?object $employee, array $departments): bool
     {
+        if (($employee->account_type ?? 'employee') === 'system') return false;
         $employeeId = (int) ($employee->id ?? 0);
         if ($employeeId <= 0) return false;
         foreach ($departments as $department) {
@@ -239,6 +259,7 @@ final class RoleLabels
      */
     public static function belongsToClientContour(?object $employee, array $departments): bool
     {
+        if (($employee->account_type ?? 'employee') === 'system') return false;
         $id = (int) ($employee->department_id ?? 0);
         if ($id <= 0) return false;
         $byId = [];
@@ -264,6 +285,7 @@ final class RoleLabels
      */
     public static function ancestorDepartmentRoles(?object $employee, array $departments): array
     {
+        if (($employee->account_type ?? 'employee') === 'system') return [];
         $byId = [];
         foreach ($departments as $department) $byId[(int) $department->id] = $department;
         $current = (int) ($employee->department_id ?? 0);
@@ -288,6 +310,7 @@ final class RoleLabels
     /** Derive matrix roles without inheriting every organizational ancestor. */
     public static function functionalClientRoles(?object $employee, array $departments): array
     {
+        if (($employee->account_type ?? 'employee') === 'system') return [];
         $id = (int) ($employee->department_id ?? 0);
         if ($id <= 0) return [];
         $byId = [];

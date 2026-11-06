@@ -22,6 +22,11 @@ final class EmployeeReadService
         return Employee::query()->whereKey($id)->first();
     }
 
+    public function recordBusiness(int $id): ?Employee
+    {
+        return Employee::query()->business()->whereKey($id)->first();
+    }
+
     public function raw(int $id): ?object
     {
         $record = $this->record($id);
@@ -111,7 +116,7 @@ final class EmployeeReadService
 
     private function query(): Builder
     {
-        return Employee::query()->leftJoin('departments',
+        return Employee::query()->business()->leftJoin('departments',
             'departments.id', '=', 'employees.department_id')
             ->select(['employees.*', 'departments.name as department_name']);
     }

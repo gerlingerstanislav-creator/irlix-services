@@ -21,7 +21,8 @@ final class StaffPositionService
                 ->selectRaw('CAST(COUNT(*) AS INTEGER)')
                 ->whereColumn('position_employee.position_id', 'p.id')
                 ->whereColumn('position_employee.department_id', 'p.direction_id')
-                ->where('position_employee.employment_status', 'Трудоустроен'), 'employee_count');
+                ->where('position_employee.employment_status', 'Трудоустроен')
+                ->where('position_employee.account_type', Employee::TYPE_EMPLOYEE), 'employee_count');
     }
 
     public function list(array $access): \Illuminate\Support\Collection
@@ -106,7 +107,7 @@ final class StaffPositionService
             $current = StaffPosition::query()->whereKey($position)->lockForUpdate()->first();
             if (!$current) return ['status' => 404, 'message' => 'Должность не найдена.'];
 
-            $active = Employee::query()->where('position_id', $position)
+            $active = Employee::query()->business()->where('position_id', $position)
                 ->where(fn ($q) => $q->whereNull('employment_status')
                     ->orWhere('employment_status', '<>', 'Уволен'))->count();
             if ($active > 0) return [

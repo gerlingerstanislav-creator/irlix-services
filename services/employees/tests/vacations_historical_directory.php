@@ -19,7 +19,7 @@ DB::swap($db);
 \Illuminate\Database\Eloquent\Model::setConnectionResolver($capsule->getDatabaseManager());
 
 $db->statement('CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, parent_id INTEGER)');
-$db->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, full_name TEXT, employment_status TEXT)');
+$db->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, full_name TEXT, employment_status TEXT, account_type TEXT DEFAULT "employee")');
 $db->statement('CREATE TABLE employment_periods (id INTEGER PRIMARY KEY, employee_id INTEGER, started_at TEXT, ended_at TEXT, department_id INTEGER)');
 $db->statement('CREATE TABLE employment_assignment_history (id INTEGER PRIMARY KEY, employee_id INTEGER, department_id INTEGER, effective_from TEXT, effective_to TEXT)');
 $db->table('departments')->insert([
@@ -46,6 +46,10 @@ $db->table('employment_assignment_history')->insert([
     ['id'=>5,'employee_id'=>4,'department_id'=>2,'effective_from'=>'2026-10-05','effective_to'=>'2026-10-20'],
 ]);
 
+$db->table('employees')->insert(['id'=>5,'full_name'=>'Synthetic Bootstrap',
+    'employment_status'=>'Трудоустроен','account_type'=>'system']);
+$db->table('employment_periods')->insert(['id'=>99,'employee_id'=>5,
+    'started_at'=>'2026-01-01','ended_at'=>null,'department_id'=>1]);
 $service = new VacationsHistoricalDirectoryService();
 $check = static function (bool $ok, string $message): void {
     if (!$ok) throw new RuntimeException($message);

@@ -15,12 +15,13 @@ final class FinanceDirectoryService
 
         // Explicit columns are essential here: Finance must never receive
         // private employee fields or a full unfiltered Eloquent entity.
-        $employees = Employee::query()->from('employees as e')
+        $employees = Employee::query()->from('employees as e')->business('e')
             ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
             ->select('e.id', 'e.full_name', 'e.department_id', 'd.name as department_name',
                 'e.employment_status')->orderBy('e.id')->get();
 
         $salary = SalaryHistory::query()
+            ->whereIn('employee_id', $employees->pluck('id'))
             ->whereDate('effective_from', '<=', $last)
             ->where(fn ($query) => $query->whereNull('effective_to')
                 ->orWhereDate('effective_to', '>=', $first))
@@ -38,6 +39,6 @@ final class FinanceDirectoryService
 
     public function exists(int $employeeId): bool
     {
-        return Employee::query()->whereKey($employeeId)->exists();
+        return Employee::query()->business()->whereKey($employeeId)->exists();
     }
 }
