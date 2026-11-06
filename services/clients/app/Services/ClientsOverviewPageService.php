@@ -36,7 +36,7 @@ final class ClientsOverviewPageService
         'reports' => ['reports.view'],
     ];
 
-    public function page(array $access, string $section, int $page, int $perPage, ?int $leadId = null, array $filters = [], ?array $visibleClientIds = null, ?array $visibleLeadEmployeeIds = null, ?array $visibleContactIds = null): array
+    public function page(array $access, string $section, int $page, int $perPage, ?int $leadId = null, array $filters = [], ?array $visibleClientIds = null, ?array $visibleLeadEmployeeIds = null, ?array $visibleContactIds = null, array $workflowScopes = []): array
     {
         abort_unless(isset(self::PERMISSIONS[$section]), 422, 'Unsupported overview section');
         $granted = (bool) ($access['platform_admin'] ?? false);
@@ -48,11 +48,14 @@ final class ClientsOverviewPageService
         if ($section === 'lead-context') {
             abort_unless($leadId && $leadId > 0, 422, 'Lead ID is required');
             $lead = Lead::query()->findOrFail($leadId);
+            $leadRequests = ClientRequest::query()->where('lead_id', $leadId)
+                ->orderByDesc('created_at')->orderByDesc('id');
+            app(ClientWorkflowVisibility::class)->restrictRequestQuery($leadRequests, $access, $workflowScopes);
             return [
                 'data' => [
                     'lead' => $this->leads(collect([$lead]))[0],
                     'requests' => $this->requests(
-                        ClientRequest::query()->where('lead_id', $leadId)->orderByDesc('created_at')->orderByDesc('id')->get(),
+                        $leadRequests->get(),
                         $access,
                     ),
                     'contacts' => $this->leadContactOptions($access, $visibleClientIds, $visibleLeadEmployeeIds),
@@ -99,6 +102,9 @@ final class ClientsOverviewPageService
         }
         if ($section === 'requests') {
             $this->applyRequestFilters($query, $filters);
+            // Scope the SQL candidates BEFORE count/page so later migrated
+            // own requests cannot disappear behind other users' first 80.
+            app(ClientWorkflowVisibility::class)->restrictRequestQuery($query, $access, $workflowScopes);
         }
         if ($section === 'contacts' && isset($filters['query']) && is_string($filters['query']) && trim($filters['query']) !== '') {
             $query->where('full_name', 'ilike', '%'.str_replace(['%', '_'], ['\\%', '\\_'], trim($filters['query'])).'%');
