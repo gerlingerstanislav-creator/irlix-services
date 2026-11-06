@@ -65,6 +65,10 @@ const mutate = async (account, role, method) => {
     saving.value = null;
   }
 };
+
+// A system account is only shown after loading the authoritative API projection.
+// The page is mounted conditionally by App.vue, so each visit must fetch anew.
+onMounted(() => { void load(); });
 </script>
 
 <template>

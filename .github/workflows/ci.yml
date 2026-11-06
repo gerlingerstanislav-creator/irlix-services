@@ -64,6 +64,7 @@ jobs:
           node --test apps/web/tests/employeeStatusFilter.test.js
           node --test apps/web/tests/employeeManagementActions.test.js
           node --test apps/web/tests/fotFilters.test.js
+          node --test apps/web/tests/systemAccountsView.test.js
           php services/employees/tests/fot_period_eligibility.php
       - name: Brandbook catalog and routing tests
         run: |
