@@ -9,7 +9,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     page.on('pageerror',error=>errors.push(error.message));
     const base=process.env.EQUIPMENT_PREVIEW || 'http://127.0.0.1:5195';
     const issuer=base+'/keycloak/auth/realms/irlix';
-    const employee={id:1,full_name:'Иванов Иван Иванович',department_name:'Разработка'};
+    const employee={id:1,full_name:'Иванов Иван Иванович',department_name:'Разработка',employment_status:'Трудоустроен'};
+    const former={id:2,full_name:'Петров Петр Петрович',department_name:'Тестирование',employment_status:'Уволен'};
+    const withoutEquipment={id:3,full_name:'Сидоров Семен Семенович',department_name:'Разработка',employment_status:'Трудоустроен'};
     let devices=Array.from({length:65},(_,i)=>({
       id:i+1,inventory_number:i===1?'6NXBB21205800336':'EQ-'+String(i+1).padStart(3,'0'),
       manufacturer:i%2?'Apple':'Lenovo',
@@ -17,7 +19,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       serial_number:'SERIAL-'+(i+1),type:i%2?'smartphone':'laptop',
       purpose:i%5?'development':'unknown',condition:i===2?'needs_repair':i%7?'ok':'damaged',
       written_off_at:null,
-      assignment:i%3===0?{id:i+1,employee_id:1,starts_on:'2026-01-01',returned_on:null}:null,
+      assignment:i%3===0?{id:i+1,employee_id:i===3?2:1,starts_on:'2026-01-01',returned_on:null}:null,
       depreciation:{monthly:100,months:4,accumulated:400,residual:500},
       damage_accounting:{damage_count:0,repair_cost:0,value_loss:0,current_value:500}
     }));
@@ -33,6 +35,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.route('**/api/**',async route=>{
       const url=new URL(route.request().url()),path=url.pathname;
       const itemId=Number(path.match(/\/items\/(\d+)$/)?.[1]);
+      const assignId=Number(path.match(/\/items\/(\d+)\/assign$/)?.[1]);
+      if(route.request().method()==='POST'&&assignId){
+        const item=devices.find(x=>x.id===assignId);
+        if(!item||item.assignment)return route.fulfill({status:409,json:{message:'Equipment unavailable'}});
+        const payload=route.request().postDataJSON();
+        item.assignment={id:200,employee_id:payload.employee_id,starts_on:payload.starts_on,returned_on:null};
+        return route.fulfill({json:{data:item}});
+      }
       if(route.request().method()==='DELETE'&&itemId){
         devices=devices.filter(x=>x.id!==itemId);
         return route.fulfill({json:{data:{deleted:true}}});
@@ -40,7 +50,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       let data;
       if(path.endsWith('/employees/access/me'))data={services:{equipment:true},roles:['platform-admin']};
       else if(path.endsWith('/permissions'))data={view:true,manage:true,operate:true};
-      else if(path.endsWith('/employees-directory'))data=[employee];
+      else if(path.endsWith('/employees-directory'))data=[employee,former,withoutEquipment];
       else if(path.endsWith('/items')||path.endsWith('/items/')){
         if(holdInitialItems){holdInitialItems=false;markInitialItemsRequested();await initialItemsGate;}
         data=devices;
@@ -55,7 +65,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       else data={};
       return route.fulfill({json:{data}});
     });
-    await page.goto(base+'/equipment/');
+    await page.goto(base+'/equipment/items');
     await initialItemsRequested;
     const loadingState=page.getByRole('status',{name:'Загрузка техники'});
     await loadingState.waitFor({state:'visible'});
@@ -197,6 +207,42 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.getByRole('button',{name:'Удалить',exact:true}).click();
     await page.waitForFunction(()=>document.querySelectorAll('.ui-registry-table__table--body tbody tr').length===64);
     assert.equal(await page.locator('.ui-registry-table__table--body tbody tr').count(),64,'delete removes asset from registry');
+    // New default view: current and former employee directory, stacked current
+    // assignments, device drawer, and employee-preselected issue flow.
+    await page.goto(base+'/equipment/');
+    await page.waitForFunction(() => document.querySelectorAll('.equipment-employee-registry .ui-registry-table__table--body tbody tr').length === 1);
+    assert.equal(await page.locator('.equipment-employee-registry .ui-registry-table__header th').count(),4);
+    const employeeRow=page.locator('.equipment-employee-registry .ui-registry-table__table--body tbody tr').first();
+    assert.match(await employeeRow.innerText(),/Иванов Иван Иванович/);
+    assert.ok(await employeeRow.locator('.equipment-employee-device').count()>1,'multiple issued items stack vertically');
+    await employeeRow.locator('.equipment-employee-device').first().click();
+    await page.waitForURL(/\/equipment\/items\/\d+\?from=employees/);
+    assert.equal(await page.locator('.equipment-employee-registry').count(),1,'drawer retains employee list under it');
+    await page.goBack();
+    await employeeRow.getByRole('button',{name:'Выдать технику'}).click();
+    const modal=page.locator('.equipment-modal');
+    await modal.getByRole('heading',{name:'Выдать технику'}).waitFor();
+    assert.match(await modal.innerText(),/Иванов Иван Иванович/,'target employee is preselected');
+    await modal.getByRole('button',{name:'Выберите устройство'}).click();
+    await modal.locator('.ui-search-select__option').first().click();
+    await modal.getByRole('button',{name:'Выдать',exact:true}).click();
+    await modal.waitFor({state:'hidden'});
+    assert.ok(await employeeRow.locator('.equipment-employee-device').count()>1,'issued asset appears on employee');
+    await page.getByRole('button',{name:'Отображение',exact:true}).click();
+    await page.locator('.equipment-filter-rail .ui-search-select__trigger').click();
+    const filterOption=label=>page.locator('.equipment-filter-rail .ui-search-select__option').filter({hasText:label});
+    assert.equal(await filterOption('Трудоустроен').getAttribute('aria-selected'),'true');
+    assert.equal(await filterOption('Есть техника').getAttribute('aria-selected'),'true');
+    await filterOption('Трудоустроен').click();
+    assert.equal(await page.locator('.equipment-employee-registry .ui-registry-table__table--body tbody tr').count(),2,'former employee with issued device is visible');
+    const formerRow=page.locator('.equipment-employee-registry .ui-registry-table__table--body tbody tr').filter({hasText:'Петров'});
+    assert.equal(await formerRow.getByRole('button',{name:'Выдать технику'}).isDisabled(),true,'former employees cannot receive an issue');
+    await filterOption('Есть техника').click();
+    assert.equal(await page.locator('.equipment-employee-registry .ui-registry-table__table--body tbody tr').count(),3,'empty selection includes employees without equipment');
+    await filterOption('Трудоустроен').click();
+    assert.equal(await page.locator('.equipment-employee-registry .ui-registry-table__table--body tbody tr').count(),2,'employment filter works independently');
+    await filterOption('Есть техника').click();
+    assert.equal(await page.locator('.equipment-employee-registry .ui-registry-table__table--body tbody tr').count(),1,'default intersection restores');
     for (const [section, url, expectedColumns] of [['assignments','/equipment/assignments',5],['valuation','/equipment/valuation',11]]) {
       await page.goto(base+url);
       await page.waitForFunction(()=>document.querySelectorAll('.ui-registry-table__table--body tbody tr').length===35);
