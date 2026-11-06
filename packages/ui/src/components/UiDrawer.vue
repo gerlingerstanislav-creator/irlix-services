@@ -79,7 +79,7 @@ onBeforeUnmount(() => stopResize?.());
             <button type="button" class="irlix-icon-button irlix-drawer-close" aria-label="Закрыть" @click="emit('close')"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m3 3 10 10M13 3 3 13" /></svg></button>
           </div>
         </header>
-        <div class="irlix-drawer-body" :style="props.inactive ? {overflow: 'hidden'} : undefined"><slot /></div>
+        <div class="irlix-drawer-body" :style="props.inactive ? {overflow: 'hidden'} : undefined" @wheel.stop><slot /></div>
       </aside>
     </div>
   </Teleport>
