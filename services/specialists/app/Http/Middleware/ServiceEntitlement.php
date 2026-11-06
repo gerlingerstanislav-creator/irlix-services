@@ -20,6 +20,34 @@ final class ServiceEntitlement
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
         if (!$token) return response()->json(['message' => 'Authentication required'], 401);
 
+        // Clients reads only the common technology reference, not Specialist
+        // profiles or the Specialists matrix. Validate its own signed service
+        // admission AND current Employees entitlement, including revocations.
+        if ($request->isMethod('GET') && $request->is('api/clients-technology-catalog')) {
+            if ($request->header('X-Irlix-Role-Preview') !== null) {
+                return response()->json(['message' => 'Role preview cannot authorize Clients reference catalog'], 403);
+            }
+            $jwt = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+            $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
+            if ($jwt && !in_array('service:clients', $roles, true)) {
+                return response()->json(['message' => 'Clients reference catalog admission denied'], 403);
+            }
+            $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
+            try {
+                $live = Http::withToken((string) $token)->acceptJson()->timeout(5)
+                    ->get($base.'/access/me');
+            } catch (\Throwable) {
+                return response()->json(['message' => 'Clients reference authorization unavailable'], 503);
+            }
+            if (!$live->successful() || !is_array($live->json('data'))) {
+                return response()->json(['message' => 'Clients reference authorization unavailable'], 503);
+            }
+            if ($live->json('data.services.clients') !== true) {
+                return response()->json(['message' => 'Clients reference catalog admission denied'], 403);
+            }
+            return $next($request);
+        }
+
         // During rollout the old Employees check remains available until every
         // user has been backfilled into Keycloak. In JWT mode this guard has
         // zero dependency on Employees at request time.

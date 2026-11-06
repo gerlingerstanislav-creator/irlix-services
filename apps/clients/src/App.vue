@@ -354,7 +354,7 @@ async function loadSection(preserveRows = false) {
       if (generation === viewGeneration) overview.leads = result.data?.leads || [];
     }));
     if (['clients','requests','positions','attempts','members'].includes(view.value) && !specialistCatalogLoaded.value) {
-      tasks.push(api('/api/specialists/catalog').then(catalog => {
+      tasks.push(api('/api/specialists/clients-technology-catalog').then(catalog => {
         specialistTechnologies.value = catalog.data?.technologies || [];
         specialistCatalogLoaded.value = true;
       }).catch(() => { specialistTechnologies.value = []; }));
