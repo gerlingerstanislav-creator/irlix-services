@@ -1,6 +1,9 @@
 <?php
 /** Synthetic independent professional-history isolation test. */
 require __DIR__.'/graded_profile.php';
+// Upgrade the restored historical relations again to exercise the actual
+// production schema in which additional links are held independently.
+$upgrade->up();
 
 use App\Services\EmployeePurgeService;
 
@@ -10,7 +13,7 @@ $db->table('specialist_competencies')->insert([
     ['id'=>2,'employee_id'=>12,'technology_id'=>2],
 ]);
 $db->table('specialist_profiles')->insert(['employee_id'=>12,'grade'=>'Junior']);
-$db->table('specialist_technologies')->insert(['employee_id'=>12,'technology_id'=>2]);
+$db->table('specialist_technologies')->insert(['employee_id'=>12,'technology_id'=>1,'kind'=>'primary','grade'=>'Junior']);
 $db->table('specialist_timeline_events')->insert([
     'employee_id'=>12,'type'=>'comment','title'=>'Synthetic coworker note',
     'author_employee_id'=>11,'author'=>'Synthetic Employee 11',
@@ -20,11 +23,13 @@ $eraser->purge(11, 'Synthetic Employee 11', 'synthetic.11');
 $eraser->purge(11, 'Synthetic Employee 11', 'synthetic.11');
 $check(!$db->table('specialist_profiles')->where('employee_id',11)->exists()
     && !$db->table('specialist_technologies')->where('employee_id',11)->exists()
+    && !$db->table('specialist_additional_technologies')->where('employee_id',11)->exists()
     && !$db->table('specialist_competencies')->where('employee_id',11)->exists()
     && !$db->table('specialist_timeline_events')->where('employee_id',11)->exists(),
     'The removed specialist still owns professional data');
 $check($db->table('specialist_profiles')->where('employee_id',12)->exists()
     && $db->table('specialist_technologies')->where('employee_id',12)->exists()
+    && $db->table('specialist_additional_technologies')->where('employee_id',12)->exists()
     && $db->table('specialist_competencies')->where('employee_id',12)->exists(),
     'The coworker lost their professional profile');
 $note=$db->table('specialist_timeline_events')->where('employee_id',12)->first();
