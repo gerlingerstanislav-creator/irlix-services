@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { UiAppTopbar, UiAppSidebar, UiRegistryTable, UiFilterBar, UiSearchSelect, UiTreeToggle, UiErrorState, UiLoader, UiDrawer, UiButton, UiDepartmentTreeSelect, UiTechnologyGrade, employeesWithinDepartments, normalizeDepartmentSelection } from '@irlix/ui';
+import { UiAppTopbar, UiAppSidebar, UiRegistryTable, UiFilterBar, UiSearchSelect, UiTreeToggle, UiErrorState, UiLoader, UiDrawer, UiButton, UiDepartmentTreeSelect, UiTechnologyGrade, UiToast, employeesWithinDepartments, normalizeDepartmentSelection } from '@irlix/ui';
 import { auth } from './auth';
 import SpecialistsRolePermissionsView from './SpecialistsRolePermissionsView.vue';
 import SpecialistProfileBody from './SpecialistProfileBody.vue';
@@ -57,6 +57,11 @@ const projectError=ref('');
 const filters = reactive({ search: '', grade: '', technology: '', status: 'active' });
 const technologyEditor = reactive({ id: null, name: '', alias: '', category: '', parent_id: '' });
 const technologyModalOpen = ref(false);
+const deletingAdditional = ref(null);
+const replacementAdditional = ref('');
+const additionalDeleteError = ref('');
+const catalogToast = ref(null);
+let catalogToastSequence = 0;
 const expandedTechnologies = ref(new Set());
 
 const route = computed(() => ({
@@ -335,6 +340,51 @@ watch(() => route.value.employeeId, id => {
 const openPerson = id => navigate(`people/${id}`);
 const closePerson=()=>navigate('people');
 const sortedAdditionalTechnologies = computed(() => [...(workspace.value.catalog?.additional_technologies || [])].sort((a,b) => a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })));
+const additionalReplacementOptions = computed(() => sortedAdditionalTechnologies.value
+  .filter(technology => Number(technology.id) !== Number(deletingAdditional.value?.id))
+  .map(technology => ({ value: String(technology.id), label: technology.name })));
+const openAdditionalDeletion = technology => {
+  if (!canEditTechnologyCatalog.value || catalogSaving.value) return;
+  deletingAdditional.value = technology;
+  replacementAdditional.value = '';
+  additionalDeleteError.value = '';
+};
+const closeAdditionalDeletion = () => {
+  if (catalogSaving.value) return;
+  deletingAdditional.value = null;
+  additionalDeleteError.value = '';
+  replacementAdditional.value = '';
+};
+const confirmAdditionalDeletion = async () => {
+  if (!deletingAdditional.value || !canEditTechnologyCatalog.value || catalogSaving.value) return;
+  catalogSaving.value = true;
+  additionalDeleteError.value = '';
+  const source = deletingAdditional.value;
+  const replacement = sortedAdditionalTechnologies.value.find(t => String(t.id) === replacementAdditional.value);
+  try {
+    const result = await api(`/catalog/additional-technologies/${source.id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ replacement_id: replacement ? Number(replacement.id) : null }),
+    });
+    deletingAdditional.value = null;
+    replacementAdditional.value = '';
+    catalogToast.value = {
+      id: ++catalogToastSequence, tone: 'success',
+      message: replacement
+        ? `«${source.name}» заменена на «${replacement.name}» у ${result.affected_specialists} специалистов.`
+        : `«${source.name}» удалена у ${result.affected_specialists} специалистов.`,
+    };
+    try {
+      await refreshCatalog();
+    } catch (refreshError) {
+      error.value = 'Технология удалена, но обновить список не удалось: ' + refreshError.message;
+    }
+  } catch (e) {
+    additionalDeleteError.value = e.message;
+  } finally {
+    catalogSaving.value = false;
+  }
+};
 const refreshSelectedProfile = async () => {
   // Autosave owns the live editor state. Refresh registry/dashboard projections
   // only: reloading selected from a prior response can overwrite a newer edit
@@ -418,10 +468,17 @@ const refreshSelectedProfile = async () => {
 
       <template v-else-if="route.section === 'technologies'">
         <section class="specialists-catalog-section specialists-catalog-section--technologies">
-          <UiRegistryTable :columns="['80%','20%']" min-width="520px" density="compact" aria-label="Дополнительные технологии по алфавиту">
-            <template #head><tr><th>Технология</th><th>Алиас</th></tr></template>
+          <UiRegistryTable :columns="canEditTechnologyCatalog ? ['88%','12%'] : ['100%']" min-width="520px" density="compact" aria-label="Дополнительные технологии по алфавиту">
+            <template #head><tr><th>Технология</th><th v-if="canEditTechnologyCatalog" aria-label="Действия"></th></tr></template>
             <tr v-for="technology in sortedAdditionalTechnologies" :key="technology.id">
-              <td>{{ technology.name }}</td><td>{{ technology.alias || '—' }}</td>
+              <td>{{ technology.name }}</td>
+              <td v-if="canEditTechnologyCatalog">
+                <div class="row-actions">
+                  <button type="button" class="danger-icon" title="Удалить технологию"
+                    :aria-label="'Удалить дополнительную технологию ' + technology.name"
+                    :disabled="catalogSaving" @click="openAdditionalDeletion(technology)">×</button>
+                </div>
+              </td>
             </tr>
           </UiRegistryTable>
           <div v-if="!sortedAdditionalTechnologies.length" class="empty padded">Дополнительные технологии пока не добавлены.</div>
@@ -495,5 +552,41 @@ const refreshSelectedProfile = async () => {
         <div class="modal-actions"><button type="button" class="secondary" :disabled="catalogSaving" @click="closeTechnologyModal">Отмена</button><button class="primary" :disabled="catalogSaving || !technologyEditor.name.trim()">{{ catalogSaving ? 'Сохраняем…' : 'Сохранить' }}</button></div>
       </form>
     </div>
+
+    <div v-if="deletingAdditional && canEditTechnologyCatalog" class="modal-backdrop"
+      @click.self="closeAdditionalDeletion" @keydown.esc="closeAdditionalDeletion">
+      <form class="modal-card" role="dialog" aria-modal="true"
+        aria-labelledby="specialists-delete-additional-title" @submit.prevent="confirmAdditionalDeletion">
+        <div class="modal-head">
+          <div>
+            <div class="eyebrow">Дополнительные технологии</div>
+            <h2 id="specialists-delete-additional-title">Удалить «{{ deletingAdditional.name }}»?</h2>
+          </div>
+          <button type="button" class="modal-close" :disabled="catalogSaving"
+            aria-label="Закрыть окно" @click="closeAdditionalDeletion">×</button>
+        </div>
+        <p class="specialists-delete-description">
+          Технология будет удалена из каталога и из карточек всех специалистов, включая уволенных.
+          При необходимости можно заменить её другой дополнительной технологией у всех, кто её использовал.
+        </p>
+        <div class="specialists-delete-replacement">
+          <label class="specialists-delete-replacement-label">Заменить на</label>
+          <UiSearchSelect v-model="replacementAdditional" :options="additionalReplacementOptions"
+            teleport compact placeholder="Без замены — удалить из всех карточек"
+            search-placeholder="Найти дополнительную технологию"
+            aria-label="Дополнительная технология для замены" :disabled="catalogSaving" />
+        </div>
+        <p v-if="additionalDeleteError" class="alert" role="alert">{{ additionalDeleteError }}</p>
+        <div class="modal-actions">
+          <UiButton type="button" variant="secondary" :disabled="catalogSaving"
+            @click="closeAdditionalDeletion">Отмена</UiButton>
+          <UiButton type="submit" variant="danger" :disabled="catalogSaving">
+            {{ catalogSaving ? 'Удаление…' : (replacementAdditional ? 'Заменить и удалить' : 'Удалить у всех') }}
+          </UiButton>
+        </div>
+      </form>
+    </div>
+    <UiToast v-if="catalogToast" :key="catalogToast.id" :tone="catalogToast.tone"
+      :message="catalogToast.message" @close="catalogToast = null" />
   </div>
 </template>
