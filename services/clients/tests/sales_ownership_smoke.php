@@ -121,6 +121,8 @@ clientCheck(ClientWorkflowVisibility::requestAllowed(['client_id'=>2,'responsibl
     $visibility->scopeFor($allAccess,'requests.view')), 'All scope should include foreign requests');
 $prodAccess = $access;
 $prodAccess['roles']=['department-manager'];
+// Production-only member has position/attempt grants, not an implicit request grant.
+$prodAccess['permissions']['requests.view']=['allowed'=>false,'scope'=>'none'];
 $prodAccess['production_department_ids']=[20];
 $prodAccess['legacy_direction_ids']=['Legacy production'=>20];
 $prodScopes = $visibility->viewScopes($prodAccess);
