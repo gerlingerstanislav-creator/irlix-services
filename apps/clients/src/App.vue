@@ -1,5 +1,6 @@
 <script setup>
 import { displayEmployeeName } from './displayEmployeeName';
+import { buildEmployeeNameMap } from './employeeDisplayMap.js';
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiTooltip, UiViewSwitch, UiRegistryTable, UiErrorState, UiLoader } from '@irlix/ui';
@@ -117,7 +118,7 @@ const requestPositionLevels = ['TechLead','TeamLead','Senior','Middle+','Middle'
 const expectedConnectionTimes = ['Неизвестно','Месяц','Квартал','Пол года','Год'];
 const acceptableTuFormats = ['Не важно','Штат','Штат / ГПХ'];
 const title = computed(() => titles[view.value]);
-const employeeMap = computed(() => new Map([...historicalEmployeeNames.value, ...employees.value].map(e => [Number(e.id), displayEmployeeName(e.full_name) || `#${e.id}`])));
+const employeeMap = computed(() => buildEmployeeNameMap(employees.value, historicalEmployeeNames.value));
 const employeeRecordMap = computed(() => new Map(employees.value.map(e => [Number(e.id), e])));
 const employeeName = id => employeeMap.value.get(Number(id)) || (id ? `#${id}` : '—');
 const employeeOptions = computed(() => employees.value.map(e => ({ value:String(e.id), label:displayEmployeeName(e.full_name) || `#${e.id}` })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
