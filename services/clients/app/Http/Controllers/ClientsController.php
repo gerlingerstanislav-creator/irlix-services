@@ -45,6 +45,7 @@ class ClientsController extends Controller
                 $httpRequest->attributes->get('clients_overview_client_ids'),
                 $httpRequest->attributes->get('clients_overview_lead_employee_ids'),
                 $httpRequest->attributes->get('clients_overview_contact_ids'),
+                (array) $httpRequest->attributes->get('clients_workflow_view_scopes', []),
             ));
         }
         return response()->json(['data' => app(\App\Services\ClientsOverviewService::class)->overview($access)]);
