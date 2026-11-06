@@ -477,6 +477,19 @@ Six active service frontends now render their flat lists with `UiRegistryTable`:
 - **Edge-to-edge is mandatory for all top-level flat lists**: the registry viewport occupies 100% of the area below the service topbar (no exterior 12–16 px gutters, surrounding card border, radius or shadow). The filter bar, headings and cells may keep their **internal** padding and thin row separators. No body overflow for overflowing tables: the shared `UiRegistryTable` owns scrolling. Legacy wrappers (including `UiPanel`, `workflow-view`, `vacations-page-panel`, `table-card--registry`, `analytics-page`) must not reintroduce spacing at any viewport. Nested detail cards, calendar/matrix layouts, and Kanban are distinct and are not affected by this flat-list rule.
 - Layout regression guard: `packages/ui/tests/registryEdgeToEdge.test.mjs`; runtime Chromium geometry probe for Clients positions in `apps/clients/tests/registry.browser.cjs` at 1366/1024/390 pixels.
 
+## UiToast — всплывающие уведомления
+
+`UiToast` — единый платформенный компонент для кратких результатов действий (успех, ошибка, предупреждение, информация). Размещается в правом нижнем углу экрана через `Teleport to="body"`, поверх карточек/дроверов, не занимает места в форме. Стили, адаптивность, тёмная тема и семантические цвета принадлежат `@irlix/ui`. Нижняя полоска за `duration` миллисекунд уменьшается до нуля; по умолчанию 5000 мс. Кнопка закрывает уведомление раньше, `duration=0` отключает автозакрытие. Новое сообщение получает новый `:key`, перезапускающий таймер.
+
+`tone="info|success|warning|error"`, `message`, `:duration`, `action-label`; события `close` и `action`. Error toast имеет `role="alert"`, остальные — `role="status"`. `action-label` предназначен в том числе для повтора операции: источник данных и состояние повтора остаются в сервисе.
+
+```vue
+<UiToast v-if="toast" :key="toast.id" :tone="toast.tone" :message="toast.message"
+  :action-label="toast.actionLabel" @close="toast = null" @action="retrySave" />
+```
+
+Для результатов фонового сохранения использовать `UiToast`, а не собственные служебные баннеры. Это не отменяет полевой валидации и `UiErrorState` для недоступных экранов. Пример находится в живом каталоге `/design-system/#section-notifications`.
+
 ## Ошибки страниц и операций
 
 - `UiErrorState` — общий компонент для ошибки внутри рабочей области сервиса. Поддерживает `:status`, `description`, `back-href`, `back-label`, `retryable` и событие `retry`. Пример находится в витрине Design System в блоке состояний загрузки.
