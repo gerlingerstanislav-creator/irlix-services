@@ -24,6 +24,9 @@ final class ServiceEntitlement
         // profiles or the Specialists matrix. Validate its own signed service
         // admission AND current Employees entitlement, including revocations.
         if ($request->isMethod('GET') && $request->is('api/clients-technology-catalog')) {
+            if ($request->header('X-Irlix-Role-Preview') !== null) {
+                return response()->json(['message' => 'Role preview cannot authorize Clients reference catalog'], 403);
+            }
             $jwt = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
             $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
             if ($jwt && !in_array('service:clients', $roles, true)) {
