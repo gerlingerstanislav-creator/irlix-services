@@ -70,6 +70,16 @@ final class EmployeeDeletionService
             'service' => 'clients', 'upstream_status' => $check->status(),
         ];
 
+        $memberIds = $check->json('client_member_ids');
+        if (!is_array($memberIds)
+            || count($memberIds) > 10000
+            || collect($memberIds)->contains(static fn ($id) =>
+                !((is_int($id) || (is_string($id) && ctype_digit($id))) && (int)$id > 0))) {
+            return ['status' => 502, 'service' => 'clients',
+                'message' => 'Incomplete Clients membership preflight'];
+        }
+        $payload['client_member_ids'] = array_values(array_unique(array_map('intval', $memberIds)));
+
         foreach ($targets as $service => $base) {
             try {
                 $response = Http::acceptJson()
