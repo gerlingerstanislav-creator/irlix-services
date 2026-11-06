@@ -14,6 +14,7 @@ const props = defineProps({
   emptyText: { type: String, default: 'Ничего не найдено' },
   ariaLabel: { type: String, default: '' },
   teleport: { type: Boolean, default: false },
+  compact: { type: Boolean, default: false },
   creatable: { type: Boolean, default: false },
   createLabel: { type: String, default: 'Создать' },
 });
@@ -184,7 +185,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="root" class="ui-search-select" :class="{ open, disabled, filled: hasValue }">
+  <div ref="root" class="ui-search-select" :class="{ open, disabled, filled: hasValue, 'ui-search-select--compact': compact }">
     <button type="button" class="ui-search-select__trigger" :disabled="disabled" :aria-label="ariaLabel || placeholder" :aria-expanded="open" aria-haspopup="listbox" @click="setOpen(!open)">
       <span v-if="selectedCount" class="ui-search-select__count">{{ selectedCount }}</span>
       <span class="ui-search-select__label">{{ displayLabel }}</span>
@@ -198,7 +199,7 @@ onBeforeUnmount(() => {
       </span>
     </button>
     <Teleport to="body" :disabled="!teleport">
-      <div v-if="open" ref="menu" class="ui-search-select__menu" :class="{ 'ui-search-select__menu--teleported': teleport }" :style="teleport ? menuStyle : undefined">
+      <div v-if="open" ref="menu" class="ui-search-select__menu" :class="{ 'ui-search-select__menu--teleported': teleport, 'ui-search-select__menu--compact': compact }" :style="teleport ? menuStyle : undefined">
         <div class="ui-search-select__search-wrap"><input ref="searchInput" v-model="query" class="ui-search-select__search" type="search" :placeholder="searchPlaceholder" @click.stop /></div>
         <div class="ui-search-select__options" role="listbox" :aria-multiselectable="multiple || undefined">
           <template v-for="option in filtered" :key="`${option.kind}-${String(option.value)}-${option.label}`">
@@ -301,5 +302,16 @@ onBeforeUnmount(() => {
 .ui-search-select__marker i { width:10px; height:10px; display:block; border-radius:inherit; background:var(--irlix-color-primary); }
 .ui-search-select__empty { padding:13px 12px; color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); text-align:center; }
 .ui-search-select__create{border-top:1px solid var(--irlix-color-border);color:var(--irlix-color-primary-text);font-weight:600}
+/* Compact selectors keep readable system-sized controls even when the menu is
+   teleported under <body>, outside the caller's component and its font rules. */
+.ui-search-select--compact { font-family:var(--irlix-font-sans);font-size:var(--irlix-font-size-table);font-weight:400; }
+.ui-search-select--compact .ui-search-select__trigger { font-family:inherit;font-size:inherit;font-weight:400; }
+.ui-search-select__menu--compact { font-family:var(--irlix-font-sans);font-size:var(--irlix-font-size-table);line-height:1.25;font-weight:400; }
+.ui-search-select__menu--compact .ui-search-select__search { font-family:inherit;font-size:inherit; }
+.ui-search-select__menu--compact .ui-search-select__option { min-height:29px;padding-top:5px;padding-bottom:5px;gap:8px;font-family:inherit;font-size:inherit;line-height:1.25; }
+.ui-search-select__menu--compact .ui-search-select__marker { flex-basis:16px;width:16px;height:16px;border-width:1.5px; }
+.ui-search-select__menu--compact .ui-search-select__check { width:11px;height:11px; }
+.ui-search-select__menu--compact .ui-search-select__group { font-size:var(--irlix-font-size-caption); }
+.ui-search-select__menu--compact .ui-search-select__search { min-height:30px;height:30px; }
 </style>
 
