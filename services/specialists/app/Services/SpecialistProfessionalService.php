@@ -66,6 +66,19 @@ final class SpecialistProfessionalService
             ->where('active', true)->count() !== count($secondary)) {
             throw ValidationException::withMessages(['secondary_ids' => ['Некоторые дополнительные технологии недоступны.']]);
         }
+        // Names may exist in both global catalogs for different employees,
+        // but may not be assigned twice to the same person under two labels.
+        if ($primaryIds && $secondary) {
+            $mainNames = Technology::query()->whereIn('id', $primaryIds)->pluck('name')
+                ->map(static fn ($name) => mb_strtolower(trim((string) $name)))->all();
+            $extraNames = AdditionalTechnology::query()->whereIn('id', $secondary)->pluck('name')
+                ->map(static fn ($name) => mb_strtolower(trim((string) $name)))->all();
+            if (array_intersect($mainNames, $extraNames)) {
+                throw ValidationException::withMessages(['technologies' => [
+                    'Одна технология не может быть одновременно основной и дополнительной у одного специалиста.',
+                ]]);
+            }
+        }
 
         return DB::transaction(function () use ($employee, $input, $primary, $secondary, $actor, $author): array {
             SpecialistProfile::query()->firstOrCreate(['employee_id' => $employee]);
