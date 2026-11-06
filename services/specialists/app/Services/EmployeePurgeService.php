@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\SpecialistCompetency;
 use App\Models\SpecialistProfile;
 use App\Models\SpecialistTechnology;
+use App\Models\SpecialistAdditionalTechnology;
 use App\Models\SpecialistTimelineEvent;
 use Illuminate\Support\Facades\DB;
 
@@ -23,6 +24,7 @@ final class EmployeePurgeService
             }
             SpecialistCompetency::query()->where('employee_id', $employee)->delete();
             SpecialistTechnology::query()->where('employee_id', $employee)->delete();
+            SpecialistAdditionalTechnology::query()->where('employee_id', $employee)->delete();
             SpecialistProfile::query()->where('employee_id', $employee)->delete();
         });
     }
