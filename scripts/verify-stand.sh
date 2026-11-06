@@ -155,6 +155,11 @@ $SUDO $COMPOSE exec -T employees php artisan migrate:status --no-ansi | grep -q 
   fail "Employees staff position history-link migration is not installed"
 }
 echo "[verify] Employees migrations OK"
+# The old smoke only checked historical migrations by name. Check the *actual*
+# technical account directory through the same application read projection.
+echo "[verify] Employees system accounts directory"
+$SUDO $COMPOSE exec -T employees php /app/bin/reconcile-system-accounts.php --verify ||
+  fail "System accounts bootstrap identity is missing or lacks platform-admin"
 echo "[verify] Staffing department invariant"
 $SUDO $COMPOSE exec -T employees php -r '
 $pdo = new PDO("pgsql:host=" . getenv("DB_HOST") . ";port=" . getenv("DB_PORT") . ";dbname=" . getenv("DB_DATABASE"), getenv("DB_USERNAME"), getenv("DB_PASSWORD"), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
@@ -217,6 +222,7 @@ check_body "Employees health" http://127.0.0.1/api/employees/health employees '"
 check_body "Vacations health" http://127.0.0.1/api/vacations/health vacations '"service":"vacations"'
 check_status "Anonymous departments API" http://127.0.0.1/api/employees/departments 401
 check_status "Anonymous employees API" http://127.0.0.1/api/employees/employees 401
+check_status "Anonymous system accounts API" http://127.0.0.1/api/employees/system-accounts 401
 check_status "Anonymous audit API" http://127.0.0.1/api/employees/audit 401
 check_status "Anonymous vacations me API" http://127.0.0.1/api/vacations/me 401
 

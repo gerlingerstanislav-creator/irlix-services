@@ -195,3 +195,15 @@ GET `/api/vacations-directory?historical_year=YYYY` (2000–2100) returns a sani
 - `POST /api/employees/{employee}/transfer` выполняет действующий перевод для `employees.transfer`: закрывает назначение накануне даты перевода, открывает новое, обновляет направление и должность сотрудника, при запросе одновременно изменяет оклад. Синхронизация подразделения в Keycloak следует после фиксации данных.
 - `PUT /api/employees/{employee}/assignment-history/{assignment}` доступен **только** `platform-admin` (проверка и в API, и в middleware), принимает `department_id`, `position_id` (nullable), `effective_from`, `effective_to` (nullable только для открытого назначения). Проверяются принадлежность должности направлению, даты и непересечение соседних назначений; ранее непрерывное соседство обновляется при сдвиге даты начала. Изменение открытой записи обновляет текущую карточку сотрудника и при смене подразделения — Keycloak.
 - Исторические зарплатные записи не переписываются неявно. Если дата перевода привязана к одновременной смене оклада, API запрещает менять её в рамках этой операции (422), чтобы не исказить ФОТ. Коррекция назначения остаётся в audit как `employee.assignment_history_corrected` с before/after выбранной строки. Отдельные права кадровика на новый перевод не дают ему права редактирования истории.
+
+### System account bootstrap runtime integrity
+
+The legacy `admin` is a protected technical identity, not an employee. The
+Employees backend deployment runs `bin/reconcile-system-accounts.php` **after**
+versioned migrations. It repairs missing/stale local bootstrap anchors and
+protected platform-admin grants idempotently without touching Keycloak
+credentials or human administrators, and verifies the same API read projection.
+The deployed stand smoke runs its read-only `--verify` mode and fails if the
+technical directory is empty. The business and technical Eloquent scopes also
+exclude/include the bootstrap and explicit legacy technical cooperation type
+when `account_type` is stale; the next deployment repairs the stored type.
