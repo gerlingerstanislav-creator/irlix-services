@@ -87,6 +87,26 @@ $reject(static fn () => $service->removeOrReplace(1,3,100,'Admin'), 409);
 $check($count(1) === 4 && $count(3) === 0, 'Conflict must not partially alter any specialist');
 $check(AdditionalTechnology::query()->findOrFail(1)->active, 'Conflict must not archive source');
 
+// A rename keeps the catalog identity and every employee association intact.
+$reject(static fn () => $service->rename(999,'Renamed',100,'Admin'),404);
+$reject(static fn () => $service->rename(4,'Renamed',100,'Admin'),404);
+$reject(static fn () => $service->rename(1,' ',100,'Admin'),422);
+$reject(static fn () => $service->rename(1,'Replacement',100,'Admin'),422);
+$reject(static fn () => $service->rename(1,'  replacement  ',100,'Admin'),422);
+$reject(static fn () => $service->rename(1,'Core',100,'Admin'),409);
+$check($service->rename(1,'Deprecated',100,'Admin')['changed'] === false,
+    'Same-name rename should be a no-op');
+$beforeCount = $count(1);
+$rename = $service->rename(1,'Updated Demo',100,'Synthetic Catalog Admin');
+$check($rename === ['id'=>1,'name'=>'Updated Demo','affected_specialists'=>4,'changed'=>true],
+    'Renaming must report updated name and every affected specialist');
+$check(AdditionalTechnology::query()->findOrFail(1)->name === 'Updated Demo'
+    && $count(1) === $beforeCount && AdditionalTechnology::query()->findOrFail(1)->active,
+    'Rename must not change the catalog ID, active state, or any assignments');
+$check(SpecialistTimelineEvent::query()->whereIn('employee_id',[11,12,13,15])
+    ->where('title','Переименование дополнительной технологии')->count() === 4,
+    'Every affected specialist must have an audit event for the catalog rename');
+
 $result = $service->removeOrReplace(1,2,100,'Synthetic Catalog Admin');
 $check($result === ['deleted'=>true,'id'=>1,'replacement_id'=>2,'affected_specialists'=>4],
     'Atomic replacement response did not identify all affected employees');
@@ -133,6 +153,15 @@ try {
 $check(AdditionalTechnology::query()->findOrFail(6)->active
     && $count(6) === 1 && $count(5) === 0,
     'Transaction failure must restore all assignments and source catalog');
+try {
+    $service->rename(6,'Rollback Renamed',100,'Admin');
+    throw new RuntimeException('Failed audit write did not abort rename');
+} catch (\Illuminate\Database\QueryException) {
+    // Name and all assignments stay unchanged on failed timeline insert.
+}
+$check(AdditionalTechnology::query()->findOrFail(6)->name === 'Rollback source'
+    && $count(6) === 1,
+    'A failed timeline audit must roll back a rename without losing associations');
 $db->statement('DROP TRIGGER reject_timeline');
 $check($service->removeOrReplace(6,null,100,'Admin')['affected_specialists'] === 1,
     'Retirement must be retryable after rolled-back attempt');
