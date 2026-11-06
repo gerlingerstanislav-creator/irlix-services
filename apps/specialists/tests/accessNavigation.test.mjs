@@ -6,7 +6,7 @@ const ids = (permissions, admin = false) =>
   accessibleSpecialistsNavigation(permissions, admin).map(item => item.id);
 
 test('catalog-only grant exposes only technologies and competencies', () => {
-  assert.deepEqual(ids({ catalog_view: true, catalog_manage: false, profiles_view: false }), ['competencies']);
+  assert.deepEqual(ids({ catalog_view: true, catalog_manage: false, profiles_view: false }), ['competencies', 'technologies']);
 });
 
 test('profile read grant exposes profile list without catalog or role administration', () => {
@@ -20,7 +20,7 @@ test('edit permissions do not implicitly expand visible sections', () => {
 test('admin role permissions menu is independent of staff and catalog data grants', () => {
   assert.deepEqual(ids(null, true), ['role-permissions']);
   assert.deepEqual(ids({ profiles_view: true, catalog_view: true }, true), [
-    'dashboard', 'people', 'competencies', 'role-permissions',
+    'dashboard', 'people', 'competencies', 'technologies', 'role-permissions',
   ]);
 });
 
