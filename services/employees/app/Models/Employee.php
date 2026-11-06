@@ -19,24 +19,12 @@ final class Employee extends Model
     /** Explicitly limit HR queries; identity resolution must still see both types. */
     public function scopeBusiness(Builder $query, string $alias = 'employees'): Builder
     {
-        return $query
-            ->where($alias.'.account_type', self::TYPE_EMPLOYEE)
-            ->where($alias.'.login', '<>', 'admin')
-            ->where(static function (Builder $query) use ($alias): void {
-                $query->whereNull($alias.'.cooperation_type')
-                    ->orWhere($alias.'.cooperation_type', '<>', 'Системный аккаунт');
-            });
+        return $query->where($alias.'.account_type', self::TYPE_EMPLOYEE);
     }
 
     public function scopeSystem(Builder $query): Builder
     {
-        // Include records with stale account_type values until reconciliation.
-        // A bootstrap/legacy system account must never silently disappear.
-        return $query->where(static function (Builder $query): void {
-            $query->where('employees.account_type', self::TYPE_SYSTEM)
-                ->orWhere('employees.login', 'admin')
-                ->orWhere('employees.cooperation_type', 'Системный аккаунт');
-        });
+        return $query->where('employees.account_type', self::TYPE_SYSTEM);
     }
 
     public function department(): BelongsTo
