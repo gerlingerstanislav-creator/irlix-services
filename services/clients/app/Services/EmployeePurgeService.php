@@ -29,6 +29,12 @@ use Illuminate\Support\Facades\DB;
 
 final class EmployeePurgeService
 {
+    public function memberIds(int $employeeId): array
+    {
+        return ClientMember::query()->where('employee_id', $employeeId)
+            ->pluck('id')->map(static fn ($id) => (int) $id)->all();
+    }
+
     /**
      * Delete employee-owned Clients data without erasing other people's business
      * records (including unrelated rows in paid client periods). Database cleanup is atomic locally;
