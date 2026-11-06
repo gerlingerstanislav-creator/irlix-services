@@ -30,11 +30,15 @@ const timelinePartial = ref('');
 const employeeId = computed(() => Number(props.profile?.employee?.id || 0));
 const technologies = computed(() => [...(props.catalog?.technologies || [])].sort((a,b) =>
   a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })));
+const additionalTechnologies = computed(() => [...(props.catalog?.additional_technologies || [])].sort((a,b) =>
+  a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })));
 const gradeOptions = grades.map(value => ({ value, label: value }));
 const technologyOptions = computed(() => technologies.value.map(t => ({ value: String(t.id), label: t.name })));
+const additionalTechnologyOptions = computed(() => additionalTechnologies.value.map(t => ({ value: String(t.id), label: t.name })));
 const byId = computed(() => new Map(technologies.value.map(t => [Number(t.id), t])));
+const additionalById = computed(() => new Map(additionalTechnologies.value.map(t => [Number(t.id), t])));
 const sortedPrimary = computed(() => primary.value.map((entry,index) => ({ ...entry,index })));
-const secondaryTags = computed(() => secondary.value.map(id => byId.value.get(id)).filter(Boolean));
+const secondaryTags = computed(() => secondary.value.map(id => additionalById.value.get(id)).filter(Boolean));
 const parseResponse = async response => {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.message || Object.values(body.errors || {}).flat().join(', ') || `HTTP ${response.status}`);
@@ -48,7 +52,7 @@ const initProfile = () => {
   const values = props.profile?.professional?.technologies || [];
   primary.value = values.filter(t => t.kind === 'primary')
     .map(t => ({ technology_id: Number(t.id), grade: t.grade || '' }));
-  secondary.value = values.filter(t => t.kind !== 'primary').map(t => Number(t.id));
+  secondary.value = (props.profile?.professional?.additional_technologies || []).map(t => Number(t.id));
   editing.value = null;
   draftTech.value = '';
   draftGrade.value = '';
@@ -121,7 +125,6 @@ const commitPrimary = () => {
   const next = { technology_id: id, grade: draftGrade.value };
   if (editing.value === -1) primary.value.push(next);
   else if (editing.value !== null) primary.value.splice(editing.value, 1, next);
-  secondary.value = secondary.value.filter(value => value !== id);
   editing.value = null;
   message.value = '';
   queueProfessionalSave();
@@ -133,8 +136,8 @@ const removePrimary = index => {
   queueProfessionalSave();
 };
 const chooseSecondary = values => {
-  const primarySet = new Set(primary.value.map(x => x.technology_id));
-  secondary.value = [...new Set(values.map(Number).filter(id => id && !primarySet.has(id)))];
+  // Numeric IDs belong to a different catalog: never compare them to main IDs.
+  secondary.value = [...new Set(values.map(Number).filter(id => id > 0))];
   queueProfessionalSave();
 };
 const quickCreate = async name => {
@@ -142,7 +145,7 @@ const quickCreate = async name => {
   busy.value = true;
   message.value = '';
   try {
-    const technology = await fetchData('/api/specialists/catalog/technologies/quick', {
+    const technology = await fetchData('/api/specialists/catalog/additional-technologies/quick', {
       method: 'POST', body: JSON.stringify({ name }),
     });
     chooseSecondary([...secondary.value, Number(technology.id)]);
@@ -196,9 +199,10 @@ const comment = async text => {
               <button type="button" aria-label="Убрать основную технологию" title="Убрать" @click="removePrimary(entry.index)">×</button>
             </span>
           </div>
-          <p v-if="!primary.length" class="specialist-muted">Основные технологии не указаны.</p>
+          <button v-if="editable && editing === null" type="button" class="specialist-primary-add"
+            aria-label="Добавить основную технологию" title="Добавить основную технологию" @click="startPrimary(-1)">+</button>
+          <p v-if="!primary.length && !editable" class="specialist-muted">Основные технологии не указаны.</p>
         </div>
-        <button v-if="editable && editing === null" type="button" class="specialist-inline-add" @click="startPrimary(-1)">+ Добавить основную технологию</button>
         <div v-if="editing !== null" class="specialist-primary-editor">
           <UiSearchSelect v-model="draftTech" :options="technologyOptions" teleport compact placeholder="Выберите технологию" search-placeholder="Поиск технологии" aria-label="Основная технология" />
           <UiSearchSelect v-model="draftGrade" :options="gradeOptions" teleport compact placeholder="Выберите грейд" aria-label="Грейд основной технологии" />
@@ -207,12 +211,12 @@ const comment = async text => {
         </div>
       </section>
       <section class="specialists-profile-section">
-        <h3>Вспомогательные технологии</h3>
+        <h3>Дополнительные технологии</h3>
         <div class="specialist-aux-layout">
-          <button v-if="editable" type="button" class="specialist-aux-plus" aria-label="Добавить вспомогательные технологии" title="Добавить технологии" @click="showSecondarySelect = !showSecondarySelect">+</button>
+          <button v-if="editable" type="button" class="specialist-aux-plus" aria-label="Добавить дополнительные технологии" title="Добавить технологии" @click="showSecondarySelect = !showSecondarySelect">+</button>
           <div v-if="editable && showSecondarySelect" class="specialist-aux-select">
-            <UiSearchSelect :model-value="secondary.map(String)" :options="technologyOptions" multiple teleport compact creatable
-              placeholder="Выберите технологии" search-placeholder="Поиск или новая технология" aria-label="Вспомогательные технологии"
+            <UiSearchSelect :model-value="secondary.map(String)" :options="additionalTechnologyOptions" multiple teleport compact creatable
+              placeholder="Выберите технологии" search-placeholder="Поиск или новая технология" aria-label="Дополнительные технологии"
               @update:model-value="chooseSecondary" @create="quickCreate" />
           </div>
           <div class="specialist-aux-tags">
@@ -245,10 +249,15 @@ const comment = async text => {
 <style scoped>
 .specialist-profile-body{display:flex;flex-direction:column;min-height:0;gap:0}
 .specialist-tab-history{display:flex;flex-direction:column;min-height:330px;padding:18px 20px}
-.specialist-primary-list{display:grid;gap:0}
-.specialist-primary-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:7px 0;border:0}
-.specialist-primary-actions{display:flex;gap:8px}
+.specialist-primary-list{display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;min-height:32px}
+.specialist-primary-row{display:inline-flex;align-items:center;gap:3px;padding:3px 0;border:0;min-width:0;white-space:nowrap}
+.specialist-primary-actions{display:inline-flex;gap:2px;align-items:center;opacity:0;transition:opacity .12s ease}
+.specialist-primary-row:hover .specialist-primary-actions,
+.specialist-primary-row:focus-within .specialist-primary-actions{opacity:1}
+.specialist-primary-actions button{display:grid;place-items:center;width:20px;height:22px;padding:0}
 .specialist-primary-actions button,.specialist-aux-tag button{border:0;background:none;cursor:pointer;color:var(--irlix-color-text-muted);font:inherit}
+.specialist-primary-add{width:29px;height:29px;display:grid;place-items:center;flex:none;border:1px solid var(--irlix-color-border);border-radius:8px;background:var(--irlix-color-surface);color:var(--irlix-color-primary-text);font-size:20px;cursor:pointer}
+@media(hover:none){.specialist-primary-actions{opacity:1}}
 .specialist-primary-editor{display:grid;grid-template-columns:minmax(160px,1.4fr) minmax(110px,1fr) auto auto;gap:7px;align-items:start;padding:12px 0}
 .specialist-inline-add{margin-top:12px;padding:5px 0;border:0;background:transparent;color:var(--irlix-color-primary-text);cursor:pointer;font-size:var(--irlix-font-size-table)}
 .specialist-aux-layout{display:flex;align-items:flex-start;flex-wrap:wrap;gap:10px}
