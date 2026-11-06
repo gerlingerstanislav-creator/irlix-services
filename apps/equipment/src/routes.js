@@ -1,5 +1,6 @@
 export const routes = [
-  { path: '/', name: 'registry', meta: { section: 'registry' } },
+  { path: '/', name: 'employees', meta: { section: 'employees' } },
+  { path: '/items', name: 'registry', meta: { section: 'registry' } },
   { path: '/assignments', name: 'assignments', meta: { section: 'assignments' } },
   { path: '/valuation', name: 'valuation', meta: { section: 'valuation' } },
   { path: '/depreciation', redirect: { name: 'valuation' } },
