@@ -217,6 +217,9 @@ body.irlix-drawer-resizing { cursor:ew-resize; user-select:none; }
   padding:16px;
 }
 
+/* Opt-in: an entity view can keep its header/tabs fixed and own one inner scroller. */
+.irlix-drawer-body--non-scrollable { overflow:hidden; touch-action:auto; }
+
 .irlix-status-success { color:var(--irlix-status-success-text); background:var(--irlix-status-success-bg); border:1px solid var(--irlix-status-success-border); }
 .irlix-status-info { color:var(--irlix-status-info-text); background:var(--irlix-status-info-bg); border:1px solid var(--irlix-status-info-border); }
 .irlix-status-danger { color:var(--irlix-status-danger-text); background:var(--irlix-status-danger-bg); border:1px solid var(--irlix-status-danger-border); }

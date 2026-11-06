@@ -225,6 +225,12 @@ Fixed behavior:
 - resize is disabled on mobile, where the drawer occupies the available viewport width;
 - entity-specific drawers with dense content should configure a larger base `width` and, if needed, an explicit `minWidth` rather than overriding the shared resize behavior.
 
+### Drawer with fixed header and tab navigation
+
+`UiDrawer` defaults to `scrollBody=true`: its shared body scrolls as before. For entity cards where identity and tabs must remain fixed, set `:scroll-body="false"` and give the slot a full-height `display:flex;flex-direction:column;min-height:0;overflow:hidden` layout. Put the tab bar outside a `flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain` inner scroller. This keeps exactly one vertical scroll surface below the tabs, with native mouse-wheel, touchpad and touch scrolling. Never use `wheel.prevent` on the content.
+
+`UiHistoryTimeline` defaults to `scrollFeed=true` for clients who need an independently scrollable timeline. When used inside a tab-owned scroll surface, set `:scroll-feed="false"`: history events and the composer flow naturally into the parent and no nested feed intercepts wheel deltas or blocks scroll chaining. Refer to the Specialists profile and the live demo `/design-system/#section-drawers`.
+
 ### UiBadge success — контраст и доступность (24.10.2026)
 
 В общем компоненте `UiBadge` тон `success` должен применять **парные семантические токены** `--irlix-status-success-text` и `--irlix-status-success-bg`, а не акцент `--irlix-color-success` поверх общей подложки. Последнее сочетание при browser axe-core проверке `/brandbook/logo/` дало подтверждённый `color-contrast` FAIL. Парные значения обеих тем проверяются контрактным тестом с порогом контраста текста **≥ 4.5:1** (светлая ≈ 5.36, тёмная ≈ 5.84), а каталог `/design-system/` визуально демонстрирует все тона. **Компонент исправляется глобально**: сервисам запрещён обход через собственное CSS-переопределение бейджа. Дальнейшие изменения токенов должны сохранить цветовой контраст и одинаковую семантику.

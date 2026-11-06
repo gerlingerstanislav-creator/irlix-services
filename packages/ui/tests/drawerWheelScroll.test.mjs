@@ -13,6 +13,18 @@ test('drawer body is an actual scroll container independent of its flex header',
   assert.doesNotMatch(drawer, /class="irlix-drawer-body"[^>]*@wheel\.prevent/);
 });
 
+test('a drawer may hand scrolling to its own child without changing other drawers', () => {
+  const css = read('../src/styles/base.css');
+  const drawer = read('../src/components/UiDrawer.vue');
+  const history = read('../src/components/UiHistoryTimeline.vue');
+  assert.match(drawer, /scrollBody: \{ type: Boolean, default: true \}/);
+  assert.match(drawer, /irlix-drawer-body--non-scrollable/);
+  assert.match(css, /\.irlix-drawer-body--non-scrollable \{ overflow:hidden; touch-action:auto; \}/);
+  assert.match(history, /scrollFeed: \{ type: Boolean, default: true \}/);
+  assert.match(history, /irlix-history--flow/);
+  assert.match(history, /\.irlix-history--flow \.irlix-history__feed\{[^}]*overflow:visible/);
+});
+
 test('wheel prevention is limited to the backdrop, never the content', () => {
   const drawer = read('../src/components/UiDrawer.vue');
   assert.match(drawer, /irlix-drawer-backdrop"[^>]*@wheel\.prevent/);

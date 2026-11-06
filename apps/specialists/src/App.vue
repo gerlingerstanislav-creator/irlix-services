@@ -462,7 +462,7 @@ const refreshSelectedProfile = async () => {
       </div>
     </main>
 
-    <UiDrawer :open="route.section==='person' && canViewProfiles" width="min(780px, 96vw)" :resizable="true" title="Карточка специалиста" @close="closePerson">
+    <UiDrawer :open="route.section==='person' && canViewProfiles" width="min(780px, 96vw)" :resizable="true" :scroll-body="false" title="Карточка специалиста" @close="closePerson">
       <template #title><strong>{{ selected?.employee?.full_name || 'Карточка специалиста' }}</strong></template>
       <div class="specialists-profile-drawer">
         <div v-if="profileErrorStatus" class="alert" role="alert">{{ profileErrorStatus }} — {{ error || 'Профиль недоступен' }}</div>
