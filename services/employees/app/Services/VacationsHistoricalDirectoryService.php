@@ -67,7 +67,7 @@ final class VacationsHistoricalDirectoryService
         }
 
         if (!$segmentsByEmployee) return ['employees' => [], 'departments' => $departments];
-        $rows = Employee::query()->whereIn('id', array_keys($segmentsByEmployee))
+        $rows = Employee::query()->business()->whereIn('id', array_keys($segmentsByEmployee))
             ->orderBy('full_name')->get(['id', 'full_name', 'employment_status']);
         $employees = [];
         foreach ($rows as $employee) {

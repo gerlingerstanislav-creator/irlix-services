@@ -5,6 +5,7 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\EmployeeReadController;
 use App\Http\Controllers\EmployeeTransferController;
 use App\Http\Controllers\EmployeesSystemController;
+use App\Http\Controllers\SystemAccountController;
 use Illuminate\Support\Facades\Route;
 
 // API contracts and middleware remain unchanged; data access is in Eloquent services.
@@ -16,6 +17,8 @@ Route::get('/departments', [DepartmentController::class, 'index']);
 Route::post('/departments', [DepartmentController::class, 'store']);
 Route::put('/departments/{department}', [DepartmentController::class, 'update']);
 
+// Technical identities are not employees in business API responses.
+Route::get('/system-accounts', [SystemAccountController::class, 'index']);
 Route::get('/employees', [EmployeeReadController::class, 'index']);
 Route::get('/employees/{employee}', [EmployeeReadController::class, 'show']);
 Route::post('/employees', [EmployeeController::class, 'store']);

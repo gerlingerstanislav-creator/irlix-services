@@ -71,7 +71,7 @@ final class PayrollOverviewService
 
         $yearStart = sprintf('%04d-01-01', $year);
         $yearEnd = sprintf('%04d-12-31', $year);
-        $query = Employee::query()->select(['id', 'full_name', 'employment_status']);
+        $query = Employee::query()->business()->select(['id', 'full_name', 'employment_status']);
         if ($statuses) $query->whereIn('employment_status', $statuses);
         $employees = $query->orderBy('full_name')->get();
 

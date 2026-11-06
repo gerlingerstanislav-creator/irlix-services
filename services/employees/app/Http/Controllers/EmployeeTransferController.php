@@ -36,7 +36,7 @@ final class EmployeeTransferController extends Controller
         ]);
         if ($validator->fails()) return response()->json(['errors' => $validator->errors()], 422);
 
-        $employeeRecord = $this->employees->record($employee);
+        $employeeRecord = $this->employees->recordBusiness($employee);
         if (!$employeeRecord) return response()->json(['message' => 'Сотрудник не найден.'], 404);
         if ($employeeRecord->employment_status !== 'Трудоустроен') {
             return response()->json(['message' => 'Перевод доступен только трудоустроенному сотруднику.'], 422);
@@ -85,7 +85,7 @@ final class EmployeeTransferController extends Controller
             'effective_to' => ['present', 'nullable', 'date_format:Y-m-d', 'after_or_equal:effective_from'],
         ]);
         if ($validator->fails()) return response()->json(['errors' => $validator->errors()], 422);
-        $row = $this->employees->record($employee);
+        $row = $this->employees->recordBusiness($employee);
         if (!$row) return response()->json(['message' => 'Сотрудник не найден.'], 404);
         try {
             $updated = $this->history->update($row, $assignment, $validator->validated());
