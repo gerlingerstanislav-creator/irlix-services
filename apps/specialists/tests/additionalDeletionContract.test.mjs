@@ -50,7 +50,7 @@ test('admin catalog shows a conditional action and explicit replacement dialog',
 
 test('additional catalog DELETE has an exact method and URL permission gate', () => {
   const middleware = source('services/specialists/app/Http/Middleware/ServiceEntitlement.php');
-  assert.ok(middleware.includes("$method==='DELETE'"));
+  assert.ok(middleware.includes("in_array($method, ['PUT','DELETE'], true)"));
   assert.ok(middleware.includes("preg_match('#^api/catalog/additional-technologies/[0-9]+$#',$path)"));
   assert.match(middleware, /specialists\.catalog\.manage/);
   assert.match(source('services/specialists/Dockerfile'), /tests\/additional_delete_admission\.php/);
