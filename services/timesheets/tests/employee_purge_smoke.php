@@ -41,4 +41,23 @@ if (DB::table('partner_daily_confirmations')
 if (!DB::table('timesheet_entries')->where('employee_id',1)->exists()) {
     throw new RuntimeException('Unrelated employee facts were erased');
 }
-echo "Timesheets empty employee purge, idempotence and foreign actor cleanup PASS\n";
+// Administrative erasure must also work for a worker who submitted hours
+// in a frozen customer period. The other specialist and the client's
+// period-level freeze are not the deleted employee's own data.
+DB::table('reporting_freezes')->insert([
+    'reporting_period_id'=>995, 'client_id'=>101, 'period_start'=>'2026-10-01',
+    'period_end'=>'2026-10-31', 'freeze_token'=>str_repeat('a',64),
+    'revision'=>str_repeat('b',64), 'created_at'=>now(), 'updated_at'=>now(),
+]);
+$service->purge(1);
+$service->purge(1);
+if (DB::table('timesheet_entries')->where('employee_id',1)->exists()) {
+    throw new RuntimeException('Confirmed/frozen synthetic employee timesheet hours remain');
+}
+if (!DB::table('timesheet_entries')->where('client_member_id',502)->exists()) {
+    throw new RuntimeException('An independent partner timesheet was erased');
+}
+if (!DB::table('reporting_freezes')->where('reporting_period_id',995)->exists()) {
+    throw new RuntimeException('Client-level reporting lock was removed accidentally');
+}
+echo "Timesheets admin hard delete, frozen hours, idempotence and isolation PASS\n";
