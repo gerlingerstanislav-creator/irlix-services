@@ -261,3 +261,13 @@
   color: var(--irlix-color-text);
   font-weight: 700;
 }
+
+/* Employees-first registry: several active assets stack in one cell, with each
+   asset retaining the same drawer affordance as the inventory registry. */
+.equipment-employee-registry .equipment-employee-row-name { font-weight: 600; }
+.equipment-employee-registry .equipment-employee-devices { display: grid; gap: 5px; padding: 3px 0; }
+.equipment-employee-registry .equipment-employee-device { width: fit-content; max-width: 100%; font-weight: 400; line-height: 1.35; }
+.equipment-employee-registry .equipment-employee-action { text-align: right; white-space: nowrap; }
+.equipment-fixed-employee { display: grid; gap: 5px; margin-bottom: 12px; font-size: var(--irlix-font-size-caption); }
+.equipment-fixed-employee span, .equipment-form-hint { color: var(--irlix-color-text-muted); }
+.equipment-fixed-employee strong { font-size: var(--irlix-font-size-table); color: var(--irlix-color-text); }
