@@ -67,6 +67,12 @@ final class ServiceEntitlement
                         =>'specialists.profiles.view',
                     $method==='PUT'&&preg_match('#^api/people/[0-9]+$#',$path)
                         =>'specialists.profiles.manage',
+                    $method==='PUT'&&preg_match('#^api/people/[0-9]+/professional$#',$path)
+                        =>'specialists.profiles.manage',
+                    $method==='GET'&&preg_match('#^api/people/[0-9]+/timeline$#',$path)
+                        =>'specialists.profiles.view',
+                    $method==='POST'&&preg_match('#^api/people/[0-9]+/timeline$#',$path)
+                        =>'specialists.profiles.manage',
                     $method==='GET'&&$path==='api/catalog'=>'specialists.catalog.view',
                     in_array($method,['POST','PUT','DELETE'],true)
                         &&preg_match('#^api/catalog/technologies(?:/[0-9]+)?$#',$path)
@@ -75,7 +81,14 @@ final class ServiceEntitlement
                 };
                 $admin=in_array('platform-admin',$roles,true)
                     ||in_array('special:platform-admin',$roles,true);
-                if ($path==='api/role-permissions' || str_starts_with($path, 'api/role-permissions/roles')) {
+                // Inline creation is shared between catalog managers and
+                // profile editors. It never grants another catalog mutation.
+                if ($method === 'POST' && $path === 'api/catalog/technologies/quick') {
+                    if (!(($permissions['specialists.catalog.manage']['allowed'] ?? false)
+                        || ($permissions['specialists.profiles.manage']['allowed'] ?? false))) {
+                        return response()->json(['message'=>'Specialists permission denied'],403);
+                    }
+                } elseif ($path==='api/role-permissions' || str_starts_with($path, 'api/role-permissions/roles')) {
                     if (!$admin) return response()->json(['message'=>'Forbidden'],403);
                 } elseif ($required===null || !($permissions[$required]['allowed']??false)) {
                     return response()->json(['message'=>'Specialists permission denied'],403);

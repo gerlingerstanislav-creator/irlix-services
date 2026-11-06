@@ -17,6 +17,18 @@ final class SpecialistsProjectDirectoryController extends Controller
      */
     public function show(Request $request, int $employee): JsonResponse
     {
+        $this->assertScopedEmployee($request, $employee);
+        return response()->json(['data' => $this->projects->forEmployee($employee)]);
+    }
+
+    public function history(Request $request, int $employee): JsonResponse
+    {
+        $this->assertScopedEmployee($request, $employee);
+        return response()->json(['data' => $this->projects->historyForEmployee($employee)]);
+    }
+
+    private function assertScopedEmployee(Request $request, int $employee): void
+    {
         abort_if($request->header('X-Irlix-Role-Preview') !== null, 403, 'Role preview cannot authorize this directory.');
 
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
@@ -37,6 +49,5 @@ final class SpecialistsProjectDirectoryController extends Controller
             ->contains(static fn ($row) => (int) ($row['id'] ?? 0) === $employee);
         abort_unless($visible, 404, 'Specialist not in authorized scope.');
 
-        return response()->json(['data' => $this->projects->forEmployee($employee)]);
     }
 }

@@ -36,3 +36,6 @@ Health probes remain accessible for infrastructure readiness. Internal system ro
 
 
 Platform admin and platform tester are distinct: migration is administrator-only. Equipment is granted to platform privileged accounts, explicitly assigned system admins, and employees in accounting departments and descendants. In Equipment, issuing/returning hardware remains limited to platform privileged users and system admins; accounting has management/valuation access but cannot issue hardware.
+
+
+**Specialists profile timeline (06.11.2026):** the signed `service:specialists` entitlement is admission only. For `/api/clients/specialists/people/{id}/history` and `/api/employees/specialists-history/{id}`, each owning service verifies the actor's live Employees production-direction tree and target employee; Clients' exception is strict GET-only and does not grant generic Clients access. Specialists' write endpoints require explicit `profiles.manage`, validate the target's current Employees scope, and journal human comments/professional changes. The shared department tree filter is UI-only narrowing, never a backend authorization decision.

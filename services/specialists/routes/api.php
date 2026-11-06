@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\SpecialistsPermissionsController;
+use App\Http\Controllers\SpecialistProfessionalController;
 
 $directoryFor = function (Request $request): array {
     try { return app(EmployeesDirectory::class)->resolve($request); }
@@ -37,7 +38,7 @@ $catalogPayload = function (): array {
 $profilePayload = function (array $employee): array {
     $employeeId = (int)$employee['id'];
     $profile = DB::table('specialist_profiles')->where('employee_id',$employeeId)->first();
-    $technologies = DB::table('specialist_technologies as st')->join('technologies as t','t.id','=','st.technology_id')->where('st.employee_id',$employeeId)->select(['t.id','t.name','t.category'])->orderBy('t.name')->get();
+    $technologies = DB::table('specialist_technologies as st')->join('technologies as t','t.id','=','st.technology_id')->where('st.employee_id',$employeeId)->select(['t.id','t.name','t.category','st.kind','st.grade'])->orderBy('t.name')->get();
     $competencies = DB::table('specialist_competencies as sc')->join('competencies as c','c.id','=','sc.competency_id')->leftJoin('technologies as t','t.id','=','c.technology_id')->where('sc.employee_id',$employeeId)->select(['c.id','c.name','c.description','c.technology_id','t.name as technology_name','sc.level','sc.comment'])->orderBy('c.name')->get();
     return ['employee'=>$employee,'professional'=>['grade'=>$profile?->grade,'manager_note'=>$profile?->manager_note,'technologies'=>$technologies,'competencies'=>$competencies]];
 };
@@ -118,11 +119,17 @@ Route::delete('/role-permissions/roles/{role}',[SpecialistsPermissionsController
 Route::put('/role-permissions',[SpecialistsPermissionsController::class,'update']);
 Route::delete('/role-permissions',[SpecialistsPermissionsController::class,'remove']);
 
+// New profile and history scenarios have controller/service/Eloquent boundaries.
+Route::put('/people/{employee}/professional', [SpecialistProfessionalController::class, 'update'])->whereNumber('employee');
+Route::get('/people/{employee}/timeline', [SpecialistProfessionalController::class, 'timeline'])->whereNumber('employee');
+Route::post('/people/{employee}/timeline', [SpecialistProfessionalController::class, 'comment'])->whereNumber('employee');
+Route::post('/catalog/technologies/quick', [SpecialistProfessionalController::class, 'quickCreate']);
+
 Route::get('/workspace', function (Request $request) use ($directoryFor,$syncSnapshots,$catalogPayload) {
     $directory=$directoryFor($request); $employees=$directory['employees'] ?? []; $syncSnapshots($employees);
     $ids=collect($employees)->pluck('id')->map(fn($id)=>(int)$id)->all();
     $profiles=DB::table('specialist_profiles')->whereIn('employee_id',$ids)->get()->keyBy('employee_id');
-    $techMap=DB::table('specialist_technologies as st')->join('technologies as t','t.id','=','st.technology_id')->whereIn('st.employee_id',$ids)->select(['st.employee_id','t.id','t.name'])->orderBy('t.name')->get()->groupBy('employee_id');
+    $techMap=DB::table('specialist_technologies as st')->join('technologies as t','t.id','=','st.technology_id')->whereIn('st.employee_id',$ids)->select(['st.employee_id','t.id','t.name','st.kind','st.grade'])->orderBy('t.name')->get()->groupBy('employee_id');
     $people=collect($employees)->map(function($employee)use($profiles,$techMap){$id=(int)$employee['id'];$profile=$profiles->get($id);return [...$employee,'grade'=>$profile?->grade,'manager_note'=>$profile?->manager_note,'technologies'=>($techMap->get($id)??collect())->values()];})->values();
     return response()->json(['data'=>['actor'=>$directory['actor']??null,'scope'=>$directory['scope']??null,'managed_department_ids'=>$directory['managed_department_ids']??[],'departments'=>$directory['departments']??[],'people'=>$people,'catalog'=>(filter_var(env('IRLIX_SPECIALISTS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
         && filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
