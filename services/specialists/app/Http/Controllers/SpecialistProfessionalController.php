@@ -36,17 +36,26 @@ final class SpecialistProfessionalController extends Controller
         return (array) ($directory['actor'] ?? []);
     }
 
+    /**
+     * Full snapshot keys are mandatory, but either association can be empty.
+     * "required" rejects [] and prevents removing the final technology.
+     */
+    public static function profileUpdateRules(): array
+    {
+        return [
+            'grade' => ['nullable', 'string', Rule::in(SpecialistProfessionalService::GRADES)],
+            'primary' => ['present', 'array', 'max:100'],
+            'primary.*.technology_id' => ['required', 'integer', 'min:1'],
+            'primary.*.grade' => ['required', 'string', Rule::in(SpecialistProfessionalService::GRADES)],
+            'secondary_ids' => ['present', 'array', 'max:300'],
+            'secondary_ids.*' => ['integer', 'min:1'],
+        ];
+    }
+
     public function update(Request $request, int $employee): JsonResponse
     {
         $actor = $this->inScope($request, $employee);
-        $payload = $request->validate([
-            'grade' => ['nullable', 'string', Rule::in(SpecialistProfessionalService::GRADES)],
-            'primary' => ['required', 'array', 'max:100'],
-            'primary.*.technology_id' => ['required', 'integer', 'min:1'],
-            'primary.*.grade' => ['required', 'string', Rule::in(SpecialistProfessionalService::GRADES)],
-            'secondary_ids' => ['required', 'array', 'max:300'],
-            'secondary_ids.*' => ['integer', 'min:1'],
-        ]);
+        $payload = $request->validate(self::profileUpdateRules());
         $result = $this->professional->replace($employee, $payload,
             (int) ($actor['id'] ?? 0), (string) ($actor['full_name'] ?? 'Руководитель'));
         return response()->json(['data' => $result]);

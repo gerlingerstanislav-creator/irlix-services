@@ -91,6 +91,25 @@ const { configureAuthenticatedPreview } = require('./auth-fixture.cjs');
       await page.getByRole('button', { name: label, exact: true }).first().click();
       assert.equal(await page.getByRole('button', { name: label, exact: true }).first().getAttribute('aria-pressed'), 'true');
     }
+    // Shared toast: fixed to viewport, actionable error and timed countdown.
+    await page.locator('#section-notifications').getByRole('button', { name: 'Успешное сохранение' }).click();
+    const toast = page.locator('.irlix-toast');
+    assert.equal(await toast.getAttribute('role'), 'status');
+    const beforeProgress = await page.locator('.irlix-toast__progress-bar').evaluate(node => new DOMMatrix(getComputedStyle(node).transform).a);
+    await page.waitForTimeout(400);
+    const afterProgress = await page.locator('.irlix-toast__progress-bar').evaluate(node => new DOMMatrix(getComputedStyle(node).transform).a);
+    assert.ok(afterProgress < beforeProgress, 'toast countdown advances while visible');
+    await page.waitForFunction(() => !document.querySelector('.irlix-toast'), null, { timeout: 7000 });
+    await page.locator('#section-notifications').getByRole('button', { name: 'Ошибка сохранения' }).click();
+    assert.equal(await toast.getAttribute('role'), 'alert');
+    await toast.getByRole('button', { name: 'Повторить' }).click();
+    assert.equal(await toast.getAttribute('role'), 'status', 'action triggers success replacement');
+    await page.setViewportSize({ width: 390, height: 760 });
+    const toastBox = await toast.boundingBox();
+    assert.ok(toastBox.x >= 0 && toastBox.x + toastBox.width <= 391, 'toast fits narrow screen');
+    await toast.getByRole('button', { name: 'Закрыть уведомление' }).click();
+    assert.equal(await toast.count(), 0);
+    await page.setViewportSize({ width: 1366, height: 900 });
     await page.locator('#section-statuses').evaluate(node => node.scrollIntoView({ block: 'start' }));
     await page.waitForFunction(() => document.querySelector('.icon-nav button[aria-label="Статусы и загрузка"]').classList.contains('active'));
     for (const invalid of ['constructor', 'toString', '__proto__', 'missing-section']) {

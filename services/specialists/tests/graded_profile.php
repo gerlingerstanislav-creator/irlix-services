@@ -53,6 +53,31 @@ $check($db->table('additional_technologies')->count() === 1,
     'Historical secondary catalog must not duplicate shared PHP name');
 $check($db->table('specialist_additional_technologies')->count() === 2,
     'All historical secondary assignments, including another employee, must survive');
+// Both associations are a required snapshot, not required-to-be-nonempty.
+$rules = \App\Http\Controllers\SpecialistProfessionalController::profileUpdateRules();
+$validSnapshots = [
+    ['primary'=>[], 'secondary_ids'=>[]],
+    ['primary'=>[['technology_id'=>1,'grade'=>'Junior']], 'secondary_ids'=>[]],
+    ['primary'=>[], 'secondary_ids'=>[1]],
+];
+foreach ($validSnapshots as $snapshot) {
+    $check(\Illuminate\Support\Facades\Validator::make($snapshot, $rules)->passes(),
+        'Empty primary or additional array must pass the HTTP validation contract');
+}
+$invalidSnapshots = [
+    ['primary'=>[]],
+    ['secondary_ids'=>[]],
+    ['primary'=>null, 'secondary_ids'=>[]],
+    ['primary'=>[], 'secondary_ids'=>null],
+    ['primary'=>'x', 'secondary_ids'=>[]],
+    ['primary'=>[], 'secondary_ids'=>['not-an-id']],
+    ['primary'=>[['technology_id'=>1]], 'secondary_ids'=>[]],
+    ['primary'=>[['technology_id'=>1,'grade'=>'Unknown']], 'secondary_ids'=>[]],
+];
+foreach ($invalidSnapshots as $snapshot) {
+    $check(\Illuminate\Support\Facades\Validator::make($snapshot, $rules)->fails(),
+        'Missing, malformed or ungraded technologies must still be rejected');
+}
 $check($service->technologies(11)[0]['kind'] === 'primary',
     'Only primary technologies should come from main catalog');
 $check($service->additionalTechnologies(11)[0]['name'] === 'PHP',
@@ -102,6 +127,26 @@ $service->comment(11, 'Synthetic note', 21, 'Synthetic Manager');
 $events = $service->timeline(11);
 $check(count($events) === 2 && $events[1]['type'] === 'comment'
     && $events[1]['author'] === 'Synthetic Manager', 'History comment was not attributed');
+
+// Removing the last additional skill, then the last main skill, must persist.
+$service->replace(11, ['primary'=>[['technology_id'=>1,'grade'=>'Senior']], 'secondary_ids'=>[]],
+    21, 'Synthetic Manager');
+$check(count($service->additionalTechnologies(11)) === 0,
+    'Removing the final additional technology did not clear the association');
+$check(count($service->technologies(11)) === 1,
+    'Removing extras must preserve main technologies');
+$service->replace(11, ['primary'=>[], 'secondary_ids'=>[]], 21, 'Synthetic Manager');
+$check(count($service->technologies(11)) === 0
+    && count($service->additionalTechnologies(11)) === 0,
+    'Empty full snapshot must clear both lists');
+$service->replace(11, ['primary'=>[], 'secondary_ids'=>[$phpId]], 21, 'Synthetic Manager');
+$check(count($service->technologies(11)) === 0
+    && count($service->additionalTechnologies(11)) === 1,
+    'An additional-only profile must be supported');
+$service->replace(11, $payload, 21, 'Synthetic Manager');
+$check(count($service->technologies(11)) === 1
+    && count($service->additionalTechnologies(11)) === 2,
+    'Restoring valid assignments after clear must succeed');
 
 // Rollback restores all additions and original associations without deleting
 // a main assignment, including the later created C# additional skill.
