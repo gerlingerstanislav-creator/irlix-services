@@ -44,8 +44,17 @@ export function employeesWithinDepartments(people = [], departments = [], values
   if (!chosen.length) return people || [];
   const tree = departmentTreeOptions(departments);
   const selected = new Set(chosen);
-  for (const node of tree) {
-    if (node.parentValue !== null && selected.has(node.parentValue)) selected.add(node.value);
+  // A rootless legacy cycle may have children before parents in the flat
+  // fallback list. Compute closure to a fixed point rather than relying on order.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const node of tree) {
+      if (node.parentValue !== null && selected.has(node.parentValue) && !selected.has(node.value)) {
+        selected.add(node.value);
+        changed = true;
+      }
+    }
   }
   return (people || []).filter(person => selected.has(String(person.department_id)));
 }
