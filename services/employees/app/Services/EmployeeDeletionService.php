@@ -39,6 +39,11 @@ final class EmployeeDeletionService
             'vacations' => rtrim((string) env('VACATIONS_INTERNAL_URL', 'http://vacations:8000'), '/'),
             'specialists' => rtrim((string) env('SPECIALISTS_INTERNAL_URL', 'http://specialists:8000'), '/'),
             'recruitment' => rtrim((string) env('RECRUITMENT_INTERNAL_URL', 'http://recruitment:8000'), '/'),
+            'finance' => rtrim((string) env('FINANCE_INTERNAL_URL', 'http://finance:8000'), '/'),
+            'equipment' => rtrim((string) env('EQUIPMENT_INTERNAL_URL', 'http://equipment:8000'), '/'),
+            'platform-core' => rtrim((string) env('PLATFORM_CORE_INTERNAL_URL', 'http://platform-core:8000'), '/'),
+            // Storage is last: it also erases S3 bytes, not only DB references.
+            'storage' => rtrim((string) env('STORAGE_INTERNAL_URL', 'http://storage-api:8000'), '/'),
         ];
 
         foreach ($targets as $service => $base) {
@@ -46,7 +51,7 @@ final class EmployeeDeletionService
                 $response = Http::acceptJson()
                     ->withHeaders(['X-Irlix-Internal-Purge-Token' => $purgeToken])
                     ->retry(2, 200, throw: false)
-                    ->timeout(15)
+                    ->timeout(60)
                     ->post("{$base}/internal/system/employees/{$employeeId}/purge", $payload);
             } catch (Throwable $error) {
                 return [
@@ -57,7 +62,7 @@ final class EmployeeDeletionService
             if (!$response->successful()) return [
                 // Protected financial history is an expected business refusal, not
                 // an unavailable upstream. Keep the 423 status for the admin UI.
-                'status' => $response->status() === 423 ? 423 : 502,
+                'status' => in_array($response->status(), [409, 423], true) ? $response->status() : 502,
                 'message' => 'Cross-service employee purge failed',
                 'service' => $service, 'upstream_status' => $response->status(),
             ];
