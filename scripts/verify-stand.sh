@@ -223,4 +223,9 @@ check_status "Anonymous vacations me API" http://127.0.0.1/api/vacations/me 401
 echo "[verify] Recent Keycloak mail-related errors"
 $SUDO $COMPOSE logs --since=30m keycloak 2>&1 | grep -Ei 'mail|smtp|email|messagingexception|authenticationfailed|sendfailed|ssl|tls|535|550|553' | tail -n 120 || true
 
+# An admin-only health response cannot reproduce scoped Sales failures.
+# Exercise real Clients read models against the live schema with an in-process,
+# read-only synthetic Sales projection. No customer data is logged.
+echo "[verify] Sales own-scope Clients registry and workflow"
+$SUDO $COMPOSE exec -T clients php /app/bin/sales-contour-read-smoke.php   || fail "Sales own-scope Clients reads failed"
 echo "Stand verification passed."
