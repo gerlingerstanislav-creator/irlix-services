@@ -107,7 +107,7 @@ final class ServiceEntitlement
                         =>'specialists.catalog.manage',
                     // The global replacement endpoint must pass the same catalog
                     // authorization gate as the primary catalog mutations.
-                    $method==='DELETE'
+                    in_array($method, ['PUT','DELETE'], true)
                         &&preg_match('#^api/catalog/additional-technologies/[0-9]+$#',$path)
                         =>'specialists.catalog.manage',
                     default=>null,

@@ -50,7 +50,7 @@ test('admin catalog shows a conditional action and explicit replacement dialog',
 
 test('additional catalog DELETE has an exact method and URL permission gate', () => {
   const middleware = source('services/specialists/app/Http/Middleware/ServiceEntitlement.php');
-  assert.ok(middleware.includes("$method==='DELETE'"));
+  assert.ok(middleware.includes("in_array($method, ['PUT','DELETE'], true)"));
   assert.ok(middleware.includes("preg_match('#^api/catalog/additional-technologies/[0-9]+$#',$path)"));
   assert.match(middleware, /specialists\.catalog\.manage/);
   assert.match(source('services/specialists/Dockerfile'), /tests\/additional_delete_admission\.php/);
@@ -63,4 +63,42 @@ test('specialists deletion modal uses compact shared typography tokens', () => {
   assert.match(styles, /\.modal-head h2\{[^}]*font-size:var\(--irlix-font-size-section-title\)/);
   assert.match(styles, /\.specialists-additional-delete-modal \.specialists-delete-description\{[^}]*font-size:var\(--irlix-font-size-body\)/);
   assert.match(app, /class="modal-card specialists-additional-delete-modal"/);
+});
+
+
+test('additional catalog rename has authorized PUT route and transaction-safe service', () => {
+  const routes = source('services/specialists/routes/api.php');
+  const controller = source('services/specialists/app/Http/Controllers/AdditionalTechnologyCatalogController.php');
+  const service = source('services/specialists/app/Services/AdditionalTechnologyCatalogService.php');
+  const gate = source('services/specialists/app/Http/Middleware/ServiceEntitlement.php');
+  assert.match(routes, /Route::put\('\/catalog\/additional-technologies\/\{technology\}', \[AdditionalTechnologyCatalogController::class, 'rename'\]\)->whereNumber/);
+  assert.match(controller, /public function rename\(Request \$request, int \$technology\)/);
+  assert.match(controller, /\$this->authorization->assertCanManage\(\$request\)/);
+  assert.match(controller, /\$this->catalog->rename\(/);
+  assert.match(gate, /in_array\(\$method, \['PUT','DELETE'\], true\)/);
+  assert.match(service, /public function rename\(/);
+  assert.match(service, /DB::transaction\(/);
+  assert.match(service, /->lockForUpdate\(\)/);
+  assert.match(service, /whereRaw\('LOWER\(TRIM\(name\)\) = \?'/);
+  assert.match(service, /Переименование дополнительной технологии/);
+  assert.match(service, /Новое название совпадает с основной технологией/);
+  assert.doesNotMatch(controller, /DB::table\(/);
+});
+
+test('inline extra technology rename uses a pencil and replaces its text with an input', () => {
+  const app = source('apps/specialists/src/App.vue');
+  const style = source('apps/specialists/src/style.css');
+  assert.match(app, /Редактировать название/);
+  assert.match(app, /✎/);
+  assert.match(app, /editingAdditionalId === Number\(technology\.id\)/);
+  assert.match(app, /<input ref="additionalRenameInput" v-model="editingAdditionalName"/);
+  assert.match(app, /@keydown.enter.prevent="saveAdditionalRename"/);
+  assert.match(app, /@keydown.esc.stop.prevent="cancelAdditionalRename"/);
+  assert.match(app, /method: 'PUT', body: JSON.stringify\(\{ name \}\)/);
+  assert.match(app, /additionalRenameError = ''/);
+  assert.match(app, /@click="saveAdditionalRename"/);
+  assert.match(app, /@click="cancelAdditionalRename"/);
+  assert.match(app, /canEditTechnologyCatalog\.value/);
+  assert.match(style, /\.specialists-additional-inline-input\{[\s\S]*font-size:var\(--irlix-font-size-table\)/);
+  assert.match(style, /\.specialists-additional-inline-error\{[\s\S]*font-size:var\(--irlix-font-size-caption\)/);
 });

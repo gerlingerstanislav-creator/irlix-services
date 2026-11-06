@@ -12,6 +12,78 @@ use Illuminate\Support\Facades\DB;
 final class AdditionalTechnologyCatalogService
 {
     /**
+     * Rename the catalog identity in place so all assigned specialists retain
+     * the same association ID. Serialize against profile saves and deletion,
+     * and write per-specialist history in the same transaction.
+     */
+    public function rename(int $id, string $rawName, int $actor, string $author): array
+    {
+        $name = trim($rawName);
+        abort_if($name === '' || mb_strlen($name) > 255, 422, 'Введите название технологии (до 255 символов).');
+
+        return DB::transaction(function () use ($id, $name, $actor, $author): array {
+            $technology = AdditionalTechnology::query()->whereKey($id)->lockForUpdate()->first();
+            abort_unless($technology && $technology->active, 404, 'Дополнительная технология не найдена.');
+
+            $original = (string) $technology->name;
+            if ($original === $name) return ['id' => $id, 'name' => $name, 'affected_specialists' => 0, 'changed' => false];
+
+            // Catalog identity is unique by normalized name, including retired
+            // identities that are retained for migration and audit provenance.
+            $normalized = mb_strtolower($name);
+            abort_if(AdditionalTechnology::query()->where('id', '<>', $id)
+                ->whereRaw('LOWER(TRIM(name)) = ?', [$normalized])->exists(),
+                422, 'Дополнительная технология с таким названием уже существует.');
+
+            $members = SpecialistAdditionalTechnology::query()
+                ->where('additional_technology_id', $id)->orderBy('employee_id')
+                ->pluck('employee_id')->map(static fn ($value): int => (int) $value)->all();
+
+            if ($members) {
+                SpecialistProfile::query()->whereIn('employee_id', $members)
+                    ->orderBy('employee_id')->lockForUpdate()->get();
+
+                // Renaming must not make an existing additional technology
+                // duplicate a main skill name for any affected specialist.
+                $main = SpecialistTechnology::query()->from('specialist_technologies as st')
+                    ->join('technologies as t', 't.id', '=', 'st.technology_id')
+                    ->whereIn('st.employee_id', $members)->where('st.kind', 'primary')
+                    ->get(['st.employee_id', 't.name']);
+                foreach ($main as $entry) {
+                    abort_if(mb_strtolower(trim((string) $entry->name)) === $normalized,
+                        409, 'Новое название совпадает с основной технологией одного из специалистов.');
+                }
+            }
+
+            try {
+                $technology->name = $name;
+                $technology->save();
+            } catch (\Illuminate\Database\QueryException $e) {
+                // PostgreSQL's normalized-name unique index also guards
+                // against parallel catalog writers between check and save.
+                if (in_array((string) $e->getCode(), ['23505', '23000'], true)) {
+                    abort(422, 'Дополнительная технология с таким названием уже существует.');
+                }
+                throw $e;
+            }
+
+            foreach ($members as $employee) {
+                SpecialistTimelineEvent::query()->create([
+                    'employee_id' => $employee,
+                    'type' => 'professional',
+                    'title' => 'Переименование дополнительной технологии',
+                    'text' => 'Дополнительная технология «'.$original.'» переименована в «'.$name.'» (изменение общего каталога).',
+                    'author_employee_id' => $actor > 0 ? $actor : null,
+                    'author' => $author,
+                ]);
+            }
+
+            return ['id' => $id, 'name' => $name,
+                'affected_specialists' => count($members), 'changed' => true];
+        }, 3);
+    }
+
+    /**
      * Retire a catalog entry for every specialist, including people outside the
      * current editor's organizational scope and former employees.
      *
