@@ -16,11 +16,11 @@ const migrated = new Map([
   ['apps/vacations/src/components/AbsenceTable.vue',1],
   ['apps/vacations/src/pages/ActionHistoryPage.vue',1],
   ['apps/timesheets/src/App.vue',2],
-  ['apps/specialists/src/App.vue',2],
+  ['apps/specialists/src/App.vue',3],
   ['apps/recruitment/src/AppMvp.vue',4],
 ]);
 
-test('all seventeen flat registry implementations share the same split-header component', () => {
+test('all eighteen flat registry implementations share the same split-header component', () => {
   let count=0;
   for (const [path, expected] of migrated) {
     const component=read(path);
@@ -32,7 +32,7 @@ test('all seventeen flat registry implementations share the same split-header co
     assert.match(component,/density="compact"/,path+' compact layout');
     count+=usages;
   }
-  assert.equal(count,17);
+  assert.equal(count,18);
 });
 
 test('shared table reuses service table classes on both head and body and aligns dynamic tracks', () => {

@@ -22,7 +22,7 @@ class ClientsAccountingAccess
         // This GET-only view has its own Employees-scoped controller gate.
         // Do not resolve Clients contour privileges for Specialists-only users.
         if ($request->isMethod('GET')
-            && preg_match('#^api/specialists/people/[0-9]+/projects$#', $request->path()) === 1) {
+            && preg_match('#^api/specialists/people/[0-9]+/(?:projects|history)$#', $request->path()) === 1) {
             return $next($request);
         }
         if ($request->is('api/health')) return $next($request);

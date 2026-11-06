@@ -14,9 +14,11 @@ const props = defineProps({
   emptyText: { type: String, default: 'Ничего не найдено' },
   ariaLabel: { type: String, default: '' },
   teleport: { type: Boolean, default: false },
+  creatable: { type: Boolean, default: false },
+  createLabel: { type: String, default: 'Создать' },
 });
 
-const emit = defineEmits(['update:modelValue', 'change', 'open', 'close', 'search']);
+const emit = defineEmits(['update:modelValue', 'change', 'open', 'close', 'search', 'create']);
 const root = ref(null);
 const menu = ref(null);
 const searchInput = ref(null);
@@ -32,6 +34,7 @@ const normalized = computed(() => props.options.map((option) => {
       disabled: Boolean(option.disabled),
       kind: option.kind === 'group' ? 'group' : 'option',
       depth: Math.max(0, Number(option.depth || 0)),
+      parentValue: option.parentValue === null || option.parentValue === undefined ? null : String(option.parentValue),
       meta: String(option.meta || ''),
     };
   }
@@ -46,6 +49,11 @@ const selectedValues = computed(() => props.multiple
 const equals = (a, b) => String(a ?? '') === String(b ?? '');
 const isSelected = (value) => selectedValues.value.some((selected) => equals(selected, value));
 const selectedOptions = computed(() => selectableOptions.value.filter((option) => isSelected(option.value)));
+const createCandidate = computed(() => {
+  const candidate = query.value.trim();
+  if (!props.creatable || !candidate || normalized.value.some(o => o.kind === 'option' && o.label.trim().toLocaleLowerCase('ru') === candidate.toLocaleLowerCase('ru'))) return '';
+  return candidate;
+});
 const displayLabel = computed(() => {
   if (!selectedOptions.value.length) return props.placeholder;
   if (props.multiple) return props.placeholder;
@@ -72,7 +80,23 @@ const filtered = computed(() => {
       ancestors.forEach(group => matched.add(group));
     }
   }
-  return normalized.value.filter(option => matched.has(option));
+  // Selectable department tree nodes preserve their ancestors on search.
+  // This is intentionally generic: non-tree pickers keep the old behavior.
+  const byValue = new Map(normalized.value.filter(o => o.kind === 'option').map(o => [String(o.value), o]));
+  const matchedKeys = new Set([...matched]);
+  for (const node of normalized.value) {
+    if (node.kind !== 'option' || !node.parentValue || !node.label.toLocaleLowerCase('ru').includes(needle)) continue;
+    matchedKeys.add(node);
+    let cursor = node.parentValue;
+    const visited = new Set();
+    while (cursor && byValue.has(cursor) && !visited.has(cursor)) {
+      visited.add(cursor);
+      const parent = byValue.get(cursor);
+      matchedKeys.add(parent);
+      cursor = parent.parentValue;
+    }
+  }
+  return normalized.value.filter(option => matchedKeys.has(option));
 });
 
 const updateMenuPosition = () => {
@@ -187,7 +211,8 @@ onBeforeUnmount(() => {
               <span class="ui-search-select__option-label">{{ option.label }}</span><span v-if="option.meta" class="ui-search-select__option-meta">{{option.meta}}</span>
             </button>
           </template>
-          <div v-if="!filtered.length" class="ui-search-select__empty">{{ emptyText }}</div>
+          <button v-if="createCandidate" type="button" class="ui-search-select__option ui-search-select__create" @click="emit('create', createCandidate); setOpen(false)">{{ createLabel }} «{{ createCandidate }}»</button>
+          <div v-if="!filtered.length && !createCandidate" class="ui-search-select__empty">{{ emptyText }}</div>
         </div>
       </div>
     </Teleport>
@@ -275,5 +300,6 @@ onBeforeUnmount(() => {
 .ui-search-select__check { display:block; width:12px; height:12px; fill:none; stroke:var(--irlix-color-primary-text); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
 .ui-search-select__marker i { width:10px; height:10px; display:block; border-radius:inherit; background:var(--irlix-color-primary); }
 .ui-search-select__empty { padding:13px 12px; color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); text-align:center; }
+.ui-search-select__create{border-top:1px solid var(--irlix-color-border);color:var(--irlix-color-primary-text);font-weight:600}
 </style>
 

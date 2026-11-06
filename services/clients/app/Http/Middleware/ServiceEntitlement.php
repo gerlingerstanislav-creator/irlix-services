@@ -28,7 +28,7 @@ final class ServiceEntitlement
             // Specialists managers must not acquire general Clients admission.
             // The controller additionally checks current Employees scope per employee.
             if ($request->isMethod('GET')
-                && preg_match('#^api/specialists/people/[0-9]+/projects$#', $request->path()) === 1) {
+                && preg_match('#^api/specialists/people/[0-9]+/(?:projects|history)$#', $request->path()) === 1) {
                 if (!in_array('service:specialists', $roles, true)) {
                     return response()->json(['message' => 'Specialists access denied'], 403);
                 }
