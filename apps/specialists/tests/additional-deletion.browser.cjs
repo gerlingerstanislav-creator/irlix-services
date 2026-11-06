@@ -19,7 +19,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     ];
     let canManage = true;
     let failOnce = true;
+    let failRenameOnce = true;
     const deletionRequests = [];
+    const renameRequests = [];
     await page.addInitScript(iss=>sessionStorage.setItem('irlix.platform.auth.tokens',JSON.stringify({
       access_token:'e30.'+btoa(JSON.stringify({iss,exp:Math.floor(Date.now()/1000)+3600,name:'Synthetic Catalog User'}))+'.synthetic',
     })),issuer);
@@ -30,6 +32,19 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       const {pathname} = new URL(route.request().url());
       const method=route.request().method();
       const deletedId=Number(pathname.match(/\/specialists\/catalog\/additional-technologies\/(\d+)$/)?.[1]);
+      if(method==='PUT' && deletedId){
+        const payload=route.request().postDataJSON();
+        renameRequests.push({id:deletedId,payload});
+        if(!canManage)return route.fulfill({status:403,json:{message:'Недостаточно прав'}});
+        if(failRenameOnce){
+          failRenameOnce=false;
+          return route.fulfill({status:422,json:{message:'Это название уже используется'}});
+        }
+        const found=catalog.find(t=>t.id===deletedId);
+        if(!found)return route.fulfill({status:404,json:{message:'Технология не найдена'}});
+        found.name=payload.name;
+        return route.fulfill({json:{data:{id:deletedId,name:found.name,affected_specialists:3,changed:true}}});
+      }
       if(method==='DELETE' && deletedId){
         const payload=route.request().postDataJSON();
         deletionRequests.push({id:deletedId,payload});
@@ -114,13 +129,43 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       'no replacement must explicitly remove the technology from all specialists');
     await page.waitForFunction(()=>document.querySelectorAll('.specialists-catalog-section tbody tr').length===2);
 
+    // Inline rename: pencil swaps the name for a focused field; Escape
+    // cancels, blank names and failed saves preserve state and are retryable.
+    await page.getByRole('button',{name:'Редактировать название Replacement Demo'}).click();
+    let inline=page.getByRole('textbox',{name:'Новое название технологии Replacement Demo'});
+    await inline.waitFor({state:'visible'});
+    assert.equal(await inline.inputValue(),'Replacement Demo');
+    assert.ok(await inline.evaluate(input => document.activeElement===input),'rename field should autofocus');
+    await inline.fill(' ');
+    await inline.press('Enter');
+    assert.match(await page.getByRole('alert').last().innerText(),/Введите название/);
+    assert.equal(renameRequests.length,0,'blank rename never reaches server');
+    await inline.fill('Updated Demo');
+    await inline.press('Enter');
+    assert.match(await page.getByRole('alert').last().innerText(),/уже используется/);
+    assert.equal(await inline.inputValue(),'Updated Demo','failed PUT must preserve the draft');
+    await page.getByRole('button',{name:'Сохранить название Replacement Demo'}).click();
+    await page.waitForFunction(()=>[...document.querySelectorAll('.specialists-catalog-section tbody tr')]
+      .some(row=>row.textContent.includes('Updated Demo')));
+    assert.deepEqual(renameRequests.map(x=>x.payload),[{name:'Updated Demo'},{name:'Updated Demo'}]);
+    assert.match(await page.locator('.irlix-toast').innerText(),/переименована/);
+    await page.getByRole('button',{name:'Редактировать название Archived Demo'}).click();
+    inline=page.getByRole('textbox',{name:'Новое название технологии Archived Demo'});
+    await inline.fill('Abandoned Draft');
+    await inline.press('Escape');
+    assert.equal(await page.getByRole('textbox',{name:'Новое название технологии Archived Demo'}).count(),0,
+      'Escape cancels editing without persisting');
+    assert.equal(renameRequests.length,2);
+
     canManage=false;
     await page.reload();
     await page.waitForFunction(()=>document.querySelectorAll('.specialists-catalog-section tbody tr').length===2);
     assert.equal(await page.getByRole('button',{name:/Удалить дополнительную технологию/}).count(),0,
       'read-only catalog users must never see destructive controls');
+    assert.equal(await page.getByRole('button',{name:/Редактировать название/}).count(),0,
+      'read-only catalog users must not see rename controls');
     assert.deepEqual(errors,[]);
-    console.log('Specialists additional catalog deletion PASS: dialog, selection, error/retry, global replacement, without replacement and read-only role');
+    console.log('Specialists additional catalog deletion PASS: dialog, selection, error/retry, global replacement, without replacement and inline rename, read-only role');
   } finally {
     await browser.close();
   }
