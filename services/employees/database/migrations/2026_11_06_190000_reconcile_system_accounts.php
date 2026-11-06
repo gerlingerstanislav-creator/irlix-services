@@ -46,10 +46,12 @@ return new class extends Migration
 
             // Restore the explicitly protected bootstrap grant, without touching
             // the roles of real employees (including human platform admins).
-            DB::table('employee_access_roles')->updateOrInsert(
-                ['employee_id' => $adminId, 'role' => 'platform-admin'],
-                ['updated_at' => now()]
-            );
+            DB::table('employee_access_roles')->insertOrIgnore([
+                'employee_id' => $adminId,
+                'role' => 'platform-admin',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
         });
     }
 
