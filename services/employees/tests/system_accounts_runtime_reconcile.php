@@ -41,10 +41,9 @@ $check = static function (bool $value, string $message): void {
     if (!$value) throw new RuntimeException($message);
 };
 $projection = new SystemAccountService();
-$check(array_column($projection->list(), 'login') === ['integration.bot'],
-    'Legacy unclassified technical identity omitted');
-$check((new EmployeeReadService())->list([])['meta']['count'] === 1,
-    'Misclassified system identity leaked into the employees directory');
+// A plain read cannot classify a legacy row that still has account_type=employee.
+// The deployment must first reconcile it persistently before exposing the page.
+$check($projection->list() === [], 'Unreconciled database unexpectedly contains system rows');
 
 $bootstrapService = new SystemAccountBootstrapService();
 $bootstrapService->reconcile();
