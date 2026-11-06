@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Support\ClientContourAccess;
+use App\Services\ClientWorkflowVisibility;
 use App\Support\ProductionDirection;
 use Closure;
 use Illuminate\Http\JsonResponse;
@@ -49,6 +50,9 @@ class ClientsAccountingAccess
         // The global partner registry has an explicit all-scope policy in its controller.
         if ($request->is('api/partners*') || $request->is('api/partner-specialists*')) return $next($request);
         if ($access['platform_admin']) return $next($request);
+        $workflowVisibility = app(ClientWorkflowVisibility::class);
+        $workflowScopes = $workflowVisibility->viewScopes($access);
+        $request->attributes->set('clients_workflow_view_scopes', $workflowScopes);
 
         $path = $request->path();
         $method = $request->method();
@@ -174,17 +178,27 @@ class ClientsAccountingAccess
             }
             return $query->pluck('id')->map(fn ($value) => (int) $value)->all();
         };
-        $clientViewClients = array_values(array_unique([...$idsForEmployees($clientViewIds), ...$accountClients]));
+        // A broad workflow grant or clients.manage must not broaden clients.view.
+        $clientViewClients = $idsForEmployees($clientViewIds);
+        if ($clientViewIds !== null && $clientViewIds !== []) {
+            $delegatedClientView = DB::table('client_account_delegations')
+                ->whereIn('to_employee_id', $clientViewIds)
+                ->whereNull('revoked_at')
+                ->whereDate('starts_at', '<=', today())
+                ->whereDate('ends_at', '>=', today())
+                ->pluck('client_id')->map(fn ($value) => (int) $value)->all();
+            $clientViewClients = array_values(array_unique([...$clientViewClients, ...$delegatedClientView]));
+        }
         $clientManageClients = array_values(array_unique([
             ...$accountClients,
             ...$idsForEmployees($clientManageIds),
             ...$idsForEmployees($clientManageIds, true),
         ]));
-        $ownsClientView = fn (?int $clientId): bool => $clientId !== null && in_array($clientId, array_values(array_unique([...$ownClients, ...$clientViewClients])), true);
+        $ownsClientView = fn (?int $clientId): bool => $clientId !== null && in_array($clientId, $clientViewClients, true);
         $ownsClientManage = fn (?int $clientId): bool => $clientId !== null && in_array($clientId, array_values(array_unique([...$clientManageClients, ...$accountClients])), true);
         // Provide scope-safe candidates before pagination. The existing response
         // projection below remains defense-in-depth for every legacy consumer.
-        $request->attributes->set('clients_overview_client_ids', array_values(array_unique([...$ownClients, ...$clientViewClients])));
+        $request->attributes->set('clients_overview_client_ids', $clientViewClients);
         $request->attributes->set('clients_overview_lead_employee_ids', $employeeIdsForPermission('leads.view'));
         if ($request->path() === 'api/overview' && $request->query('section') === 'contacts') {
             $visibleLeadEmployees = $employeeIdsForPermission('leads.view');
@@ -233,11 +247,14 @@ class ClientsAccountingAccess
         };
         $ownsLead = fn (int $leadId): bool => DB::table('leads')->where('id', $leadId)
             ->when($responsibleIds !== null, fn ($query) => $query->whereIn('responsible_employee_id', $responsibleIds ?: [0]))->exists();
-        $ownsRequest = function (int $requestId) use ($responsibleIds, $ownsClientView, $ownsClientManage, $permission): bool {
+        $ownsRequest = function (int $requestId) use ($permission, $access, $workflowVisibility, $workflowScopes): bool {
             $row = DB::table('client_requests')->where('id', $requestId)->first();
             if (!$row) return false;
-            if ($row->client_id) return str_ends_with((string) $permission, '.manage') ? $ownsClientManage((int) $row->client_id) : $ownsClientView((int) $row->client_id);
-            return $responsibleIds === null || in_array((int) $row->responsible_employee_id, $responsibleIds ?: [0], true);
+            // Even after a Client handoff, the assigned Sales employee owns
+            // their request. Use the permission matched to the actual route.
+            $key = $permission && str_ends_with($permission, '.manage') ? $permission : 'requests.view';
+            $scope = $workflowScopes[$key] ?? $workflowVisibility->scopeFor($access, $key);
+            return ClientWorkflowVisibility::requestAllowed($row, $scope);
         };
         $ownsProductionPosition = function (int $positionId) use ($isProductionManager, $productionDepartmentIds, $access): bool {
             if (!$isProductionManager) return false;
@@ -372,44 +389,9 @@ class ClientsAccountingAccess
                 }
                 return $client;
             }, (array) ($payload['data']['clients'] ?? []));
-            $canViewRequests = $this->accessResolver->allows($access, 'requests.view');
-            $canViewPositions = $this->accessResolver->allows($access, 'positions.view');
-            $canViewAttempts = $this->accessResolver->allows($access, 'attempts.view');
-            $requestViewIds = $employeeIdsForPermission('requests.view');
-            $leadViewIds = $employeeIdsForPermission('leads.view');
-            $ownsVisibleLead = fn (int $leadId): bool => DB::table('leads')->where('id', $leadId)
-                ->when($leadViewIds !== null, fn ($query) => $query->whereIn('responsible_employee_id', $leadViewIds ?: [0]))->exists();
-            $visibleRequests = [];
-            foreach ($payload['data']['requests'] ?? [] as $row) {
-                $accountRequest = $canViewRequests
-                    && (($row['client_id'] ?? null) ? $ownsClientView((int) $row['client_id']) : ($requestViewIds === null || in_array((int) $row['responsible_employee_id'], $requestViewIds, true)));
-                if ($accountRequest) {
-                    $visibleRequests[] = $row;
-                    continue;
-                }
-                if (!$isProductionManager || (!$canViewPositions && !$canViewAttempts)) continue;
-                $scopedPositions = array_values(array_filter(
-                    $row['positions'] ?? [],
-                    fn ($position) => in_array(ProductionDirection::id($position, $access), $productionDepartmentIds, true)
-                ));
-                if (!$canViewAttempts) {
-                    $scopedPositions = array_map(fn ($position) => [...$position, 'attempts' => []], $scopedPositions);
-                }
-                if ($scopedPositions) {
-                    $visibleRequests[] = [
-                        'id' => $row['id'],
-                        'client_id' => $row['client_id'],
-                        'lead_id' => $row['lead_id'] ?? null,
-                        'title' => $row['title'],
-                        'description' => $row['description'] ?? null,
-                        'responsible_employee_id' => $row['responsible_employee_id'] ?? null,
-                        'deadline' => $row['deadline'] ?? null,
-                        'lifetime_weeks' => $row['lifetime_weeks'] ?? null,
-                        'status' => $row['status'],
-                        'positions' => $scopedPositions,
-                    ];
-                }
-            }
+            $visibleRequests = $workflowVisibility->projectRequests(
+                (array) ($payload['data']['requests'] ?? []), $access, $workflowScopes
+            );
             $payload['data']['requests'] = $visibleRequests;
             $referencedClientIds = array_values(array_unique(array_filter(array_map(fn ($row) => (int) ($row['client_id'] ?? 0), $visibleRequests))));
             if ($this->accessResolver->allows($access, 'clients.view')) {

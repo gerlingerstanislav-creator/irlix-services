@@ -144,6 +144,14 @@ final class EmployeeDirectoryService
                 // same resolver also assigns Keycloak roles in Employees.
                 'functional_roles' => RoleLabels::functionalClientRoles($actor, $allDepartments->all()),
             ],
+            // Preserve historical owner names for read-only display in Clients.
+            // The interactive employee picker still receives only employed staff.
+            // System accounts remain excluded from both collections.
+            'historical_employee_names' => Employee::query()->business()
+                ->where(fn ($q) => $q->where('employment_status', '!=', 'Трудоустроен')
+                    ->orWhereNull('employment_status'))
+                ->orderBy('full_name')->get(['id', 'full_name'])
+                ->map(static fn (Employee $row) => (object) $row->getRawOriginal()),
             'employees' => Employee::query()->from('employees as e')->business('e')
                 ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
                 ->where('e.employment_status', 'Трудоустроен')

@@ -12,6 +12,7 @@ COPY bin /app/bin
 RUN php /app/tests/legacy_head_role_bridge.php \
     && php /app/tests/canonical_matrix_migration.php \
     && php /app/tests/permissions_routes_smoke.php \
+    && php /app/tests/sales_ownership_smoke.php \
     && php /app/tests/workflow_smoke.php \
     && php /app/tests/attempt_funnel_smoke.php \
     && php /app/tests/timesheet_assignments_smoke.php \

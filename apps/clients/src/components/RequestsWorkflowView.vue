@@ -1,5 +1,6 @@
 <script setup>
 import { displayEmployeeName } from '../displayEmployeeName';
+import { buildEmployeeNameMap } from '../employeeDisplayMap.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { UiBadge, UiButton, UiDrawer, UiFilterBar, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiKanbanBoard, UiClientSummary, UiRegistryTable } from '@irlix/ui';
 
@@ -22,6 +23,7 @@ const props = defineProps({
   clients: { type: Array, default: () => [] },
   leads: { type: Array, default: () => [] },
   employees: { type: Array, default: () => [] },
+  historicalEmployees: { type: Array, default: () => [] },
   departments: { type: Array, default: () => [] },
   access: { type: Object, default: () => ({}) },
   technologyOptions: { type: Array, default: () => [] },
@@ -101,7 +103,8 @@ const targetOptions = computed(() => [
   ...props.clients.map(item => ({ value:`client:${item.id}`, label:item.name, meta:'клиент' })),
   ...props.leads.filter(item => !item.converted_client_id).map(item => ({ value:`lead:${item.id}`, label:item.name, meta:'лид' })),
 ].sort((a,b)=>a.label.localeCompare(b.label,'ru')));
-const employeeName = id => displayEmployeeName(props.employees.find(item => Number(item.id) === Number(id))?.full_name) || (id ? `#${id}` : '—');
+const employeeDisplayMap = computed(() => buildEmployeeNameMap(props.employees, props.historicalEmployees));
+const employeeName = id => employeeDisplayMap.value.get(Number(id)) || (id ? `#${id}` : '—');
 const clientById = id => props.clients.find(item => Number(item.id) === Number(id)) || null;
 const clientName = id => clientById(id)?.name || `#${id}`;
 const targetName = request => request?.target_name || (request?.client_id ? clientName(request.client_id) : props.leads.find(item=>Number(item.id)===Number(request?.lead_id))?.name) || '—';

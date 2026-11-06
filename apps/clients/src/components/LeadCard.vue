@@ -1,18 +1,19 @@
 <script setup>
 import { displayEmployeeName } from '../displayEmployeeName';
+import { buildEmployeeNameMap } from '../employeeDisplayMap.js';
 import { computed, reactive, ref, watch } from 'vue';
 import { UiButton, UiDrawer, UiSearchSelect } from '@irlix/ui';
 import AttemptProgress from './AttemptProgress.vue';
 import HistoryTimeline from './HistoryTimeline.vue';
 import { rememberedView, rememberView } from '../persistView';
 
-const props=defineProps({lead:{type:Object,default:null},employees:{type:Array,default:()=>[]},contacts:{type:Array,default:()=>[]},requests:{type:Array,default:()=>[]},statuses:{type:Array,default:()=>[]},canManage:Boolean});
+const props=defineProps({lead:{type:Object,default:null},employees:{type:Array,default:()=>[]},historicalEmployees:{type:Array,default:()=>[]},contacts:{type:Array,default:()=>[]},requests:{type:Array,default:()=>[]},statuses:{type:Array,default:()=>[]},canManage:Boolean});
 const emit=defineEmits(['close','changed','convert','create-request']);
 const busy=ref(false),error=ref(''),comment=ref(''),legalOpen=ref(false),contactOpen=ref(false),activeTab=ref(rememberedView('lead.card.tab','history',['history','requests','contacts','legal']));
 watch(activeTab, value => rememberView('lead.card.tab',value));
 const emptyLegal=()=>({name:'',inn:'',full_name:'',ogrn:'',kpp:'',registration_date:'',okpo:'',oktmo:'',address:''});
 const legal=reactive(emptyLegal()),contact=reactive({contact_id:'',full_name:'',position:'',phone:'',email:''});
-const employeeMap=computed(()=>new Map(props.employees.map(item=>[Number(item.id),displayEmployeeName(item.full_name)||`#${item.id}`])));
+const employeeMap=computed(()=>buildEmployeeNameMap(props.employees,props.historicalEmployees));
 const employeeName=id=>employeeMap.value.get(Number(id))||(id?`#${id}`:'—');
 const contactOptions=computed(()=>props.contacts.map(item=>({value:String(item.id),label:item.full_name})).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const leadRequests=computed(()=>props.requests.filter(item=>Number(item.lead_id)===Number(props.lead?.id)));

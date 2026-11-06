@@ -1,14 +1,15 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { buildEmployeeNameMap } from '../employeeDisplayMap.js';
 import { UiFilterBar, UiSearchSelect, UiKanbanBoard } from '@irlix/ui';
 
-const props=defineProps({leads:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},statuses:{type:Array,default:()=>[]},canManage:Boolean});
+const props=defineProps({leads:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},historicalEmployees:{type:Array,default:()=>[]},statuses:{type:Array,default:()=>[]},canManage:Boolean});
 const emit=defineEmits(['open','move']);
 const leadColumns = ref(null);
 watch(() => props.statuses, statuses => { if (leadColumns.value === null && statuses.length) leadColumns.value = statuses.filter(status => !status.startsWith('Сделка закрыта')); }, { immediate: true });
 const visibleLeadColumns = computed(() => props.statuses.filter(status => (leadColumns.value || []).includes(status)));
 const query=ref(''),responsible=ref(''),draggedId=ref(null),dropStatus=ref('');
-const employeeMap=computed(()=>new Map(props.employees.map(item=>[Number(item.id),item.full_name||`#${item.id}`])));
+const employeeMap=computed(()=>buildEmployeeNameMap(props.employees,props.historicalEmployees, value=>String(value||'').trim()));
 const employeeName=id=>employeeMap.value.get(Number(id))||(id?`#${id}`:'—');
 const employeeOptions=computed(()=>props.employees.map(item=>({value:String(item.id),label:item.full_name||`#${item.id}`})).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const visible=computed(()=>props.leads.filter(lead=>{
