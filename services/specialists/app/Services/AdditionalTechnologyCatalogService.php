@@ -31,7 +31,7 @@ final class AdditionalTechnologyCatalogService
             // Catalog identity is unique by normalized name, including retired
             // identities that are retained for migration and audit provenance.
             $normalized = mb_strtolower($name);
-            abort_if(AdditionalTechnology::query()->whereKeyNot($id)
+            abort_if(AdditionalTechnology::query()->where('id', '<>', $id)
                 ->whereRaw('LOWER(TRIM(name)) = ?', [$normalized])->exists(),
                 422, 'Дополнительная технология с таким названием уже существует.');
 
