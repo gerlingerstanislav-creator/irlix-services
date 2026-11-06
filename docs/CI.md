@@ -2,13 +2,13 @@
 
 ## Verified GHCR image preflight (November 2026)
 
-The \`changes\` job now checks selected immutable, content-addressed GHCR image
+The `changes` job now checks selected immutable, content-addressed GHCR image
 manifests concurrently before allocating build runners. Already published,
-verified source tags are reused without starting separate \`Build or reuse\`
+verified source tags are reused without starting separate `Build or reuse`
 jobs. Missing tags or failed/timeout manifest checks still go through normal
-Docker build, image verification and publication. The required \`CI verified\`
+Docker build, image verification and publication. The required `CI verified`
 gate permits a skipped build only when this preflight explicitly returns
-\`needs_build=false\`. The complete release plan, production transfer list,
+`needs_build=false`. The complete release plan, production transfer list,
 deploy and smoke steps are unchanged.
 
 ## Selective heavy migration checks and batched production image delivery (November 2026)
