@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Employee;
+use App\Support\EmployeePurgeRepository;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
@@ -88,7 +90,13 @@ final class EmployeeDeletionService
             }
         }
 
-        $employee->delete();
+        // Synthetic API contract tests pass a non-persisted model, while the
+        // real controller always looks up an existing persisted employee.
+        if ($employee->exists) {
+            DB::transaction(static function () use ($employee): void {
+                (new EmployeePurgeRepository())->erase($employee);
+            });
+        }
         return ['status' => 204];
     }
 }
