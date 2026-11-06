@@ -12,6 +12,9 @@ on:
       - 'services/timesheets/tests/**'
       - '.github/workflows/client-member-migration-pg.yml'
   workflow_dispatch:
+  # Weekly full synthetic volume rehearsal; PRs keep targeted checks.
+  schedule:
+    - cron: "17 3 * * 1"
 
 permissions:
   contents: read
@@ -21,7 +24,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    name: Select PostgreSQL and volume coverage
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.select.outputs.enabled }}
+      stress: ${{ steps.select.outputs.stress }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: select
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            python3 scripts/ci/workflow_scope.py client-member-migration-pg --pr
+          else
+            python3 scripts/ci/workflow_scope.py client-member-migration-pg
+          fi
+
   postgres-contract:
+    needs: scope
+    if: needs.scope.outputs.enabled == 'true'
     name: Real PostgreSQL schema upgrade and migration smoke
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -80,12 +103,14 @@ jobs:
           docker run --rm --network none irlix-migration-rehearsal \
             php /app/tests/reconciliation_decision_store_smoke.php
       - name: Stress 64k synthetic ClientMember facts and idempotent retry
+        if: needs.scope.outputs.stress == 'true'
         run: |
           docker run --rm --network none --memory 1g \
             -e MIGRATION_CLIENT_MEMBER_VOLUME_ROWS=64000 \
             irlix-migration-rehearsal php -d memory_limit=768M \
             /app/tests/client_member_import_smoke.php
       - name: Stream 250k synthetic rows with bounded memory
+        if: needs.scope.outputs.stress == 'true'
         run: |
           docker run --rm --network none --memory 256m \
             irlix-migration-rehearsal php -d memory_limit=192M \

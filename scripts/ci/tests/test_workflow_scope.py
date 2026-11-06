@@ -109,9 +109,48 @@ class SpecializedWorkflowSelectionTests(unittest.TestCase):
         self.assertGreaterEqual(ci.count('git rev-list --parents -n 1 HEAD'), 3)
         self.assertNotIn('PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}', ci)
 
+    def test_client_member_unrelated_clients_change_skips_volume_stress(self):
+        result = scope.select("client-member-migration-pg", {
+            "services/clients/app/Http/Controllers/ClientsController.php"
+        })
+        self.assertTrue(result["enabled"])
+        self.assertFalse(result["stress"])
+
+    def test_client_member_importer_change_runs_volume_stress(self):
+        result = scope.select("client-member-migration-pg", {
+            "services/migration/app/Migration/Services/ClientsMigration.php"
+        })
+        self.assertTrue(result["enabled"])
+        self.assertTrue(result["stress"])
+
+    def test_client_member_test_change_runs_volume_stress(self):
+        result = scope.select("client-member-migration-pg", {
+            "services/migration/tests/client_member_import_smoke.php"
+        })
+        self.assertTrue(result["enabled"])
+        self.assertTrue(result["stress"])
+
+    def test_client_member_unrelated_ui_skips_pg(self):
+        result = scope.select("client-member-migration-pg", {
+            "apps/clients/src/App.vue"
+        })
+        self.assertFalse(result["enabled"])
+        self.assertFalse(result["stress"])
+
+    def test_client_member_full_runs_volume_stress(self):
+        self.assertEqual(scope.select("client-member-migration-pg"),
+                         {"enabled": True, "stress": True})
+
+    def test_client_member_workflow_uses_checked_merge_sha(self):
+        yaml = (scope.ROOT / ".github/workflows/client-member-migration-pg.yml").read_text()
+        self.assertIn("--pr", yaml)
+        self.assertIn("needs.scope.outputs.stress == 'true'", yaml)
+        self.assertIn("schedule:", yaml)
+
     def test_manual_runs_are_exhaustive(self):
         for mode in ("ui-appearance-check", "keycloak-authz",
-                     "client-history-ui-check", "finance-validation"):
+                     "client-history-ui-check", "finance-validation",
+                     "client-member-migration-pg"):
             result = scope.select(mode)
             self.assertTrue(all(value for key, value in result.items() if key != "matrix"))
             if "matrix" in result:

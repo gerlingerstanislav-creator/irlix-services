@@ -53,6 +53,8 @@ jobs:
       has_images: ${{ steps.detect.outputs.has_images }}
       deploy: ${{ steps.detect.outputs.deploy }}
       auth: ${{ steps.detect.outputs.auth }}
+      build_matrix: ${{ steps.preflight.outputs.build_matrix }}
+      needs_build: ${{ steps.preflight.outputs.needs_build }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -100,6 +102,18 @@ jobs:
             args+=(--base "$base_sha")
           fi
           python3 scripts/ci/service_plan.py plan "${args[@]}"
+      - name: Authenticate to GHCR for image preflight
+        if: steps.detect.outputs.has_images == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Select images that need a build
+        id: preflight
+        env:
+          SELECTED_MATRIX: ${{ steps.detect.outputs.matrix }}
+        run: python3 scripts/ci/image_preflight.py
       - uses: actions/upload-artifact@v4
         with:
           name: deploy-plan
@@ -109,13 +123,13 @@ jobs:
 
   build:
     name: Build or reuse / ${{ matrix.id }}
-    if: ${{ needs.changes.outputs.has_images == 'true' }}
+    if: ${{ needs.changes.outputs.needs_build == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     needs: changes
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.changes.outputs.build_matrix) }}
     steps:
       - uses: actions/checkout@v4
         if: matrix.skip != true
@@ -237,12 +251,12 @@ jobs:
       - env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           BUILD_RESULT: ${{ needs.build.result }}
-          HAS_IMAGES: ${{ needs.changes.outputs.has_images }}
+          HAS_BUILD_REQUIRED: ${{ needs.changes.outputs.needs_build }}
           PROVENANCE_RESULT: ${{ needs.provenance.result }}
           SNAPSHOT_RESULT: ${{ needs.snapshot-runtime.result }}
           QA_RESULT: ${{ needs.qa.result }}
           QA_BROWSER_RESULT: ${{ needs.qa-browser.result }}
-        run: test "$CHANGES_RESULT" = success && { test "$BUILD_RESULT" = success || { test "$BUILD_RESULT" = skipped && test "$HAS_IMAGES" = false; }; } && test "$PROVENANCE_RESULT" = success && test "$QA_RESULT" = success && test "$QA_BROWSER_RESULT" = success && { test "$SNAPSHOT_RESULT" = success || test "$SNAPSHOT_RESULT" = skipped; }
+        run: test "$CHANGES_RESULT" = success && { test "$BUILD_RESULT" = success || { test "$BUILD_RESULT" = skipped && test "$HAS_BUILD_REQUIRED" = false; }; } && test "$PROVENANCE_RESULT" = success && test "$QA_RESULT" = success && test "$QA_BROWSER_RESULT" = success && { test "$SNAPSHOT_RESULT" = success || test "$SNAPSHOT_RESULT" = skipped; }
 
   deploy:
     name: Pull and deploy affected components

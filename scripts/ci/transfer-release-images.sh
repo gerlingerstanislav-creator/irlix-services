@@ -45,20 +45,63 @@ if [ "$free_kb" -lt 4194304 ]; then
 fi
 REMOTE
 
-# Auth happens on GitHub's runner, where GHCR is reachable. Docker images are
-# streamed directly into the server daemon (no temporary archive on disk).
-# Pre-existing identical tagged images remain untouched.
-printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
+# Retain exact verified source tags. Never transfer images already available on
+# the server. A small multi-image docker save archive deduplicates shared layers
+# (particularly the many Vue frontends), and needs only one SSH load per batch.
+# Keep batches bounded so the GitHub runner does not exhaust its local disk.
+batch_size="${IRLIX_TRANSFER_BATCH_SIZE:-3}"
+case "$batch_size" in 1|2|3|4) ;; *) echo "Invalid image transfer batch size (1..4)" >&2; exit 1 ;; esac
+started_at="$(date +%s)"
+already=0
+transferred=0
+batches=0
+declare -a pending=()
 for image in "${images[@]}"; do
-  # image-refs validates the registry, source-hash tag and current SHA.
   if ssh "${ssh_args[@]}" "$remote" "if [ \"\$(id -u)\" -eq 0 ]; then docker image inspect '$image' >/dev/null 2>&1; else sudo -n docker image inspect '$image' >/dev/null 2>&1; fi"; then
     echo "Already present on server: $image"
-    continue
+    already=$((already + 1))
+  else
+    pending+=("$image")
   fi
-  echo "Streaming verified image to server: $image"
-  docker pull "$image"
-  docker save "$image" | gzip -1 | ssh "${ssh_args[@]}" "$remote" 'set -e; if [ "$(id -u)" -eq 0 ]; then gzip -dc | docker load >/dev/null; else gzip -dc | sudo -n docker load >/dev/null; fi'
-  ssh "${ssh_args[@]}" "$remote" "if [ \"\$(id -u)\" -eq 0 ]; then docker image inspect '$image' >/dev/null; else sudo -n docker image inspect '$image' >/dev/null; fi"
-  docker image rm "$image" >/dev/null 2>&1 || true
-  echo "Transferred and verified: $image"
 done
+
+if (( ${#pending[@]} == 0 )); then
+  echo "All ${#images[@]} verified images are already on the server."
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    printf '### Production image delivery\n- Selected: %s\n- Already on server: %s\n- Transferred: 0\n' "${#images[@]}" "$already" >> "$GITHUB_STEP_SUMMARY"
+  fi
+  exit 0
+fi
+
+# Only authenticate and pull on the GitHub runner, never on production.
+printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
+declare -a batch=()
+flush_batch() {
+  if (( ${#batch[@]} == 0 )); then return 0; fi
+  batches=$((batches + 1))
+  echo "Loading verified image batch $batches (${#batch[@]} tags, shared layers deduplicated)"
+  # pipefail ensures a failed save/compression/SSH/load cannot pass as deployed.
+  docker save "${batch[@]}" | gzip -1 | ssh "${ssh_args[@]}" "$remote" 'set -e; if [ "$(id -u)" -eq 0 ]; then gzip -dc | docker load >/dev/null; else gzip -dc | sudo -n docker load >/dev/null; fi'
+  for image in "${batch[@]}"; do
+    ssh "${ssh_args[@]}" "$remote" "if [ \"\$(id -u)\" -eq 0 ]; then docker image inspect '$image' >/dev/null; else sudo -n docker image inspect '$image' >/dev/null; fi"
+    echo "Transferred and verified: $image"
+    docker image rm "$image" >/dev/null 2>&1 || true
+    transferred=$((transferred + 1))
+  done
+  batch=()
+}
+
+for image in "${pending[@]}"; do
+  echo "Pulling verified image for batch: $image"
+  docker pull "$image"
+  batch+=("$image")
+  if (( ${#batch[@]} >= batch_size )); then flush_batch; fi
+done
+flush_batch
+
+elapsed=$(( $(date +%s) - started_at ))
+echo "Image delivery: selected=${#images[@]}, reused=$already, transferred=$transferred, batches=$batches, elapsed=${elapsed}s"
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  printf '### Production image delivery\n- Selected: %s\n- Already on server: %s\n- Transferred: %s\n- SSH batches: %s\n- Elapsed: %ss\n' \
+    "${#images[@]}" "$already" "$transferred" "$batches" "$elapsed" >> "$GITHUB_STEP_SUMMARY"
+fi

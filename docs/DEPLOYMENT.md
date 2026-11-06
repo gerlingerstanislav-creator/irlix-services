@@ -12,6 +12,17 @@ Telegram success notifications are sent only when the actual deploy and stand
 verification succeed, not for an intentionally skipped deploy. The one-time
 Timesheets 278 repair is manual-only with a confirmation input on `main`.
 
+### Selective migration load tests and image transfer
+
+Ordinary Clients PRs keep PostgreSQL/schema/API integration checks but skip
+the 64k/250k synthetic volume tests. Those tests remain mandatory for relevant
+migration importer changes and run weekly or via explicit dispatch. On production
+the image preloader batches up to three verified GHCR tags per SSH stream,
+deduplicating shared layers in the Docker archive; it verifies each loaded tag
+before the normal deploy. Image delivery does not change the release authorization,
+migration queue preflight, rollback tags, or post-deploy smoke guarantees.
+See [CI.md](CI.md).
+
 ## Защита активной миграции во время релиза
 
 При выпуске изменений `migration`, `migration-worker`, `migration-ops`

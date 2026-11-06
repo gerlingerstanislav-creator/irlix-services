@@ -106,6 +106,29 @@ def select(mode, paths=None):
                 "clients_container": common or any(p.startswith((
                     "services/clients/", "services/timesheets/")) for p in changed),
                 "finance_container": common or backend_sources or compose}
+    if mode == "client-member-migration-pg":
+        # Keep real PostgreSQL/API contract coverage for every relevant PR.
+        # The expensive 64k/250k volume rehearsals are only required on
+        # importer/streaming changes, a workflow change, or manual/scheduled CI.
+        relevant = full or workflow in changed or any(
+            p.startswith((
+                "services/migration/",
+                "services/clients/database/migrations/",
+                "services/clients/app/",
+                "services/clients/tests/",
+                "services/timesheets/database/migrations/",
+                "services/timesheets/tests/",
+            )) for p in changed
+        )
+        stress = full or workflow in changed or any(
+            p.startswith((
+                "services/migration/app/Migration/",
+                "services/migration/tests/client_member_",
+                "services/migration/tests/disk_grouping_",
+                "services/migration/Dockerfile",
+            )) for p in changed
+        )
+        return {"enabled": relevant, "stress": stress}
     raise ValueError(f"Unknown workflow: {mode}")
 
 
@@ -113,7 +136,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=[
         "ui-appearance-check", "keycloak-authz", "client-history-ui-check",
-        "finance-validation",
+        "finance-validation", "client-member-migration-pg",
     ])
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--base", help="Explicit base SHA")
