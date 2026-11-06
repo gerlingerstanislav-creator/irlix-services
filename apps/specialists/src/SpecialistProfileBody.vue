@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { createProfessionalAutosave } from './professionalAutosave.js';
-import { UiButton, UiHistoryTimeline, UiSearchSelect, UiTabs, UiTechnologyGrade } from '@irlix/ui';
+import { UiButton, UiHistoryTimeline, UiSearchSelect, UiTabs, UiTechnologyGrade, UiToast } from '@irlix/ui';
 
 const props = defineProps({
   profile: { type: Object, required: true },
@@ -16,8 +16,11 @@ const grades = ['Junior', 'Middle', 'Middle+', 'Senior'];
 const tabs = [{ value: 'history', label: 'История' }, { value: 'about', label: 'О специалисте' }];
 const tab = ref('history');
 const busy = ref(false);
-const message = ref('');
-const autosaveStatus = ref('idle');
+const toast = ref(null);
+let toastSequence = 0;
+const notify = (tone, message, actionLabel = '') => {
+  toast.value = { id: ++toastSequence, tone, message, actionLabel };
+};
 const primary = ref([]);
 const secondary = ref([]);
 const editing = ref(null);
@@ -67,8 +70,7 @@ const initProfile = () => {
   draftGrade.value = '';
   showSecondarySelect.value = false;
   tab.value = 'history';
-  message.value = '';
-  autosaveStatus.value = 'idle';
+  toast.value = null;
 };
 const loadTimeline = async () => {
   const id = employeeId.value;
@@ -97,15 +99,14 @@ const autosave = createProfessionalAutosave({
   persist: (id, data) => fetchData(`/api/specialists/people/${id}/professional`, {
     method: 'PUT', body: JSON.stringify(data),
   }),
-  onStatus: state => { autosaveStatus.value = state; message.value = ''; },
+  onStatus: () => { toast.value = null; },
   onSaved: () => {
-    autosaveStatus.value = 'saved';
+    notify('success', 'Изменения сохранены');
     emit('profile-updated');
     void loadTimeline();
   },
   onError: error => {
-    autosaveStatus.value = 'error';
-    message.value = error?.message || 'Не удалось сохранить технологии.';
+    notify('error', error?.message || 'Не удалось сохранить технологии.', 'Повторить');
   },
 });
 const queueProfessionalSave = () => {
@@ -128,14 +129,13 @@ const commitPrimary = () => {
   const id = Number(draftTech.value);
   if (!id || !grades.includes(draftGrade.value)) return;
   if (primary.value.some((item,index) => index !== editing.value && item.technology_id === id)) {
-    message.value = 'Эта технология уже добавлена как основная.';
+    notify('error', 'Эта технология уже добавлена как основная.');
     return;
   }
   const next = { technology_id: id, grade: draftGrade.value };
   if (editing.value === -1) primary.value.push(next);
   else if (editing.value !== null) primary.value.splice(editing.value, 1, next);
   editing.value = null;
-  message.value = '';
   queueProfessionalSave();
 };
 const removePrimary = index => {
@@ -152,11 +152,10 @@ const chooseSecondary = values => {
 const quickCreate = async name => {
   if (!props.editable) return;
   if (primary.value.some(entry => normalizedName(byId.value.get(entry.technology_id)?.name) === normalizedName(name))) {
-    message.value = 'Эта технология уже указана как основная.';
+    notify('error', 'Эта технология уже указана как основная.');
     return;
   }
   busy.value = true;
-  message.value = '';
   try {
     const technology = await fetchData('/api/specialists/catalog/additional-technologies/quick', {
       method: 'POST', body: JSON.stringify({ name }),
@@ -164,7 +163,7 @@ const quickCreate = async name => {
     chooseSecondary([...secondary.value, Number(technology.id)]);
     await emit('catalog-updated');
   } catch (e) {
-    message.value = e.message;
+    notify('error', e.message || 'Не удалось выполнить действие.');
   } finally {
     busy.value = false;
   }
@@ -172,14 +171,13 @@ const quickCreate = async name => {
 const comment = async text => {
   if (!props.editable || !employeeId.value) return;
   busy.value = true;
-  message.value = '';
   try {
     await fetchData(`/api/specialists/people/${employeeId.value}/timeline`, {
       method: 'POST', body: JSON.stringify({ text }),
     });
     await loadTimeline();
   } catch (e) {
-    message.value = e.message;
+    notify('error', e.message || 'Не удалось выполнить действие.');
   } finally {
     busy.value = false;
   }
@@ -189,12 +187,8 @@ const comment = async text => {
 <template>
   <div class="specialist-profile-body">
     <UiTabs v-model="tab" :items="tabs" />
-    <p v-if="message" class="specialist-profile-feedback error" role="alert">
-      {{ message }}
-      <button v-if="autosaveStatus === 'error'" type="button" class="specialist-autosave-retry" @click="autosave.retry()">Повторить сохранение</button>
-    </p>
-    <p v-if="autosaveStatus === 'saving'" class="specialist-profile-feedback" role="status">Сохраняем изменения…</p>
-    <p v-else-if="autosaveStatus === 'saved'" class="specialist-profile-feedback success" role="status">Изменения сохранены</p>
+    <UiToast v-if="toast" :key="toast.id" :tone="toast.tone" :message="toast.message"
+      :action-label="toast.actionLabel" @close="toast = null" @action="autosave.retry()" />
     <section v-if="tab === 'history'" class="specialist-tab-history">
       <p v-if="timelineLoading" class="specialist-muted">Загрузка истории…</p>
       <p v-if="timelinePartial" class="specialist-profile-feedback error" role="status">{{ timelinePartial }}</p>
@@ -273,15 +267,12 @@ const comment = async text => {
 @media(hover:none){.specialist-primary-actions{opacity:1}}
 .specialist-primary-editor{display:grid;grid-template-columns:minmax(160px,1.4fr) minmax(110px,1fr) auto auto;gap:7px;align-items:start;padding:12px 0}
 .specialist-inline-add{margin-top:12px;padding:5px 0;border:0;background:transparent;color:var(--irlix-color-primary-text);cursor:pointer;font-size:var(--irlix-font-size-table)}
-.specialist-aux-layout{display:flex;align-items:flex-start;flex-wrap:wrap;gap:10px}
-.specialist-aux-plus{width:28px;height:28px;flex:none;border:1px solid var(--irlix-color-border);border-radius:8px;background:var(--irlix-color-surface);color:var(--irlix-color-primary-text);font-size:20px;cursor:pointer}
+.specialist-aux-layout{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+.specialist-aux-plus{display:grid;place-items:center;width:28px;height:28px;flex:none;padding:0;border:1px solid var(--irlix-color-border);border-radius:8px;background:var(--irlix-color-surface);color:var(--irlix-color-primary-text);font-size:20px;line-height:1;cursor:pointer}
 .specialist-aux-select{flex:0 1 220px;min-width:180px;font-size:var(--irlix-font-size-table)}
-.specialist-aux-tags{display:flex;align-items:center;flex-wrap:wrap;gap:6px;flex:1 1 260px;min-height:30px}
-.specialist-aux-tag{display:inline-flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--irlix-color-border);border-radius:7px;background:var(--irlix-color-surface-muted);font-size:var(--irlix-font-size-table)}
+.specialist-aux-tags{display:flex;align-items:center;flex-wrap:wrap;gap:6px;flex:1 1 260px;min-height:28px}
+.specialist-aux-tag{display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 8px;line-height:1;border:1px solid var(--irlix-color-border);border-radius:7px;background:var(--irlix-color-surface-muted);font-size:var(--irlix-font-size-table)}
+.specialist-aux-tag button{display:grid;place-items:center;flex:none;width:14px;height:20px;padding:0;line-height:1}
 .specialist-muted{margin:0;color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-table)}
-.specialist-profile-feedback{padding:8px 20px;margin:0;font-size:var(--irlix-font-size-table)}
-.specialist-profile-feedback.error{color:var(--irlix-status-danger-text)}
-.specialist-profile-feedback.success{color:var(--irlix-status-success-text)}
-.specialist-autosave-retry{margin-left:10px;border:0;background:transparent;color:var(--irlix-color-primary-text);font:inherit;text-decoration:underline;cursor:pointer}
 @media(max-width:720px){.specialist-primary-editor{grid-template-columns:1fr 1fr}.specialist-tab-history{padding:12px}}
 </style>
