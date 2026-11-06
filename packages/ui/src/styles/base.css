@@ -206,7 +206,16 @@ body.irlix-drawer-resizing { cursor:ew-resize; user-select:none; }
   display:flex; align-items:center; justify-content:space-between; gap:12px;
 }
 .irlix-drawer-actions { display:flex; align-items:center; gap:6px; }
-.irlix-drawer-body { flex:1; overflow:auto; padding:16px; }
+.irlix-drawer-body {
+  flex:1 1 0;
+  min-height:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior:contain;
+  touch-action:pan-y;
+  -webkit-overflow-scrolling:touch;
+  padding:16px;
+}
 
 .irlix-status-success { color:var(--irlix-status-success-text); background:var(--irlix-status-success-bg); border:1px solid var(--irlix-status-success-border); }
 .irlix-status-info { color:var(--irlix-status-info-text); background:var(--irlix-status-info-bg); border:1px solid var(--irlix-status-info-border); }
