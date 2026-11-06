@@ -9,7 +9,7 @@ test('historical Sales, lead and Account owner labels resolve by Employees id', 
   );
   assert.equal(result.get(23), 'Исторический сейлз');
   assert.equal(result.get(475), 'Исторический ответственный');
-  assert.equal(result.get(7), 'Носков Александр Александрович');
+  assert.equal(result.get(7), 'Носков Александр');
 });
 test('current employee names override stale historical snapshot and system accounts are not supplied', () => {
   const result = buildEmployeeNameMap([{id:23, full_name:'Актуальный сотрудник'}], [{id:23, full_name:'Старое имя'}]);
