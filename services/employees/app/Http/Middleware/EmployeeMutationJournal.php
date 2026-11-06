@@ -28,6 +28,13 @@ class EmployeeMutationJournal
 
         $before = $this->snapshot($path);
         $response = $next($request);
+        // Never recreate a full employee snapshot in the audit immediately
+        // after a successful hard delete. The prior records were purged.
+        if ($method === 'DELETE'
+            && preg_match('#^api/employees/\\d+$#', $path)
+            && $response->getStatusCode() === 204) {
+            return $response;
+        }
         $statusCode = $response->getStatusCode();
         $success = $statusCode < 400;
         $responseData = $this->responseData($response);
