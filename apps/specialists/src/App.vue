@@ -1,11 +1,11 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { UiAppTopbar, UiAppSidebar, UiRegistryTable, UiFilterBar, UiSearchSelect, UiTreeToggle, UiErrorState, UiLoader, UiDrawer, UiButton } from '@irlix/ui';
+import { UiAppTopbar, UiAppSidebar, UiRegistryTable, UiFilterBar, UiSearchSelect, UiTreeToggle, UiErrorState, UiLoader, UiDrawer, UiButton, UiDepartmentTreeSelect, UiTechnologyGrade, employeesWithinDepartments, normalizeDepartmentSelection } from '@irlix/ui';
 import { auth } from './auth';
 import SpecialistsRolePermissionsView from './SpecialistsRolePermissionsView.vue';
+import SpecialistProfileBody from './SpecialistProfileBody.vue';
 import { accessibleSpecialistsNavigation, specialistsLandingPath } from './accessNavigation.js';
-import { scopedDashboardPeople, validDashboardDepartmentSelection } from './dashboardDirections.js';
 
 const roleMatrixAdmin=ref(false);
 const roleAccessPhase=ref('loading');
@@ -18,22 +18,27 @@ const canEditTechnologyCatalog=computed(()=>effectivePermissions.value?.catalog_
 const navItems=computed(()=>accessibleSpecialistsNavigation(effectivePermissions.value, roleMatrixAdmin.value));
 const mainNavItems=computed(()=>navItems.value.filter(item=>item.id!=='role-permissions'));
 const bottomNavItems=computed(()=>navItems.value.filter(item=>item.id==='role-permissions'));
-const gradeChoices=['Junior','Middle','Middle+','Senior'];
-
-const selectedDashboardDepartments=ref([]);
-const canFilterDashboard=computed(()=>canViewProfiles.value && (workspace.value.scope==='all' || (workspace.value.departments||[]).length>1));
-const dashboardDepartmentOptions=computed(()=>(workspace.value.departments||[]).map(d=>({value:String(d.id),label:d.name})));
-const dashboardPeople=computed(()=>scopedDashboardPeople(workspace.value.people,workspace.value.departments,selectedDashboardDepartments.value));
-const dashboardStorageKey=()=> 'irlix.specialists.dashboard.departments.v1.' + (workspace.value.actor?.id||'unknown');
-const rememberDashboardDepartments=(values)=>{
-  selectedDashboardDepartments.value=validDashboardDepartmentSelection(workspace.value.departments,values);
-  try { localStorage.setItem(dashboardStorageKey(),JSON.stringify(selectedDashboardDepartments.value)); } catch (_) {}
+// One employee-scoped tree selection is shared by all Specialists people views.
+const selectedDepartments = ref([]);
+const canFilterDepartments = computed(() => canViewProfiles.value
+  && (workspace.value.scope === 'all' || (workspace.value.departments || []).length > 1));
+const scopedPeople = computed(() => employeesWithinDepartments(
+  workspace.value.people, workspace.value.departments, selectedDepartments.value));
+const departmentStorageKey = () => 'irlix.specialists.departments.v2.' + (workspace.value.actor?.id || 'unknown');
+const rememberDepartments = values => {
+  selectedDepartments.value = normalizeDepartmentSelection(workspace.value.departments, values);
+  try { localStorage.setItem(departmentStorageKey(), JSON.stringify(selectedDepartments.value)); } catch (_) {}
 };
-const restoreDashboardDepartments=()=>{
-  let stored=[];
-  try { stored=JSON.parse(localStorage.getItem(dashboardStorageKey())||'[]'); } catch (_) {}
-  selectedDashboardDepartments.value=validDashboardDepartmentSelection(workspace.value.departments,stored);
+const restoreDepartments = () => {
+  let stored = [];
+  try {
+    const v2 = localStorage.getItem(departmentStorageKey());
+    const older = localStorage.getItem('irlix.specialists.dashboard.departments.v1.' + (workspace.value.actor?.id || 'unknown'));
+    stored = JSON.parse(v2 ?? older ?? '[]');
+  } catch (_) {}
+  selectedDepartments.value = normalizeDepartmentSelection(workspace.value.departments, stored);
 };
+const dashboardPeople = computed(() => scopedPeople.value);
 
 const loading = ref(true);
 const saving = ref(false);
@@ -47,8 +52,7 @@ const profileErrorStatus = ref(null);
 const projectAssignments=ref([]);
 const projectLoading=ref(false);
 const projectError=ref('');
-const filters = reactive({ search: '', department: '', grade: '', technology: '', status: 'active' });
-const editor = reactive({ grade: '', manager_note: '', technology_ids: [], competencies: [] });
+const filters = reactive({ search: '', grade: '', technology: '', status: 'active' });
 const technologyEditor = reactive({ id: null, name: '', alias: '', category: '', parent_id: '' });
 const technologyModalOpen = ref(false);
 const expandedTechnologies = ref(new Set());
@@ -87,7 +91,7 @@ const loadWorkspace = async () => {
   try {
     if (canViewProfiles.value) {
       workspace.value = await api('/workspace');
-      restoreDashboardDepartments();
+      restoreDepartments();
     } else if (canViewCatalog.value) {
       // A catalog-only role must not call the protected profiles workspace.
       // Specialists owns the catalog; access is checked by the backend.
@@ -131,39 +135,12 @@ const loadPerson = async (id) => {
     const result=await api(`/people/${id}`);
     if (route.value.employeeId!==id) return;
     selected.value=result;
-    const professional = result.professional || {};
-    editor.grade = professional.grade || '';
-    editor.manager_note = professional.manager_note || '';
-    editor.technology_ids = (professional.technologies || []).map((item) => Number(item.id));
-    editor.competencies = (professional.competencies || []).map((item) => ({ id: Number(item.id), level: item.level ?? null, comment: item.comment || '' }));
     loadProjects(id);
   } catch (e) {
     if(route.value.employeeId!==id)return;
     error.value = e.message;
     profileErrorStatus.value = [403,404].includes(e.status) ? e.status : null;
     selected.value = null;
-  }
-};
-
-const savePerson = async () => {
-  if (!canManageProfiles.value || !selected.value?.employee?.id) return;
-  saving.value = true;
-  error.value = '';
-  try {
-    selected.value = await api(`/people/${selected.value.employee.id}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        ...(gradeChoices.includes(editor.grade)||!editor.grade ? { grade: editor.grade||null } : {}),
-        manager_note: editor.manager_note || null,
-        technology_ids: editor.technology_ids,
-        competencies: editor.competencies,
-      }),
-    });
-    await loadWorkspace();
-  } catch (e) {
-    error.value = e.message;
-  } finally {
-    saving.value = false;
   }
 };
 
@@ -181,7 +158,6 @@ const techStats = computed(() => {
 });
 const incompleteCount = computed(() => activePeople.value.filter((p) => !p.grade || !(p.technologies || []).length).length);
 const grades = computed(() => [...new Set(workspace.value.people.map((p) => p.grade).filter(Boolean))].sort());
-const departmentOptions = computed(() => (workspace.value.departments || []).map(d => ({ value: String(d.id), label: d.name })));
 const gradeOptions = computed(() => grades.value.map(grade => ({ value: grade, label: grade })));
 const technologyOptions = computed(() => (workspace.value.catalog.technologies || []).map(t => ({ value: String(t.id), label: t.name })));
 const statusOptions = [
@@ -191,10 +167,9 @@ const statusOptions = [
 ];
 const filteredPeople = computed(() => {
   const q = filters.search.trim().toLowerCase();
-  return workspace.value.people.filter((p) => {
+  return scopedPeople.value.filter((p) => {
     if (filters.status === 'active' && p.employment_status === 'Уволен') return false;
     if (filters.status === 'dismissed' && p.employment_status !== 'Уволен') return false;
-    if (filters.department && String(p.department_id) !== filters.department) return false;
     if (filters.grade && p.grade !== filters.grade) return false;
     if (filters.technology && !(p.technologies || []).some((t) => String(t.id) === filters.technology)) return false;
     if (q && !`${p.full_name || ''} ${p.position || ''} ${p.department_name || ''}`.toLowerCase().includes(q)) return false;
@@ -314,14 +289,6 @@ const deleteTechnology = async (technology) => {
 };
 
 const initials = (name = '') => name.split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]).join('').toUpperCase();
-const toggleTechnology = (id) => {
-  if (!canManageProfiles.value) return;
-  id = Number(id);
-  editor.technology_ids = editor.technology_ids.includes(id)
-    ? editor.technology_ids.filter((value) => value !== id)
-    : [...editor.technology_ids, id];
-};
-
 const reloadAccess = async () => {
   loading.value = true;
   permissionsPhase.value = 'loading';
@@ -353,6 +320,12 @@ watch(() => route.value.employeeId, id => {
 
 const openPerson = id => navigate(`people/${id}`);
 const closePerson=()=>navigate('people');
+const sortedTechnologies = computed(() => [...(workspace.value.catalog?.technologies || [])].sort((a,b) => a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })));
+const refreshSelectedProfile = async () => {
+  const id = route.value.employeeId;
+  if (id) { const latest = await api(`/people/${id}`); if (route.value.employeeId === id) selected.value = latest; }
+  await loadWorkspace();
+};
 </script>
 
 <template>
@@ -373,12 +346,11 @@ const closePerson=()=>navigate('people');
     <main class="irlix-service-workspace">
       <UiAppTopbar service="specialists" :section="sidebarSection" :items="navItems" :loading="loading">
         <template #actions>
-          <UiSearchSelect v-if="route.section==='dashboard' && canFilterDashboard"
-            class="specialists-topbar-departments" :model-value="selectedDashboardDepartments"
-            :options="dashboardDepartmentOptions" multiple teleport placeholder="Направления"
-            search-placeholder="Поиск направления" aria-label="Фильтр направлений дашборда"
-            @update:model-value="rememberDashboardDepartments" />
-          <UiButton v-if="route.section==='competencies' && canEditTechnologyCatalog"
+          <UiDepartmentTreeSelect v-if="canFilterDepartments && ['dashboard','people','person'].includes(route.section)"
+            class="specialists-topbar-departments" :model-value="selectedDepartments"
+            :departments="workspace.departments" placeholder="Подразделения"
+            aria-label="Фильтр по дереву подразделений" @update:model-value="rememberDepartments" />
+          <UiButton v-if="['competencies','technologies'].includes(route.section) && canEditTechnologyCatalog"
             type="button" @click="openCreateTechnology()">+ Технология</UiButton>
         </template>
       </UiAppTopbar>
@@ -394,9 +366,8 @@ const closePerson=()=>navigate('people');
       <UiErrorState v-else-if="permissionsPhase==='forbidden'" :status="403" />
       <UiErrorState v-else-if="permissionsPhase==='error'" :status="503" description="Не удалось загрузить разрешения." retryable @retry="reloadAccess" />
       <UiErrorState v-else-if="['dashboard','people','person'].includes(route.section) && !canViewProfiles" :status="403" />
-      <UiErrorState v-else-if="route.section==='competencies' && !canViewCatalog" :status="403" />
+      <UiErrorState v-else-if="['competencies','technologies'].includes(route.section) && !canViewCatalog" :status="403" />
       <template v-else-if="route.section === 'dashboard'">
-        <div class="dashboard-context"><span class="scope-pill">{{ selectedDashboardDepartments.length ? 'Выбранные направления' : (workspace.scope === 'all' ? 'Все направления' : 'Моё направление и дочерние') }}</span></div>
         <section class="metric-grid">
           <article class="metric"><span>Работают</span><strong>{{ activePeople.length }}</strong><small>специалистов в доступном дереве</small></article>
           <article class="metric"><span>Уволены</span><strong>{{ dismissedPeople.length }}</strong><small>профили сохранены</small></article>
@@ -413,13 +384,24 @@ const closePerson=()=>navigate('people');
       <template v-else-if="route.section === 'people' || route.section === 'person'">
         <UiFilterBar class="specialists-filter-bar">
           <input v-model="filters.search" class="specialists-search irlix-search" type="search" aria-label="Поиск специалистов" placeholder="Поиск по имени, должности или направлению" />
-          <UiSearchSelect v-model="filters.department" :options="departmentOptions" placeholder="Все направления" search-placeholder="Поиск направления" aria-label="Направление" />
           <UiSearchSelect v-model="filters.grade" :options="gradeOptions" placeholder="Все грейды" search-placeholder="Поиск грейда" aria-label="Грейд" />
           <UiSearchSelect v-model="filters.technology" :options="technologyOptions" placeholder="Все технологии" search-placeholder="Поиск технологии" aria-label="Технология" />
           <UiSearchSelect v-model="filters.status" :options="statusOptions" placeholder="Статус" :clearable="false" aria-label="Статус специалиста" />
           <span class="specialists-filter-count">Найдено: {{ filteredPeople.length }}</span>
         </UiFilterBar>
-        <section class="table-card table-card--registry"><UiRegistryTable class="shared-registry-content" :columns="['27%','16%','12%','25%','14%','6%']" min-width="1000px" aria-label="Специалисты" density="compact"><template #head><tr><th>Специалист</th><th>Направление</th><th>Грейд</th><th>Технологии</th><th>Статус</th><th></th></tr></template><tr v-for="person in filteredPeople" :key="person.id" :class="{ dismissed: person.employment_status === 'Уволен' }" @click="openPerson(person.id)"><td><div class="person-cell"><span class="avatar">{{ initials(person.full_name) }}</span><span><b>{{ person.full_name }}</b><small>{{ person.position || 'Должность не указана' }}</small></span></div></td><td>{{ person.department_name || '—' }}</td><td><span class="grade">{{ person.grade || 'Не указан' }}</span></td><td><div class="chips"><span v-for="t in (person.technologies || []).slice(0, 3)" :key="t.id">{{ t.name }}</span><span v-if="(person.technologies || []).length > 3">+{{ person.technologies.length - 3 }}</span><em v-if="!(person.technologies || []).length">Не заполнено</em></div></td><td><span :class="['status', person.employment_status === 'Уволен' ? 'off' : 'on']">{{ person.employment_status === 'Уволен' ? 'Уволен' : 'Работает' }}</span></td><td class="arrow">→</td></tr></UiRegistryTable><div v-if="!filteredPeople.length" class="empty padded">По заданным фильтрам специалистов нет.</div></section>
+        <section class="table-card table-card--registry"><UiRegistryTable class="shared-registry-content" :columns="['27%','16%','12%','25%','14%','6%']" min-width="1000px" aria-label="Специалисты" density="compact"><template #head><tr><th>Специалист</th><th>Направление</th><th>Грейд</th><th>Технологии</th><th>Статус</th><th></th></tr></template><tr v-for="person in filteredPeople" :key="person.id" :class="{ dismissed: person.employment_status === 'Уволен' }" @click="openPerson(person.id)"><td><div class="person-cell"><span class="avatar">{{ initials(person.full_name) }}</span><span><b>{{ person.full_name }}</b><small>{{ person.position || 'Должность не указана' }}</small></span></div></td><td>{{ person.department_name || '—' }}</td><td><span class="grade">{{ person.grade || 'Не указан' }}</span></td><td><div class="chips"><span v-for="t in (person.technologies || []).slice(0, 3)" :key="t.id"><UiTechnologyGrade :name="t.name" :grade="t.kind === 'primary' ? t.grade : ''" /></span><span v-if="(person.technologies || []).length > 3">+{{ person.technologies.length - 3 }}</span><em v-if="!(person.technologies || []).length">Не заполнено</em></div></td><td><span :class="['status', person.employment_status === 'Уволен' ? 'off' : 'on']">{{ person.employment_status === 'Уволен' ? 'Уволен' : 'Работает' }}</span></td><td class="arrow">→</td></tr></UiRegistryTable><div v-if="!filteredPeople.length" class="empty padded">По заданным фильтрам специалистов нет.</div></section>
+      </template>
+
+      <template v-else-if="route.section === 'technologies'">
+        <section class="specialists-catalog-section specialists-catalog-section--technologies">
+          <UiRegistryTable :columns="['80%','20%']" min-width="520px" density="compact" aria-label="Все технологии по алфавиту">
+            <template #head><tr><th>Технология</th><th>Алиас</th></tr></template>
+            <tr v-for="technology in sortedTechnologies" :key="technology.id">
+              <td>{{ technology.name }}</td><td>{{ technology.alias || '—' }}</td>
+            </tr>
+          </UiRegistryTable>
+          <div v-if="!sortedTechnologies.length" class="empty padded">Каталог технологий пока пуст.</div>
+        </section>
       </template>
 
       <template v-else-if="route.section === 'competencies'">
@@ -456,7 +438,7 @@ const closePerson=()=>navigate('people');
       </div>
     </main>
 
-    <UiDrawer :open="route.section==='person' && canViewProfiles" :inactive="saving" width="min(760px, 96vw)" :resizable="true" title="Карточка специалиста" @close="closePerson">
+    <UiDrawer :open="route.section==='person' && canViewProfiles" width="min(780px, 96vw)" :resizable="true" title="Карточка специалиста" @close="closePerson">
       <template #title><strong>{{ selected?.employee?.full_name || 'Карточка специалиста' }}</strong></template>
       <div class="specialists-profile-drawer">
         <div v-if="profileErrorStatus" class="alert" role="alert">{{ profileErrorStatus }} — {{ error || 'Профиль недоступен' }}</div>
@@ -471,55 +453,10 @@ const closePerson=()=>navigate('people');
               <span v-if="selected.employee.employment_status==='Уволен'" class="status off">Уволен</span>
             </div>
           </div>
-          <section class="specialists-profile-section">
-            <h3>Профессиональный профиль</h3>
-            <label>Грейд
-              <select v-model="editor.grade" :disabled="!canManageProfiles" aria-label="Грейд специалиста">
-                <option value="">Не указан</option>
-                <option v-if="editor.grade && !gradeChoices.includes(editor.grade)" :value="editor.grade">{{ editor.grade }} (ранее указанный)</option>
-                <option v-for="grade in gradeChoices" :key="grade" :value="grade">{{ grade }}</option>
-              </select>
-            </label>
-            <label>Комментарий руководителя
-              <textarea v-model="editor.manager_note" :disabled="!canManageProfiles" rows="3" placeholder="Контекст развития специалиста"></textarea>
-            </label>
-          </section>
-          <section class="specialists-profile-section">
-            <h3>Проекты</h3>
-            <p v-if="projectLoading" class="empty">Загрузка проектов…</p>
-            <p v-else-if="projectError" class="empty" role="status">{{ projectError }}</p>
-            <div v-else-if="projectAssignments.length" class="specialists-projects">
-              <div v-for="(project,index) in projectAssignments" :key="project.project_id + ':' + index">
-                <strong>{{ project.project_name }}</strong>
-                <span>{{ project.client_name }}
-                  <template v-if="project.valid_from"> · {{ project.valid_from }} — {{ project.valid_to || 'н. в.' }}</template>
-                </span>
-              </div>
-            </div>
-            <p v-else class="empty">Проекты не найдены.</p>
-          </section>
-          <section class="specialists-profile-section">
-            <h3>Технологии</h3>
-            <div v-if="workspace.catalog.technologies.length" class="choice-grid">
-              <button v-for="tech in workspace.catalog.technologies" :key="tech.id" type="button"
-                :class="{ selected: editor.technology_ids.includes(Number(tech.id)) }"
-                :disabled="!canManageProfiles" @click="toggleTechnology(tech.id)">{{ tech.name }}</button>
-            </div>
-            <p v-else class="empty">Каталог пока пуст.</p>
-          </section>
-          <section class="specialists-profile-section">
-            <h3>Компетенции</h3>
-            <div v-if="selected.professional.competencies?.length" class="competency-list">
-              <div v-for="competency in selected.professional.competencies" :key="competency.id">
-                <span><b>{{ competency.name }}</b><small>{{ competency.technology_name || 'Общая компетенция' }}</small></span>
-                <strong>{{ competency.level ?? '—' }}</strong>
-              </div>
-            </div>
-            <p v-else class="empty">Компетенции не оценены.</p>
-          </section>
-          <div v-if="canManageProfiles" class="specialists-profile-footer">
-            <UiButton type="button" :disabled="saving" @click="savePerson">{{ saving ? 'Сохраняем…' : 'Сохранить профиль' }}</UiButton>
-          </div>
+          <SpecialistProfileBody :profile="selected" :catalog="workspace.catalog"
+            :projects="projectAssignments" :projects-loading="projectLoading" :projects-error="projectError"
+            :editable="canManageProfiles" @profile-updated="refreshSelectedProfile"
+            @catalog-updated="refreshCatalog" />
         </template>
       </div>
     </UiDrawer>
