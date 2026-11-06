@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Services\EmployeePurgeService;
-use App\Models\ClientMember;
 use Illuminate\Http\Request;
 
 final class EmployeePurgeController extends Controller
@@ -27,7 +26,7 @@ final class EmployeePurgeController extends Controller
             return response()->json(['message' => 'Invalid internal purge token'], 403);
         }
         $this->employees->purge($employee, (string) $request->input('username', ''), true);
-        return response()->json(['allowed' => true, 'client_member_ids' => ClientMember::query()->where('employee_id', $employee)->pluck('id')->all()]);
+        return response()->json(['allowed' => true, 'client_member_ids' => $this->employees->memberIds($employee)]);
     }
 
     public function __invoke(Request $request, int $employee)
