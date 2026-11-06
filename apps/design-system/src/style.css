@@ -46,3 +46,10 @@ body { margin:0; background:var(--irlix-color-bg); color:var(--irlix-color-text)
 .ds-page { overflow-wrap:anywhere; }
 .ds-registry { width:100%; }
 .ds-filter-rail-preview__content { padding-right:64px; }
+
+/* Local demonstration: the shared drawer controls outer overflow; the view owns its scroll. */
+.ds-fixed-drawer{display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden}
+.ds-fixed-drawer__identity{flex:none;padding:14px 8px}
+.ds-fixed-drawer__identity p{margin:4px 0;color:var(--irlix-color-text-muted)}
+.ds-fixed-drawer__scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;padding:8px}
+.ds-fixed-drawer__scroll p{padding:8px 2px;border-bottom:1px solid var(--irlix-color-border)}
