@@ -273,6 +273,8 @@ const comment = async text => {
 .specialist-aux-tags{display:flex;align-items:center;flex-wrap:wrap;gap:6px;flex:1 1 260px;min-height:28px}
 .specialist-aux-tag{display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 8px;line-height:1;border:1px solid var(--irlix-color-border);border-radius:7px;background:var(--irlix-color-surface-muted);font-size:var(--irlix-font-size-table)}
 .specialist-aux-tag button{display:grid;place-items:center;flex:none;width:14px;height:20px;padding:0;line-height:1}
+.specialist-profile-feedback{padding:8px 20px;margin:0;font-size:var(--irlix-font-size-table)}
+.specialist-profile-feedback.error{color:var(--irlix-status-danger-text)}
 .specialist-muted{margin:0;color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-table)}
 @media(max-width:720px){.specialist-primary-editor{grid-template-columns:1fr 1fr}.specialist-tab-history{padding:12px}}
 </style>
