@@ -33,7 +33,7 @@ final class ServiceEntitlement
             try {
                 $live = Http::withToken((string) $token)->acceptJson()->timeout(5)
                     ->get($base.'/access/me');
-            } catch (\\Throwable) {
+            } catch (\Throwable) {
                 return response()->json(['message' => 'Clients reference authorization unavailable'], 503);
             }
             if (!$live->successful() || !is_array($live->json('data'))) {
