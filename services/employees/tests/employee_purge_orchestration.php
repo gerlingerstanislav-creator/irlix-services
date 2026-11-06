@@ -66,7 +66,7 @@ $factory2 = new Factory();
 Http::swap($factory2);
 $factory2->preventStrayRequests();
 $factory2->fake(static function ($request) {
-    return (new Factory())->response(['message' => 'Protected employee data'],
+    return (new Factory())->response(['message' => 'Protected employee data', 'client_member_ids' => [501]],
         str_contains($request->url(), 'finance:8000') ? 423 : 200);
 });
 $blocked = (new EmployeeDeletionService())->purge($person);
