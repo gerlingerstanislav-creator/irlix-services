@@ -6,12 +6,17 @@ const props = defineProps({
   busy: { type: Boolean, default: false },
   placeholder: { type: String, default: 'Добавить комментарий в историю' },
   maxLength: { type: Number, default: 5000 },
+  scrollFeed: { type: Boolean, default: true },
 });
 const emit = defineEmits(['submit']);
 const content = ref('');
 const feed = ref(null);
 const sorted = computed(() => [...props.events].sort((a,b) => String(a.created_at || '').localeCompare(String(b.created_at || '')) || String(a.id).localeCompare(String(b.id))));
-watch(sorted, async () => { await nextTick(); if (feed.value) feed.value.scrollTop = feed.value.scrollHeight; }, { immediate: true });
+watch(sorted, async () => {
+  if (!props.scrollFeed) return; // In flowing mode the owning drawer tab controls scrolling.
+  await nextTick();
+  if (feed.value) feed.value.scrollTop = feed.value.scrollHeight;
+}, { immediate: true });
 watch(() => props.busy, (value,previous) => { if (previous && !value && !props.events.every(e => e.text !== content.value.trim())) content.value = ''; });
 const dateLabel = value => {
   if (!value) return '—';
@@ -22,7 +27,7 @@ function submit() { const text = content.value.trim(); if (text && !props.busy) 
 function onKeydown(event) { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); submit(); } }
 </script>
 <template>
-  <section class="irlix-history" aria-label="История специалиста">
+  <section class="irlix-history" :class="{ 'irlix-history--flow': !props.scrollFeed }" aria-label="История специалиста">
     <div ref="feed" class="irlix-history__feed">
       <article v-for="(event,index) in sorted" :key="event.id || index" class="irlix-history__event">
         <span class="irlix-history__dot" aria-hidden="true"></span>
@@ -43,6 +48,9 @@ function onKeydown(event) { if (event.key === 'Enter' && !event.shiftKey && !eve
 <style scoped>
 .irlix-history{display:flex;flex-direction:column;min-height:280px;max-height:100%;gap:12px}
 .irlix-history__feed{flex:1;min-height:180px;overflow-y:auto;overscroll-behavior:contain;padding:6px 2px}
+/* Let the parent scroll the entire timeline (events and composer) as one unit. */
+.irlix-history--flow{max-height:none;min-height:0}
+.irlix-history--flow .irlix-history__feed{flex:none;min-height:0;overflow:visible;overscroll-behavior:auto}
 .irlix-history__event{position:relative;display:grid;grid-template-columns:16px minmax(0,1fr);gap:9px;padding-bottom:17px}
 .irlix-history__event:not(:last-of-type):before{content:'';position:absolute;top:13px;bottom:0;left:5px;border-left:1px dashed var(--irlix-color-border)}
 .irlix-history__dot{z-index:1;width:10px;height:10px;margin-top:5px;border-radius:50%;border:1px solid var(--irlix-color-primary);background:var(--irlix-color-primary-soft)}
