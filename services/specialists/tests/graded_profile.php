@@ -23,7 +23,7 @@ DB::swap($capsule->getConnection());
 Model::setConnectionResolver($capsule->getDatabaseManager());
 $db = $capsule->getConnection();
 $db->statement('CREATE TABLE specialist_profiles (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER UNIQUE NOT NULL, grade TEXT, created_at TEXT, updated_at TEXT)');
-$db->statement('CREATE TABLE technologies (id INTEGER PRIMARY KEY, name TEXT, active INTEGER, created_at TEXT, updated_at TEXT)');
+$db->statement('CREATE TABLE technologies (id INTEGER PRIMARY KEY, name TEXT, category TEXT, active INTEGER, created_at TEXT, updated_at TEXT)');
 $db->statement('CREATE TABLE specialist_technologies (employee_id INTEGER, technology_id INTEGER, kind TEXT DEFAULT "secondary", grade TEXT, created_at TEXT, updated_at TEXT, PRIMARY KEY(employee_id, technology_id))');
 $db->statement('CREATE TABLE specialist_timeline_events (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER, type TEXT, title TEXT, text TEXT, author_employee_id INTEGER, author TEXT, created_at TEXT, updated_at TEXT)');
 $db->table('technologies')->insert([
