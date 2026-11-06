@@ -32,7 +32,7 @@ Model::setConnectionResolver($capsule->getDatabaseManager());
 
 $schema = [
     'departments' => 'id INTEGER PRIMARY KEY, name TEXT, alias TEXT, parent_id INTEGER, manager_id INTEGER, hr_id INTEGER, is_production INTEGER, created_at TEXT, updated_at TEXT',
-    'employees' => 'id INTEGER PRIMARY KEY, full_name TEXT, login TEXT, keycloak_user_id TEXT, position TEXT, position_id INTEGER, department_id INTEGER, employment_status TEXT, created_at TEXT, updated_at TEXT',
+    'employees' => 'id INTEGER PRIMARY KEY, full_name TEXT, login TEXT, keycloak_user_id TEXT, position TEXT, position_id INTEGER, department_id INTEGER, employment_status TEXT, account_type TEXT DEFAULT "employee", created_at TEXT, updated_at TEXT',
     'staff_positions' => 'id INTEGER PRIMARY KEY, name TEXT, direction_id INTEGER, base_salary NUMERIC, closed_at TEXT, created_at TEXT, updated_at TEXT',
     'employment_periods' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER, cooperation_type TEXT, started_at TEXT, ended_at TEXT, department_id INTEGER, position TEXT, position_id INTEGER, created_at TEXT, updated_at TEXT',
     'employee_status_history' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER, status TEXT, effective_from TEXT, effective_to TEXT, reason TEXT, created_at TEXT, updated_at TEXT',
@@ -84,6 +84,9 @@ SalaryHistory::query()->create([
     'gross_salary' => 100000, 'status' => 'Действует',
 ]);
 
+Employee::query()->create(['id' => 3, 'full_name' => 'Synthetic Bootstrap', 'login' => 'admin',
+    'account_type' => 'system', 'department_id' => 1, 'employment_status' => 'Трудоустроен']);
+
 $read = new EmployeeReadService();
 $assert($read->list([])['meta']['count'] === 2, 'Eloquent employee listing failed');
 $details = $read->details(2);
@@ -93,10 +96,13 @@ $assert(count($details['employment_periods']) === 1
     && count($details['assignment_history']) === 1,
     'Employee history API projection changed');
 $assert($read->details(999) === null, 'Unknown employee details were invented');
+$assert($read->details(3) === null && $read->recordBusiness(3) === null
+    && $read->record(3) !== null, 'Technical account leaked into HR profile or lost identity mapping');
 
 $reviews = new SalaryReviewService();
 $access = ['scope' => 'subtree', 'department_ids' => [2]];
 $assert($reviews->scope($access, 2), 'Valid direction scope rejected');
+$assert(!$reviews->scope(['scope' => 'all'], 3), 'System account received salary planning scope');
 $assert(!$reviews->scope($access, 1), 'Foreign direction payroll leaked');
 $created = $reviews->create([
     'employee_id' => 2, 'effective_month' => '2026-04-01',
