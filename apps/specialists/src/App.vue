@@ -46,7 +46,7 @@ const loading = ref(true);
 const saving = ref(false);
 const catalogSaving = ref(false);
 const error = ref('');
-const workspace = ref({ people: [], departments: [], catalog: { technologies: [], competencies: [] } });
+const workspace = ref({ people: [], departments: [], catalog: { technologies: [], additional_technologies: [], competencies: [] } });
 const activeRoute = useRoute();
 const router = useRouter();
 const selected = ref(null);
@@ -153,9 +153,12 @@ const gradeStats = computed(() => {
   activePeople.value.forEach((p) => map.set(p.grade || 'Не указан', (map.get(p.grade || 'Не указан') || 0) + 1));
   return [...map.entries()].sort((a, b) => b[1] - a[1]);
 });
+// Registry, technology filter and team analytics all use MAIN technology
+// assignments; the separate additional catalog never enters these views.
+const mainTechnologies = person => (person.technologies || []).filter(t => t.kind === 'primary');
 const techStats = computed(() => {
   const map = new Map();
-  activePeople.value.forEach((p) => (p.technologies || []).forEach((t) => map.set(t.name, (map.get(t.name) || 0) + 1)));
+  activePeople.value.forEach((p) => mainTechnologies(p).forEach((t) => map.set(t.name, (map.get(t.name) || 0) + 1)));
   return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
 });
 const incompleteCount = computed(() => activePeople.value.filter((p) => !p.grade || !(p.technologies || []).length).length);
@@ -173,7 +176,7 @@ const filteredPeople = computed(() => {
     if (filters.status === 'active' && p.employment_status === 'Уволен') return false;
     if (filters.status === 'dismissed' && p.employment_status !== 'Уволен') return false;
     if (filters.grade && p.grade !== filters.grade) return false;
-    if (filters.technology && !(p.technologies || []).some((t) => String(t.id) === filters.technology)) return false;
+    if (filters.technology && !mainTechnologies(p).some((t) => String(t.id) === filters.technology)) return false;
     if (q && !`${p.full_name || ''} ${p.position || ''} ${p.department_name || ''}`.toLowerCase().includes(q)) return false;
     return true;
   });
@@ -256,6 +259,15 @@ const saveTechnology = async () => {
   catalogSaving.value = true;
   error.value = '';
   try {
+    if (route.value.section === 'technologies') {
+      await api('/catalog/additional-technologies/quick', {
+        method: 'POST', body: JSON.stringify({ name: technologyEditor.name.trim() }),
+      });
+      await refreshCatalog();
+      technologyModalOpen.value = false;
+      resetTechnologyEditor();
+      return;
+    }
     const payload = {
       name: technologyEditor.name.trim(),
       alias: technologyEditor.alias.trim() || null,
@@ -322,7 +334,7 @@ watch(() => route.value.employeeId, id => {
 
 const openPerson = id => navigate(`people/${id}`);
 const closePerson=()=>navigate('people');
-const sortedTechnologies = computed(() => [...(workspace.value.catalog?.technologies || [])].sort((a,b) => a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })));
+const sortedAdditionalTechnologies = computed(() => [...(workspace.value.catalog?.additional_technologies || [])].sort((a,b) => a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })));
 const refreshSelectedProfile = async () => {
   // Autosave owns the live editor state. Refresh registry/dashboard projections
   // only: reloading selected from a prior response can overwrite a newer edit
@@ -363,7 +375,7 @@ const refreshSelectedProfile = async () => {
             :departments="workspace.departments" placeholder="Подразделения"
             aria-label="Фильтр по дереву подразделений" @update:model-value="rememberDepartments" />
           <UiButton v-if="['competencies','technologies'].includes(route.section) && canEditTechnologyCatalog"
-            type="button" @click="openCreateTechnology()">+ Технология</UiButton>
+            type="button" @click="openCreateTechnology()">{{ route.section === 'technologies' ? '+ Дополнительная технология' : '+ Технология' }}</UiButton>
         </template>
       </UiAppTopbar>
       <div class="content irlix-service-content">
@@ -401,18 +413,18 @@ const refreshSelectedProfile = async () => {
           <UiSearchSelect v-model="filters.status" :options="statusOptions" placeholder="Статус" :clearable="false" aria-label="Статус специалиста" />
           <span class="specialists-filter-count">Найдено: {{ filteredPeople.length }}</span>
         </UiFilterBar>
-        <section class="table-card table-card--registry"><UiRegistryTable class="shared-registry-content" :columns="['27%','16%','12%','25%','14%','6%']" min-width="1000px" aria-label="Специалисты" density="compact"><template #head><tr><th>Специалист</th><th>Направление</th><th>Грейд</th><th>Технологии</th><th>Статус</th><th></th></tr></template><tr v-for="person in filteredPeople" :key="person.id" :class="{ dismissed: person.employment_status === 'Уволен' }" @click="openPerson(person.id)"><td><div class="person-cell"><span class="avatar">{{ initials(person.full_name) }}</span><span><b>{{ person.full_name }}</b><small>{{ person.position || 'Должность не указана' }}</small></span></div></td><td>{{ person.department_name || '—' }}</td><td><span class="grade">{{ person.grade || 'Не указан' }}</span></td><td><div class="chips"><span v-for="t in (person.technologies || []).slice(0, 3)" :key="t.id"><UiTechnologyGrade :name="t.name" :grade="t.kind === 'primary' ? t.grade : ''" /></span><span v-if="(person.technologies || []).length > 3">+{{ person.technologies.length - 3 }}</span><em v-if="!(person.technologies || []).length">Не заполнено</em></div></td><td><span :class="['status', person.employment_status === 'Уволен' ? 'off' : 'on']">{{ person.employment_status === 'Уволен' ? 'Уволен' : 'Работает' }}</span></td><td class="arrow">→</td></tr></UiRegistryTable><div v-if="!filteredPeople.length" class="empty padded">По заданным фильтрам специалистов нет.</div></section>
+        <section class="table-card table-card--registry"><UiRegistryTable class="shared-registry-content" :columns="['27%','16%','12%','25%','14%','6%']" min-width="1000px" aria-label="Специалисты" density="compact"><template #head><tr><th>Специалист</th><th>Направление</th><th>Грейд</th><th>Технологии</th><th>Статус</th><th></th></tr></template><tr v-for="person in filteredPeople" :key="person.id" :class="{ dismissed: person.employment_status === 'Уволен' }" @click="openPerson(person.id)"><td><div class="person-cell"><span class="avatar">{{ initials(person.full_name) }}</span><span><b>{{ person.full_name }}</b><small>{{ person.position || 'Должность не указана' }}</small></span></div></td><td>{{ person.department_name || '—' }}</td><td><span class="grade">{{ person.grade || 'Не указан' }}</span></td><td><div class="chips"><span v-for="t in mainTechnologies(person).slice(0, 3)" :key="t.id"><UiTechnologyGrade :name="t.name" :grade="t.grade || ''" /></span><span v-if="mainTechnologies(person).length > 3">+{{ mainTechnologies(person).length - 3 }}</span><em v-if="!mainTechnologies(person).length">Не заполнено</em></div></td><td><span :class="['status', person.employment_status === 'Уволен' ? 'off' : 'on']">{{ person.employment_status === 'Уволен' ? 'Уволен' : 'Работает' }}</span></td><td class="arrow">→</td></tr></UiRegistryTable><div v-if="!filteredPeople.length" class="empty padded">По заданным фильтрам специалистов нет.</div></section>
       </template>
 
       <template v-else-if="route.section === 'technologies'">
         <section class="specialists-catalog-section specialists-catalog-section--technologies">
-          <UiRegistryTable :columns="['80%','20%']" min-width="520px" density="compact" aria-label="Все технологии по алфавиту">
+          <UiRegistryTable :columns="['80%','20%']" min-width="520px" density="compact" aria-label="Дополнительные технологии по алфавиту">
             <template #head><tr><th>Технология</th><th>Алиас</th></tr></template>
-            <tr v-for="technology in sortedTechnologies" :key="technology.id">
+            <tr v-for="technology in sortedAdditionalTechnologies" :key="technology.id">
               <td>{{ technology.name }}</td><td>{{ technology.alias || '—' }}</td>
             </tr>
           </UiRegistryTable>
-          <div v-if="!sortedTechnologies.length" class="empty padded">Каталог технологий пока пуст.</div>
+          <div v-if="!sortedAdditionalTechnologies.length" class="empty padded">Дополнительные технологии пока не добавлены.</div>
         </section>
       </template>
 
@@ -475,11 +487,11 @@ const refreshSelectedProfile = async () => {
 
     <div v-if="canEditTechnologyCatalog && technologyModalOpen" class="modal-backdrop" @click.self="closeTechnologyModal">
       <form class="modal-card" @submit.prevent="saveTechnology">
-        <div class="modal-head"><div><div class="eyebrow">Каталог</div><h2>{{ technologyEditor.id ? 'Редактировать технологию' : 'Новая технология' }}</h2></div><button type="button" class="modal-close" @click="closeTechnologyModal">×</button></div>
+        <div class="modal-head"><div><div class="eyebrow">Каталог</div><h2>{{ route.section === 'technologies' ? 'Новая дополнительная технология' : (technologyEditor.id ? 'Редактировать технологию' : 'Новая технология') }}</h2></div><button type="button" class="modal-close" @click="closeTechnologyModal">×</button></div>
         <label>Название<input v-model="technologyEditor.name" maxlength="255" required placeholder="Например, React Native" /></label>
-        <label>Алиас<input v-model="technologyEditor.alias" maxlength="255" placeholder="Например, RN" /></label>
-        <label>Направление<input v-model="technologyEditor.category" maxlength="255" placeholder="Например, Mobile" /></label>
-        <label>Родительская технология<select v-model="technologyEditor.parent_id"><option value="">Без родителя</option><option v-for="technology in technologyParentOptions" :key="technology.id" :value="String(technology.id)">{{ technology.name }}</option></select></label>
+        <label v-if="route.section !== 'technologies'">Алиас<input v-model="technologyEditor.alias" maxlength="255" placeholder="Например, RN" /></label>
+        <label v-if="route.section !== 'technologies'">Направление<input v-model="technologyEditor.category" maxlength="255" placeholder="Например, Mobile" /></label>
+        <label v-if="route.section !== 'technologies'">Родительская технология<select v-model="technologyEditor.parent_id"><option value="">Без родителя</option><option v-for="technology in technologyParentOptions" :key="technology.id" :value="String(technology.id)">{{ technology.name }}</option></select></label>
         <div class="modal-actions"><button type="button" class="secondary" :disabled="catalogSaving" @click="closeTechnologyModal">Отмена</button><button class="primary" :disabled="catalogSaving || !technologyEditor.name.trim()">{{ catalogSaving ? 'Сохраняем…' : 'Сохранить' }}</button></div>
       </form>
     </div>

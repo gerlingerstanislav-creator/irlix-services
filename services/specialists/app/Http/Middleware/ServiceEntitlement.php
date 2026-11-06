@@ -83,7 +83,7 @@ final class ServiceEntitlement
                     ||in_array('special:platform-admin',$roles,true);
                 // Inline creation is shared between catalog managers and
                 // profile editors. It never grants another catalog mutation.
-                if ($method === 'POST' && $path === 'api/catalog/technologies/quick') {
+                if ($method === 'POST' && $path === 'api/catalog/additional-technologies/quick') {
                     if (!(($permissions['specialists.catalog.manage']['allowed'] ?? false)
                         || ($permissions['specialists.profiles.manage']['allowed'] ?? false))) {
                         return response()->json(['message'=>'Specialists permission denied'],403);

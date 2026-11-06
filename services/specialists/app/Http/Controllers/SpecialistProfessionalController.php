@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Technology;
+use App\Models\AdditionalTechnology;
 use App\Services\SpecialistProfessionalService;
 use App\Support\EmployeesDirectory;
 use Illuminate\Database\QueryException;
@@ -70,8 +70,8 @@ final class SpecialistProfessionalController extends Controller
     }
 
     /**
-     * Inline catalog creation for authorized profile editors. A case-insensitive
-     * collision selects the existing shared technology; it never creates a copy.
+     * Inline additional-catalog creation for authorized profile editors.
+     * Primary technology records never leak into this separate catalog.
      */
     public function quickCreate(Request $request): JsonResponse
     {
@@ -86,7 +86,7 @@ final class SpecialistProfessionalController extends Controller
         $payload = $request->validate(['name' => ['required', 'string', 'max:255']]);
         $name = trim($payload['name']);
         if ($name === '') return response()->json(['message' => 'Введите название технологии.'], 422);
-        $find = static fn () => Technology::query()
+        $find = static fn () => AdditionalTechnology::query()
             ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])->first();
         $existing = $find();
         if ($existing) {
@@ -95,7 +95,7 @@ final class SpecialistProfessionalController extends Controller
         }
         try {
             $technology = Technology::query()->create([
-                'name' => $name, 'active' => true, 'parent_id' => null,
+                'name' => $name, 'active' => true,
             ]);
         } catch (QueryException $e) {
             // A parallel editor may have inserted the same normalized name.

@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\SpecialistsPermissionsController;
 use App\Http\Controllers\SpecialistProfessionalController;
+use App\Models\AdditionalTechnology;
+use App\Services\SpecialistProfessionalService;
 
 $directoryFor = function (Request $request): array {
     try { return app(EmployeesDirectory::class)->resolve($request); }
@@ -28,6 +30,8 @@ $syncSnapshots = function (array $employees): void {
 $catalogPayload = function (): array {
     return [
         'technologies'=>DB::table('technologies')->where('active',true)->orderBy('name')->get(),
+        'additional_technologies'=>AdditionalTechnology::query()
+            ->where('active',true)->orderBy('name')->get(['id','name']),
         'competencies'=>DB::table('competencies as c')
             ->leftJoin('technologies as t','t.id','=','c.technology_id')
             ->where('c.active',true)
@@ -38,9 +42,11 @@ $catalogPayload = function (): array {
 $profilePayload = function (array $employee): array {
     $employeeId = (int)$employee['id'];
     $profile = DB::table('specialist_profiles')->where('employee_id',$employeeId)->first();
-    $technologies = DB::table('specialist_technologies as st')->join('technologies as t','t.id','=','st.technology_id')->where('st.employee_id',$employeeId)->select(['t.id','t.name','t.category','st.kind','st.grade'])->orderBy('t.name')->get();
+    $professional = app(SpecialistProfessionalService::class);
+    $technologies = $professional->technologies($employeeId);
+    $additional = $professional->additionalTechnologies($employeeId);
     $competencies = DB::table('specialist_competencies as sc')->join('competencies as c','c.id','=','sc.competency_id')->leftJoin('technologies as t','t.id','=','c.technology_id')->where('sc.employee_id',$employeeId)->select(['c.id','c.name','c.description','c.technology_id','t.name as technology_name','sc.level','sc.comment'])->orderBy('c.name')->get();
-    return ['employee'=>$employee,'professional'=>['grade'=>$profile?->grade,'manager_note'=>$profile?->manager_note,'technologies'=>$technologies,'competencies'=>$competencies]];
+    return ['employee'=>$employee,'professional'=>['grade'=>$profile?->grade,'manager_note'=>$profile?->manager_note,'technologies'=>$technologies,'additional_technologies'=>$additional,'competencies'=>$competencies]];
 };
 $technologyPayload = function (Request $request): array {
     return $request->validate([
@@ -123,27 +129,31 @@ Route::delete('/role-permissions',[SpecialistsPermissionsController::class,'remo
 Route::put('/people/{employee}/professional', [SpecialistProfessionalController::class, 'update'])->whereNumber('employee');
 Route::get('/people/{employee}/timeline', [SpecialistProfessionalController::class, 'timeline'])->whereNumber('employee');
 Route::post('/people/{employee}/timeline', [SpecialistProfessionalController::class, 'comment'])->whereNumber('employee');
-Route::post('/catalog/technologies/quick', [SpecialistProfessionalController::class, 'quickCreate']);
+Route::post('/catalog/additional-technologies/quick', [SpecialistProfessionalController::class, 'quickCreate']);
 
 Route::get('/workspace', function (Request $request) use ($directoryFor,$syncSnapshots,$catalogPayload) {
     $directory=$directoryFor($request); $employees=$directory['employees'] ?? []; $syncSnapshots($employees);
     $ids=collect($employees)->pluck('id')->map(fn($id)=>(int)$id)->all();
     $profiles=DB::table('specialist_profiles')->whereIn('employee_id',$ids)->get()->keyBy('employee_id');
-    $techMap=DB::table('specialist_technologies as st')->join('technologies as t','t.id','=','st.technology_id')->whereIn('st.employee_id',$ids)->select(['st.employee_id','t.id','t.name','st.kind','st.grade'])->orderBy('t.name')->get()->groupBy('employee_id');
+    $techMap=DB::table('specialist_technologies as st')->join('technologies as t','t.id','=','st.technology_id')->whereIn('st.employee_id',$ids)->where('st.kind','primary')->select(['st.employee_id','t.id','t.name','st.kind','st.grade'])->orderBy('t.name')->get()->groupBy('employee_id');
     $people=collect($employees)->map(function($employee)use($profiles,$techMap){$id=(int)$employee['id'];$profile=$profiles->get($id);return [...$employee,'grade'=>$profile?->grade,'manager_note'=>$profile?->manager_note,'technologies'=>($techMap->get($id)??collect())->values()];})->values();
     return response()->json(['data'=>['actor'=>$directory['actor']??null,'scope'=>$directory['scope']??null,'managed_department_ids'=>$directory['managed_department_ids']??[],'departments'=>$directory['departments']??[],'people'=>$people,'catalog'=>(filter_var(env('IRLIX_SPECIALISTS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
         && filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
         && !($request->attributes->get('specialists_local_permissions', [])['specialists.catalog.view']['allowed'] ?? false))
-            ? ['technologies'=>[], 'competencies'=>[]] : $catalogPayload()]]);
+            ? ['technologies'=>[], 'additional_technologies'=>[], 'competencies'=>[]] : $catalogPayload()]]);
 });
 
 Route::get('/people/{employee}', function(Request $request,int $employee)use($directoryFor,$visibleEmployee,$syncSnapshots,$profilePayload){$directory=$directoryFor($request);$target=$visibleEmployee($directory,$employee);if(!$target)return response()->json(['message'=>'Specialist not found in your scope'],404);$syncSnapshots([$target]);return response()->json(['data'=>$profilePayload($target)]);})->whereNumber('employee');
 
 Route::put('/people/{employee}', function(Request $request,int $employee)use($directoryFor,$visibleEmployee,$syncSnapshots,$profilePayload){
+    // The old ungraded technology_ids contract cannot safely write either
+    // of the new independent catalogs; reject it instead of silently erasing
+    // primary grades or the separately stored additional associations.
+    if ($request->exists('technology_ids')) abort(409, 'Используйте обновлённую карточку специалиста для изменения технологий.');
     $directory=$directoryFor($request);$target=$visibleEmployee($directory,$employee);if(!$target)return response()->json(['message'=>'Specialist not found in your scope'],404);
     $validated=$request->validate(['grade'=>['nullable','string','max:100','in:Junior,Middle,Middle+,Senior'],'manager_note'=>['nullable','string','max:5000'],'technology_ids'=>['sometimes','array'],'technology_ids.*'=>['integer','exists:technologies,id'],'competencies'=>['sometimes','array'],'competencies.*.id'=>['required_with:competencies','integer','exists:competencies,id'],'competencies.*.level'=>['nullable','integer','min:0','max:100'],'competencies.*.comment'=>['nullable','string','max:2000']]);
     $syncSnapshots([$target]);
-    DB::transaction(function()use($employee,$validated){$update=['updated_at'=>now()];if(array_key_exists('grade',$validated))$update['grade']=$validated['grade'];if(array_key_exists('manager_note',$validated))$update['manager_note']=$validated['manager_note'];DB::table('specialist_profiles')->where('employee_id',$employee)->update($update);if(array_key_exists('technology_ids',$validated)){DB::table('specialist_technologies')->where('employee_id',$employee)->delete();foreach(array_values(array_unique(array_map('intval',$validated['technology_ids'])))as$id)DB::table('specialist_technologies')->insert(['employee_id'=>$employee,'technology_id'=>$id,'created_at'=>now(),'updated_at'=>now()]);}if(array_key_exists('competencies',$validated)){DB::table('specialist_competencies')->where('employee_id',$employee)->delete();foreach($validated['competencies']as$c)DB::table('specialist_competencies')->insert(['employee_id'=>$employee,'competency_id'=>(int)$c['id'],'level'=>$c['level']??null,'comment'=>$c['comment']??null,'created_at'=>now(),'updated_at'=>now()]);}});
+    DB::transaction(function()use($employee,$validated){$update=['updated_at'=>now()];if(array_key_exists('grade',$validated))$update['grade']=$validated['grade'];if(array_key_exists('manager_note',$validated))$update['manager_note']=$validated['manager_note'];DB::table('specialist_profiles')->where('employee_id',$employee)->update($update);if(array_key_exists('competencies',$validated)){DB::table('specialist_competencies')->where('employee_id',$employee)->delete();foreach($validated['competencies']as$c)DB::table('specialist_competencies')->insert(['employee_id'=>$employee,'competency_id'=>(int)$c['id'],'level'=>$c['level']??null,'comment'=>$c['comment']??null,'created_at'=>now(),'updated_at'=>now()]);}});
     return response()->json(['data'=>$profilePayload($target)]);
 })->whereNumber('employee');
 
