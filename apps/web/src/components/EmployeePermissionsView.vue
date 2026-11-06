@@ -132,7 +132,7 @@ onMounted(load);
 </script>
 
 <template>
-  <section class="permissions-page">
+  <section class="permissions-page irlix-registry-panel employee-permissions-panel">
     <div class="permissions-toolbar">
       <label for="employee-permissions-role-picker">Добавить столбец роли</label>
       <UiSearchSelect
@@ -155,7 +155,7 @@ onMounted(load);
       <button type="button" @click="load">Повторить</button>
     </div>
     <UiLoader v-if="loading" page label="Загрузка разрешений" />
-    <div v-else-if="matrix" class="permissions-wrap">
+    <div v-else-if="matrix" class="permissions-wrap irlix-registry-scroll">
       <table class="permissions-table">
         <colgroup>
           <col class="permissions-name-col">
