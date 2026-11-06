@@ -9,6 +9,7 @@ const selectedRole = ref({});
 const loading = ref(false);
 const saving = ref(null);
 const error = ref('');
+const loadFailed = ref(false);
 const count = computed(() => accounts.value.length);
 
 const request = async (url, options = {}) => {
@@ -24,15 +25,21 @@ const request = async (url, options = {}) => {
 
 const load = async () => {
   loading.value = true;
+  loadFailed.value = false;
   error.value = '';
   try {
-    const [accountRows, roleRows] = await Promise.all([
-      request('/api/employees/system-accounts'),
-      request('/api/employees/access/roles'),
-    ]);
-    accounts.value = accountRows || [];
-    roles.value = roleRows || [];
+    // Never turn a failed request or malformed payload into an empty directory.
+    const accountRows = await request('/api/employees/system-accounts');
+    if (!Array.isArray(accountRows)) throw new Error('Сервис вернул некорректный список системных аккаунтов.');
+    accounts.value = accountRows;
+    // The role catalog is optional for displaying technical identities.
+    try {
+      roles.value = (await request('/api/employees/access/roles')) || [];
+    } catch {
+      roles.value = [];
+    }
   } catch (e) {
+    loadFailed.value = true;
     error.value = e.message;
   } finally {
     loading.value = false;
@@ -71,6 +78,12 @@ const mutate = async (account, role, method) => {
     </header>
     <div v-if="error" class="alert" role="alert">{{ error }}</div>
     <UiLoader v-if="loading" page label="Загрузка системных аккаунтов" />
+    <UiPanel v-else-if="loadFailed" class="system-accounts-panel">
+      <div class="empty-state">
+        <strong>Не удалось загрузить системные аккаунты</strong>
+        <UiButton variant="secondary" @click="load">Повторить</UiButton>
+      </div>
+    </UiPanel>
     <UiPanel v-else class="system-accounts-panel">
       <div v-if="!accounts.length" class="empty-state">Системные аккаунты не найдены</div>
       <div v-else class="table-wrap irlix-registry-scroll">

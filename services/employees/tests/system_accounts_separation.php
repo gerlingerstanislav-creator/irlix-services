@@ -10,6 +10,8 @@ use App\Services\SpecialRoleService;
 use App\Services\SystemAccountService;
 use App\Support\RoleLabels;
 use App\Services\StorageV1DirectoryService;
+use App\Http\Controllers\SystemAccountController;
+use Illuminate\Http\Request;
 use Illuminate\Container\Container;
 use Illuminate\Database\Capsule\Manager;
 use Illuminate\Database\Eloquent\Model;
@@ -19,6 +21,8 @@ use Illuminate\Support\Facades\Facade;
 $app = new Container();
 Container::setInstance($app);
 Facade::setFacadeApplication($app);
+$app->instance(\Illuminate\Contracts\Routing\ResponseFactory::class,
+    (new ReflectionClass(\Illuminate\Routing\ResponseFactory::class))->newInstanceWithoutConstructor());
 $capsule = new Manager($app);
 $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
 $db = $capsule->getConnection();
@@ -61,6 +65,24 @@ $check(RoleLabels::resolve($bootstrap, $departments, ['platform-admin']) === ['p
     && !RoleLabels::managesProductionDirection($bootstrap, $departments)
     && RoleLabels::ancestorDepartmentRoles($bootstrap, $departments) === [],
     'Technical account inherited organizational or leadership permissions');
+
+$controller = new SystemAccountController(new SystemAccountService());
+$accessRequest = static function (array $roles, bool $preview = false): Request {
+    $request = Request::create('/api/system-accounts', 'GET');
+    $request->attributes->set('employees_access', ['roles' => $roles]);
+    if ($preview) $request->headers->set('X-Irlix-Role-Preview', 'employee');
+    return $request;
+};
+$check($controller->index($accessRequest([]))->getStatusCode() === 403,
+    'Unsigned/ordinary user can view system accounts');
+$check($controller->index($accessRequest(['platform-tester']))->getStatusCode() === 403,
+    'Platform tester can view system accounts');
+$check($controller->index($accessRequest(['system-admin']))->getStatusCode() === 403,
+    'Infrastructure administrator can view system accounts');
+$check($controller->index($accessRequest(['platform-admin'], true))->getStatusCode() === 403,
+    'Role preview can view system accounts');
+$check($controller->index($accessRequest(['platform-admin']))->getStatusCode() === 200,
+    'Platform admin cannot view system accounts');
 
 $system = (new SystemAccountService())->list();
 $check(count($system) === 1 && $system[0]['login'] === 'admin' && $system[0]['protected']
