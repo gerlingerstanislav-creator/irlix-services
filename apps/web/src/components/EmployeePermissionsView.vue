@@ -1,82 +1,267 @@
 <script setup>
-import { onMounted, ref } from 'vue';
-import { UiCheckbox, UiPanel , UiLoader } from '@irlix/ui';
+import { computed, onMounted, ref } from 'vue';
+import { UiButton, UiLoader, UiSearchSelect } from '@irlix/ui';
+import {
+  moveRoleColumn, orderedRoleColumns, permissionEnabled, permissionSections, shiftRoleColumn,
+} from '../employeePermissionLayout.js';
 
 const matrix = ref(null);
+const loading = ref(true);
 const error = ref('');
 const saving = ref('');
-const defaults = {
-  'platform-admin': ['*'],
-  'platform-tester': ['*'],
-  'personnel-officer': ['employees.read','employees.application.create','employees.hire','employees.salary.read','organization.read','staff_positions.read'],
-  hr: ['employees.read','employees.application.create','organization.read','staff_positions.read'],
-  finance: ['employees.read','employees.salary.read','employees.salary.manage','organization.read','staff_positions.read'],
-  manager: ['employees.read','employees.application.create','employees.salary.read','organization.read','staff_positions.read'],
-  'system-admin': [],
-};
-const load = async () => {
+const draggedRole = ref('');
+const hoveredRole = ref('');
+const COLUMN_ORDER_KEY = 'irlix.employees.permissions.columns.v1';
+
+function savedColumns() {
+  try {
+    const raw = window.localStorage.getItem(COLUMN_ORDER_KEY);
+    if (raw === null) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.every(key => typeof key === 'string') ? parsed : null;
+  } catch { return null; }
+}
+
+const columnOrder = ref(savedColumns());
+const allRoles = computed(() => Object.entries(matrix.value?.roles || {})
+  .map(([key, label]) => ({ key, label, locked: key === 'platform-admin' })));
+const displayedRoles = computed(() => orderedRoleColumns(matrix.value?.roles, columnOrder.value));
+const availableRoles = computed(() => {
+  const displayed = new Set(displayedRoles.value.map(role => role.key));
+  const remaining = allRoles.value.filter(role => !displayed.has(role.key));
+  const special = remaining.filter(role => !role.key.endsWith('-head') && !role.key.includes('-head') &&
+    ['platform-admin', 'personnel-officer', 'top-management', 'manager', 'system-admin'].includes(role.key));
+  const heads = remaining.filter(role => role.key.endsWith('-head'));
+  const departments = remaining.filter(role => !special.includes(role) && !heads.includes(role));
+  return [
+    ...optionGroup('Специальные роли', special),
+    ...optionGroup('Подразделения', departments),
+    ...optionGroup('Руководители', heads),
+  ];
+});
+const hasAvailableRoles = computed(() => availableRoles.value.some(role => role.kind !== 'group'));
+const groups = computed(() => permissionSections(matrix.value?.permissions));
+
+function optionGroup(label, roles) {
+  if (!roles.length) return [];
+  return [
+    { kind: 'group', value: 'group:' + label, label, depth: 0 },
+    ...roles.map(role => ({ value: role.key, label: role.label, depth: 1 })),
+  ];
+}
+
+function keepColumns(columns) {
+  columnOrder.value = columns.map(role => role.key);
+  try { window.localStorage.setItem(COLUMN_ORDER_KEY, JSON.stringify(columnOrder.value)); }
+  catch { /* A blocked localStorage does not prevent changing the current view. */ }
+}
+function addRole(key) {
+  const role = allRoles.value.find(item => item.key === key);
+  if (!role || displayedRoles.value.some(item => item.key === key)) return;
+  keepColumns([...displayedRoles.value, role]);
+}
+function hideRole(role) {
+  if (role.locked) return;
+  keepColumns(displayedRoles.value.filter(item => item.key !== role.key));
+}
+function shiftColumn(key, direction) {
+  const current = displayedRoles.value;
+  const next = shiftRoleColumn(current, key, direction);
+  if (next !== current) keepColumns(next);
+}
+function dragStart(role, event) {
+  draggedRole.value = role.key;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', role.key);
+}
+function dragOver(role, event) {
+  if (!draggedRole.value || draggedRole.value === role.key) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  hoveredRole.value = role.key;
+}
+function dragEnd() {
+  draggedRole.value = '';
+  hoveredRole.value = '';
+}
+function dropColumn(role, event) {
+  event.preventDefault();
+  const source = draggedRole.value;
+  if (source && source !== role.key) {
+    const next = moveRoleColumn(displayedRoles.value, source, role.key);
+    if (next !== displayedRoles.value) keepColumns(next);
+  }
+  dragEnd();
+}
+
+async function load() {
+  loading.value = true;
+  error.value = '';
   try {
     const response = await fetch('/api/employees/access/permissions', { headers: { Accept: 'application/json' } });
-    if (!response.ok) throw new Error('Не удалось загрузить матрицу');
-    matrix.value = (await response.json()).data;
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.message || 'Не удалось загрузить матрицу');
+    matrix.value = body.data;
   } catch (e) { error.value = e.message; }
-};
-const enabled = (role, permission) => {
-  if (role === 'platform-admin') return true;
-  const rule = matrix.value?.rules?.find(item => item.role === role && item.permission === permission);
-  return rule ? Boolean(rule.enabled) : (defaults[role] || []).includes('*') || (defaults[role] || []).includes(permission);
-};
-const toggle = async (role, permission) => {
-  const newValue = !enabled(role, permission);
-  const key = role + ':' + permission;
-  saving.value = key; error.value = '';
+  finally { loading.value = false; }
+}
+
+async function setPermission(role, permission, enabled) {
+  if (role.locked || saving.value) return;
+  const key = role.key + ':' + permission.key;
+  if (permissionEnabled(role.key, permission.key, matrix.value?.rules) === enabled) return;
+  saving.value = key;
+  error.value = '';
   try {
-    const response = await fetch(`/api/employees/access/permissions/${role}/${permission}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ enabled: newValue }),
+    const response = await fetch('/api/employees/access/permissions/' +
+      encodeURIComponent(role.key) + '/' + encodeURIComponent(permission.key), {
+      method: 'PUT',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
     });
-    if (!response.ok) throw new Error((await response.json()).message || 'Не удалось сохранить');
-    const existing = matrix.value.rules.find(item => item.role === role && item.permission === permission);
-    if (existing) existing.enabled = newValue;
-    else matrix.value.rules.push({ role, permission, enabled: newValue });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.message || 'Не удалось сохранить разрешение');
+    const existing = matrix.value.rules.find(item => item.role === role.key && item.permission === permission.key);
+    if (existing) existing.enabled = enabled;
+    else matrix.value.rules.push({ role: role.key, permission: permission.key, enabled });
   } catch (e) { error.value = e.message; }
   finally { saving.value = ''; }
-};
+}
+
 onMounted(load);
 </script>
+
 <template>
-  <UiPanel class="irlix-registry-panel employee-permissions-panel">
-    <div class="employee-permissions-intro">
-      <h2>Разрешения сервиса сотрудников</h2>
-      <p>Доступы назначаются ролям. Администратор платформы имеет полный доступ. Изменения применяются на сервере.</p>
+  <section class="permissions-page">
+    <div class="permissions-toolbar">
+      <label for="employee-permissions-role-picker">Добавить столбец роли</label>
+      <UiSearchSelect
+        id="employee-permissions-role-picker"
+        class="permissions-role-select"
+        :model-value="''"
+        :options="availableRoles"
+        :disabled="loading || !!saving || !hasAvailableRoles"
+        :placeholder="hasAvailableRoles ? 'Выберите роль платформы' : 'Все роли показаны'"
+        search-placeholder="Найти роль"
+        aria-label="Показать роль в матрице сотрудников"
+        :clearable="false"
+        @update:model-value="addRole"
+      />
+      <span class="permissions-toolbar-hint">Скрытие столбца не изменяет разрешения.</span>
     </div>
-    <p v-if="error" class="employee-form-error">{{ error }}</p>
-    <div v-if="matrix" class="table-wrap irlix-registry-scroll">
-      <table class="irlix-data-table employee-permissions-table">
-        <thead><tr><th>Разрешение</th><th v-for="(label, role) in matrix.roles" :key="role">{{ label }}</th></tr></thead>
-        <tbody>
-          <tr v-for="(label, permission) in matrix.permissions" :key="permission">
-            <td>{{ label }}</td>
-            <td v-for="(_, role) in matrix.roles" :key="role" class="employee-permissions-cell">
-              <UiCheckbox :model-value="enabled(role, permission)" :disabled="role === 'platform-admin' || saving !== ''" :aria-label="label + ': ' + matrix.roles[role]" @change="toggle(role, permission)" />
-            </td>
+
+    <div v-if="error" class="error-banner" role="alert">
+      {{ error }}
+      <button type="button" @click="load">Повторить</button>
+    </div>
+    <UiLoader v-if="loading" page label="Загрузка разрешений" />
+    <div v-else-if="matrix" class="permissions-wrap">
+      <table class="permissions-table">
+        <colgroup>
+          <col class="permissions-name-col">
+          <col v-for="role in displayedRoles" :key="role.key" class="permissions-role-col">
+        </colgroup>
+        <thead>
+          <tr>
+            <th scope="col">Разрешение</th>
+            <th
+              v-for="role in displayedRoles"
+              :key="role.key"
+              scope="col"
+              :class="{ 'permissions-drop-target': hoveredRole === role.key }"
+              draggable="true"
+              @dragstart="dragStart(role, $event)"
+              @dragover="dragOver(role, $event)"
+              @dragleave="hoveredRole = hoveredRole === role.key ? '' : hoveredRole"
+              @drop="dropColumn(role, $event)"
+              @dragend="dragEnd"
+            >
+              <div class="permissions-role-heading">
+                <span :title="role.label">{{ role.label }}</span>
+                <UiButton
+                  v-if="!role.locked"
+                  variant="ghost"
+                  :title="'Скрыть столбец «' + role.label + '»'"
+                  :aria-label="'Скрыть столбец «' + role.label + '»'"
+                  @click="hideRole(role)"
+                >×</UiButton>
+              </div>
+              <div class="permissions-role-order">
+                <span class="permissions-role-grip" title="Перетащите заголовок, чтобы переместить столбец" aria-hidden="true">⠿</span>
+                <UiButton
+                  variant="ghost"
+                  :disabled="displayedRoles[0]?.key === role.key"
+                  :title="'Переместить «' + role.label + '» влево'"
+                  :aria-label="'Переместить «' + role.label + '» влево'"
+                  @click="shiftColumn(role.key, -1)"
+                >←</UiButton>
+                <UiButton
+                  variant="ghost"
+                  :disabled="displayedRoles[displayedRoles.length - 1]?.key === role.key"
+                  :title="'Переместить «' + role.label + '» вправо'"
+                  :aria-label="'Переместить «' + role.label + '» вправо'"
+                  @click="shiftColumn(role.key, 1)"
+                >→</UiButton>
+              </div>
+            </th>
           </tr>
+        </thead>
+        <tbody>
+          <template v-for="group in groups" :key="group.key">
+            <tr class="permissions-group-row">
+              <th class="permissions-group-title" scope="rowgroup">{{ group.label }}</th>
+              <td v-for="role in displayedRoles" :key="role.key" aria-hidden="true"></td>
+            </tr>
+            <tr v-for="permission in group.permissions" :key="permission.key">
+              <th scope="row" class="permissions-label">{{ permission.label }}</th>
+              <td v-for="role in displayedRoles" :key="role.key">
+                <select
+                  :aria-label="permission.label + ': ' + role.label"
+                  :value="permissionEnabled(role.key, permission.key, matrix.rules) ? 'allow' : 'deny'"
+                  :disabled="role.locked || !!saving"
+                  @change="setPermission(role, permission, $event.target.value === 'allow')"
+                >
+                  <option value="deny">Нет доступа</option>
+                  <option value="allow">Разрешено</option>
+                </select>
+              </td>
+            </tr>
+          </template>
         </tbody>
       </table>
     </div>
-    <UiLoader v-else page label="Загрузка матрицы разрешений" />
-  </UiPanel>
+  </section>
 </template>
 
 <style scoped>
-.employee-permissions-panel { background:var(--irlix-color-surface); }
-.employee-permissions-intro { flex:none; padding:18px 20px 16px; border-bottom:1px solid var(--irlix-color-border); }
-.employee-permissions-intro h2 { margin:0 0 6px; font-size:var(--irlix-font-size-section-title); }
-.employee-permissions-intro p { margin:0; color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); line-height:1.45; }
-.employee-permissions-table { min-width:1020px; }
-.employee-permissions-table th:first-child { min-width:255px; position:sticky; left:0; z-index:4; }
-.employee-permissions-table td:first-child { position:sticky; left:0; z-index:3; background:var(--irlix-color-surface); font-weight:550; }
-.employee-permissions-cell { text-align:center; }
-.employee-permissions-cell :deep(.ui-checkbox) { justify-content:center; }
-.employee-form-error { margin:10px 18px; color:var(--irlix-color-danger); }
+.permissions-page { display:flex; flex:1 1 auto; flex-direction:column; min-width:0; min-height:0; }
+.permissions-toolbar { display:flex; flex:none; align-items:center; gap:12px; padding:10px 16px; font-size:var(--irlix-font-size-caption); flex-wrap:wrap; }
+.permissions-role-select { width:min(360px, 100%); }
+.permissions-toolbar-hint { color:var(--irlix-color-text-muted); }
+.permissions-wrap { flex:1 1 auto; min-width:0; min-height:0; overflow:auto; overscroll-behavior:contain; border-top:1px solid var(--irlix-color-border); background:var(--irlix-color-surface); }
+.permissions-table { border-collapse:separate; border-spacing:0; table-layout:fixed; width:max-content; background:var(--irlix-color-surface); }
+.permissions-name-col { width:260px; }
+.permissions-role-col { width:158px; }
+.permissions-table th, .permissions-table td { box-sizing:border-box; padding:6px 8px; border-right:1px solid var(--irlix-color-border); border-bottom:1px solid var(--irlix-color-border); text-align:left; font-size:var(--irlix-font-size-caption); }
+.permissions-table thead th { position:sticky; top:0; z-index:3; height:68px; vertical-align:top; background:var(--irlix-color-surface-muted); }
+.permissions-table thead th:first-child { left:0; z-index:5; }
+.permissions-table tbody th:first-child { position:sticky; left:0; z-index:2; width:260px; background:var(--irlix-color-surface); }
+.permissions-table .permissions-group-row th, .permissions-table .permissions-group-row td { background:var(--irlix-color-surface-muted); }
+.permissions-table .permissions-group-row .permissions-group-title { position:sticky; left:0; z-index:2; font-weight:700; }
+.permissions-table .permissions-label { font-weight:500; }
+.permissions-role-heading { display:flex; align-items:center; justify-content:space-between; gap:2px; }
+.permissions-role-heading span { min-width:0; overflow-wrap:anywhere; line-height:1.15; }
+.permissions-role-heading .ui-button { flex:none; padding:0 4px; }
+.permissions-table thead th:not(:first-child) { cursor:grab; }
+.permissions-table thead th.permissions-drop-target { outline:2px solid var(--irlix-color-primary); outline-offset:-2px; }
+.permissions-role-order { display:flex; align-items:center; justify-content:flex-end; gap:3px; padding-top:3px; }
+.permissions-role-order .ui-button { min-width:25px; padding:0 4px; }
+.permissions-role-grip { color:var(--irlix-color-text-muted); margin-right:auto; font-size:15px; }
+.permissions-table select { width:100%; height:30px; padding:0 4px; border:1px solid var(--irlix-color-border); border-radius:7px; background:var(--irlix-color-surface); color:var(--irlix-color-text); font:inherit; }
+.permissions-table select:disabled { background:var(--irlix-color-surface-muted); color:var(--irlix-color-text); }
+@media (max-width:720px) {
+  .permissions-toolbar { padding:10px; }
+  .permissions-name-col, .permissions-table tbody th:first-child { width:210px; }
+  .permissions-role-col { width:148px; }
+}
 </style>
