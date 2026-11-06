@@ -53,12 +53,18 @@ DB::table('timesheet_entries')->insert([
     'employee_id'=>null, 'client_member_id'=>503, 'project_id'=>null,
     'work_date'=>'2026-10-21', 'hours'=>2, 'created_at'=>now(), 'updated_at'=>now(),
 ]);
+DB::table('final_approvals')->insert([
+    'employee_id'=>null,'client_member_id'=>503,'project_id'=>null,
+    'month'=>'2026-10-01','approved_by'=>100,'approved_at'=>now(),
+    'created_at'=>now(),'updated_at'=>now(),
+]);
 $service->purge(1, [501,503]);
 $service->purge(1, [501,503]);
 if (DB::table('timesheet_entries')->where('employee_id',1)->exists()) {
     throw new RuntimeException('Confirmed/frozen synthetic employee timesheet hours remain');
 }
-if (DB::table('timesheet_entries')->where('client_member_id',503)->exists()) {
+if (DB::table('timesheet_entries')->where('client_member_id',503)->exists()
+    || DB::table('final_approvals')->where('client_member_id',503)->exists()) {
     throw new RuntimeException('Imported canonical employee data was not removed');
 }
 if (!DB::table('timesheet_entries')->where('client_member_id',502)->exists()) {
