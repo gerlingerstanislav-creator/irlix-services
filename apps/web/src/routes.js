@@ -1,6 +1,7 @@
 // Employees owns its paths; the platform launcher only knows /employees/.
 export const routes = [
   { path: '/', name: 'employees', meta: { section: 'employees' } },
+  { path: '/system-accounts', name: 'systemAccounts', meta: { section: 'systemAccounts' } },
   { path: '/organization', name: 'positions', meta: { section: 'positions' } },
   { path: '/positions', name: 'staffPositions', meta: { section: 'staffPositions' } },
   { path: '/fot', name: 'fot', meta: { section: 'fot' } },

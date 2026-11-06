@@ -13,11 +13,13 @@ import EmployeeCardDrawer from './components/EmployeeCardDrawer.vue';
 import NewEmployeeModal from './components/NewEmployeeModal.vue';
 import EmployeePermissionsView from './components/EmployeePermissionsView.vue';
 import SpecialRolesView from './components/SpecialRolesView.vue';
+import SystemAccountsView from './components/SystemAccountsView.vue';
 import StaffPositionsView from './components/StaffPositionsView.vue';
 import PositionsCatalogView from './components/PositionsCatalogView.vue';
 
 const TOPBAR_ITEMS = Object.freeze([
   { id: 'employees', label: 'Сотрудники' },
+  { id: 'systemAccounts', label: 'Системные аккаунты' },
   { id: 'positions', label: 'Орг. структура' },
   { id: 'staffPositions', label: 'Должности' },
   { id: 'fot', label: 'ФОТ и пересмотры' },
@@ -65,6 +67,7 @@ const canPlanFot = computed(() => Boolean(access.value.permissions?.['employees.
 const canManageAccess = computed(() => Boolean(access.value.permissions?.['access.manage']));
 const canReadAudit = computed(() => Boolean(access.value.permissions?.['audit.read']));
 const isPlatformAdmin = computed(() => (access.value.roles ?? []).includes('platform-admin'));
+const visibleTopbarItems = computed(() => TOPBAR_ITEMS.filter((item) => item.id !== 'systemAccounts' || isPlatformAdmin.value));
 const canDeletePositions = computed(() => (access.value.roles ?? []).includes('platform-admin'));
 const activePositions = computed(() => positions.value.filter((position) => !position.closed_at));
 const positionFilterOptions = computed(() => staffPositionTreeOptions(departments.value, positions.value));
@@ -187,12 +190,12 @@ onMounted(loadEmployees);
     <AppSidebar
       :section="currentSection"
       :can-read-audit="canReadAudit"
-      :can-manage-roles="canManageAccess" :can-manage-permissions="canManageEmployeePermissions" :can-read-fot="canReadFot"
+      :can-manage-roles="canManageAccess" :can-manage-system-accounts="isPlatformAdmin" :can-manage-permissions="canManageEmployeePermissions" :can-read-fot="canReadFot"
       @update:section="navigateToSection"
     />
 
     <main class="workspace">
-      <UiAppTopbar service="employees" :section="currentSection" :items="TOPBAR_ITEMS" :loading="loading">
+      <UiAppTopbar service="employees" :section="currentSection" :items="visibleTopbarItems" :loading="loading">
         <template #actions>
           <div class="employees-topbar-summary">
             <span v-if="currentSection === 'employees'"><strong>{{ filteredEmployees.length }}</strong> из {{ employees.length }} сотрудников</span>
@@ -212,7 +215,7 @@ onMounted(loadEmployees);
       <UiLoader v-if="initialPageLoading" page label="Загрузка раздела сотрудников" />
       <template v-else>
       <div v-if="currentSection === 'not-found'" class="empty-state" role="alert"><strong>404 — Страница не найдена</strong><span>Такой страницы в сервисе сотрудников нет.</span><a href="/employees/">К сотрудникам</a></div>
-      <div v-if="accessLoaded && access.allowed && ((currentSection==='roles' && !canManageAccess) || (currentSection==='permissions' && !canManageEmployeePermissions) || (currentSection==='fot' && !canReadFot) || (currentSection==='audit' && !canReadAudit))" class="empty-state access-denied" role="alert"><strong>403 — Доступ запрещён</strong><span>Недостаточно прав для этого раздела.</span><a href="/employees/">К сотрудникам</a></div>
+      <div v-if="accessLoaded && access.allowed && ((currentSection==='systemAccounts' && !isPlatformAdmin) || (currentSection==='roles' && !canManageAccess) || (currentSection==='permissions' && !canManageEmployeePermissions) || (currentSection==='fot' && !canReadFot) || (currentSection==='audit' && !canReadAudit))" class="empty-state access-denied" role="alert"><strong>403 — Доступ запрещён</strong><span>Недостаточно прав для этого раздела.</span><a href="/employees/">К сотрудникам</a></div>
       <div v-if="accessLoaded && !access.allowed" class="empty-state access-denied">
         <strong>Нет доступа к Employees</strong>
         <span>Обычные сотрудники не работают с этим сервисом. Доступ предоставляется руководителям, HR, Finance и администраторам компании.</span>
@@ -236,6 +239,7 @@ onMounted(loadEmployees);
         <PositionsCatalogView ref="positionsCatalogRef" :positions="positions" :departments="departments" :employees="employees" :can-manage="canManagePositions" :can-delete="canDeletePositions" @updated="loadEmployees" />
       </div>
       <EmployeeFotView v-if="access.allowed && canReadFot && currentSection === 'fot'" ref="fotViewRef" :year="fotYear" :employees="employees" :departments="departments" :access="access" />
+      <SystemAccountsView v-if="access.allowed && isPlatformAdmin && currentSection === 'systemAccounts'" />
       <EmployeePermissionsView v-if="access.allowed && canManageEmployeePermissions && currentSection === 'permissions'" />
       <SpecialRolesView v-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" :departments="departments" :actor-roles="access.roles || []" />
       <AuditLogView v-if="access.allowed && canReadAudit && currentSection === 'audit'" :employees="employees" :departments="departments" />
