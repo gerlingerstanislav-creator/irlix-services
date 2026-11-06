@@ -81,3 +81,10 @@ test('main technologies wrap inline with local plus and hover-only adjacent edit
   assert.match(body, /\.specialist-primary-row:focus-within \.specialist-primary-actions/);
   assert.match(body, /@media\(hover:none\)/);
 });
+
+test('quick creation of an additional skill targets the isolated Eloquent catalog', () => {
+  const controller = readFileSync(new URL('../../../services/specialists/app/Http/Controllers/SpecialistProfessionalController.php', import.meta.url), 'utf8');
+  assert.match(controller, /use App\\Models\\AdditionalTechnology;/);
+  assert.match(controller, /\\$technology = AdditionalTechnology::query\\(\\)->create\\(\\[/);
+  assert.doesNotMatch(controller, /\\$technology = Technology::query\\(\\)->create\\(\\[/);
+});
