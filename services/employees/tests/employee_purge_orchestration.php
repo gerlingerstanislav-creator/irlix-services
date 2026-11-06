@@ -39,7 +39,7 @@ $factory->fake(static function ($request) {
     if ($token !== 'synthetic-cross-service-purge-secret') {
         throw new RuntimeException('Internal purge request did not contain the service token');
     }
-    return (new Factory())->response(['purged' => true], 200);
+    return (new Factory())->response(['purged' => true, 'client_member_ids' => [501]], 200);
 });
 $ok = (new EmployeeDeletionService())->purge($person);
 $check($ok['status'] === 204, 'Orchestration failed on synthetic service success');
@@ -48,6 +48,10 @@ foreach ($factory->recorded() as [$request]) {
     $url = $request->url();
     $host = parse_url($url, PHP_URL_HOST);
     $seen[] = $host;
+    if ($host === 'timesheets') {
+        $check($request->data()['client_member_ids'] === [501],
+            'Timesheets did not receive canonical membership IDs');
+    }
     $path = parse_url($url, PHP_URL_PATH);
     $check(str_ends_with($path, '/internal/system/employees/777/purge')
             || str_ends_with($path, '/internal/system/employees/777/purge/preflight'),
