@@ -2,6 +2,7 @@ import { makePlan } from './plan.mjs';
 
 export const browserCases = Object.freeze([
   { id: 'specialists-profile-scroll', suite: 'specialists', app: 'specialists', port: 5197, test: 'apps/specialists/tests/profile-scroll.browser.cjs', label: 'Specialists: fixed tabs and native wheel scrolling' },
+  { id: 'specialists-additional-deletion', suite: 'specialists', app: 'specialists', port: 5197, test: 'apps/specialists/tests/additional-deletion.browser.cjs', label: 'Specialists: global extra technology deletion and replacement dialog' },
   { id: 'design-system-navigation', suite: 'ui', app: 'design-system', port: 5196, test: 'apps/design-system/tests/navigation.browser.cjs', label: 'Design system: grouped catalog, anchors and history' },
   { id: 'ui-registry-table', suite: 'ui', app: 'design-system', port: 5196, test: 'apps/design-system/tests/registry.browser.cjs', label: 'Shared registry: fixed header and body-only scroll' },
   { id: 'equipment-registry', suite: 'equipment', app: 'equipment', port: 5195, test: 'apps/equipment/tests/registry.browser.cjs', label: 'Equipment: scroll, columns, form colors, filters and deletion' },
