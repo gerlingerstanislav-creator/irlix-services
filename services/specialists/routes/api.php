@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\SpecialistsPermissionsController;
 use App\Http\Controllers\SpecialistProfessionalController;
+use App\Http\Controllers\AdditionalTechnologyCatalogController;
+use App\Support\SpecialistsCatalogAuthorizer;
 use App\Models\AdditionalTechnology;
 use App\Services\SpecialistProfessionalService;
 
@@ -76,29 +78,8 @@ $assertTechnologyParent = function (?int $parentId, ?int $technologyId = null): 
 
 // The Employees access service is the source of truth for special platform roles.
 // Resolve the directory first to validate the caller, then fail closed on access lookup errors.
-$assertCatalogAdmin = function (Request $request) use ($directoryFor): void {
-    if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
-        && filter_var(env('IRLIX_SPECIALISTS_LOCAL_AUTHZ_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
-        $policy = (array) $request->attributes->get('specialists_local_permissions', []);
-        abort_unless(($policy['specialists.catalog.manage']['allowed'] ?? false) === true
-            && ($policy['specialists.catalog.manage']['scope'] ?? '') === 'all',
-            403, 'Только явно разрешённая роль может изменять каталог технологий.');
-        return;
-    }
-    if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
-        $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
-        abort_unless(in_array('platform-admin', $roles, true)
-            && in_array('service:specialists', $roles, true), 403,
-            'Редактировать каталог технологий может только администратор платформы.');
-        return;
-    }
-    $directoryFor($request);
-    $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
-    $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
-    try { $response = Http::withToken($token)->acceptJson()->timeout(8)->get("{$base}/access/me"); }
-    catch (\Throwable) { abort(503, 'Не удалось проверить права администратора платформы.'); }
-    if (!$response->successful() || !is_array($response->json('data.roles'))) abort(503, 'Не удалось проверить права администратора платформы.');
-    if (!in_array('platform-admin', $response->json('data.roles'), true)) abort(403, 'Редактировать каталог технологий может только администратор платформы.');
+$assertCatalogAdmin = static function (Request $request): void {
+    app(SpecialistsCatalogAuthorizer::class)->assertCanManage($request);
 };
 
 Route::get('/health', fn () => response()->json(['service'=>'specialists','status'=>'ok','database'=>DB::select('select 1') ? 'ok' : 'error']));
@@ -130,6 +111,7 @@ Route::put('/people/{employee}/professional', [SpecialistProfessionalController:
 Route::get('/people/{employee}/timeline', [SpecialistProfessionalController::class, 'timeline'])->whereNumber('employee');
 Route::post('/people/{employee}/timeline', [SpecialistProfessionalController::class, 'comment'])->whereNumber('employee');
 Route::post('/catalog/additional-technologies/quick', [SpecialistProfessionalController::class, 'quickCreate']);
+Route::delete('/catalog/additional-technologies/{technology}', [AdditionalTechnologyCatalogController::class, 'remove'])->whereNumber('technology');
 
 Route::get('/workspace', function (Request $request) use ($directoryFor,$syncSnapshots,$catalogPayload) {
     $directory=$directoryFor($request); $employees=$directory['employees'] ?? []; $syncSnapshots($employees);
