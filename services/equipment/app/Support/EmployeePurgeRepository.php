@@ -21,6 +21,7 @@ final class EmployeePurgeRepository
 
         foreach (array_unique(array_filter($identities, static fn ($value) => $value !== '')) as $identity) {
             DB::table('equipment_audit_log')->where('actor', $identity)->delete();
+            DB::table('equipment_permission_audit')->where('actor', $identity)->delete();
             foreach ([
                 'equipment_assignments' => ['issued_by', 'returned_by'],
                 'equipment_write_offs' => ['actor'],
