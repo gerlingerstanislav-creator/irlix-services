@@ -27,3 +27,10 @@
 Проверки: client_member_import_smoke.php покрывает идентичности, повторные подключения и ставки, Dry run, Timesheets и Validate; vacations_schema_import_smoke.php сохраняет отдельную проверку Vacations. Старый schema_import_smoke.php — архивный fixture прежней модели. unknown_rates_smoke.php проверяет неизвестную, нулевую и числовую ставку в отчётах.
 
 Обновление кода не запускает production перенос. Нужны проверка обновления PostgreSQL схемы, инвентаризация реальных строк, сверка частичных mappings и контроль часов/сумм после импорта. Подробности: docs/MIGRATION.md.
+
+## Проверка привязок Sales после импорта (06.11.2026)
+
+- Источник идентичности Sales: `clients.sales_manager_id → legacy users.id → migration_mappings(clients/users) → Employees.id → clients.sales_employee_id`. Поля `client_requests.responsible_id` и `clients.sales_manager_id` независимы, не подменяют друг друга.
+- `ClientsMigration::validate()` сообщает секцию `sales_assignments`: `source_assigned`, `source_unassigned`, `matched`, `unresolved`, `mismatched`. При ошибках сопоставления результат Validate — not ok.
+- Старые клиенты без `sales_manager_id` остаются без назначения и учитываются как `source_unassigned`: сотрудник не угадывается по названию, запросам или текущему аккаунту. При неразрешённом пользователе или конфликте с целевым сотрудником требуется сверка исходного логина/override и конкретного mapping; автоматическое переприсвоение не выполняется.
+- Изменение этой проверки не доказывает успешный production-перенос. После установки нового кода нужен реальный Validate по Clients и сверка назначения с видимостью Sales.
