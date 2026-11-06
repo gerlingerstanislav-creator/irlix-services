@@ -78,7 +78,7 @@ const loadTimeline = async () => {
   timelineLoading.value = false;
 };
 watch(employeeId, () => { initProfile(); loadTimeline(); }, { immediate: true });
-watch(() => props.profile?.professional, () => initProfile());
+watch(() => props.profile?.professional, () => { const currentTab = tab.value; initProfile(); tab.value = currentTab; });
 const startPrimary = index => {
   if (!props.editable) return;
   editing.value = index;
@@ -131,7 +131,8 @@ const save = async () => {
   try {
     await fetchData(`/api/specialists/people/${employeeId.value}/professional`, {
       method: 'PUT', body: JSON.stringify({
-        grade: grades.includes(generalGrade.value) ? generalGrade.value : null,
+        ...(grades.includes(generalGrade.value) || !generalGrade.value
+          ? { grade: generalGrade.value || null } : {}),
         primary: primary.value, secondary_ids: secondary.value,
       }),
     });
