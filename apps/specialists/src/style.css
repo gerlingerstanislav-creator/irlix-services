@@ -106,7 +106,7 @@
 .specialists-app .specialists-filter-bar :is(input,button){font-family:inherit;font-size:inherit}
 .specialists-app .specialists-filter-bar .specialists-search{font-size:inherit}
 .specialists-profile-drawer{display:grid;gap:0;font-family:var(--irlix-font-sans)}
-.specialists-profile-identity{display:flex;align-items:flex-start;gap:14px;padding:18px 20px;border-bottom:1px solid var(--irlix-color-border)}
+.specialists-profile-identity{display:flex;align-items:flex-start;gap:14px;padding:18px 20px;border:0}
 .specialists-profile-identity strong{font-size:var(--irlix-font-size-section-title)}
 .specialists-profile-identity p{margin:5px 0;color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-table)}
 .specialists-profile-section{padding:18px 20px;border-bottom:1px solid var(--irlix-color-border);min-width:0}
