@@ -264,3 +264,9 @@ Drag-and-drop использует **существующие доменные �
 - `org:sales` при первичной настройке получает `clients.view: own`. Исторические изменённые через матрицу права, в том числе явные запреты, не перезаписываются.
 - Справочник Employees отдаёт неактивных сотрудников только как `historical_employee_names` (`id`, `full_name`) для подписи исторических владельцев клиента, лида или запроса. Они не попадают в селекторы активных сотрудников. Если идентификатор не существует в Employees, `#ID` сохраняется как признак отсутствующего сопоставления.
 - Регрессии: `services/clients/tests/sales_ownership_smoke.php` и `apps/clients/tests/employeeDisplayMap.test.mjs`.
+
+## Reference-каталог технологий для Sales (06.11.2026)
+
+- Сервис Clients получает только технологии через `GET /api/specialists/clients-technology-catalog`, а не Specialists `GET /api/specialists/catalog`. Для чтения требуется подтверждённый `service:clients` и текущая активная служебная авторизация Employees; право доступа к Specialist-профилям и их матрица не выдаются.
+- Роль/сервис Specialists не обязателен для работы сейлза с запросами и клиентами. Проверки: `services/specialists/tests/clients_catalog_admission.php`, `apps/clients/tests/clientsCatalogAccess.test.mjs`.
+- Production gate `services/clients/bin/sales-contour-read-smoke.php` выполняет read-only проверку Clients `clients/catalog/requests` на живой PostgreSQL-схеме с own-scoped Sales. Не заменяет проверки реального пользователя и фактических маппингов миграции.
