@@ -125,7 +125,7 @@
 
 /* Compact shared topbar filter and flush dashboard: no duplicate context badge. */
 .specialists-topbar-departments{width:230px;min-width:195px;font-family:var(--irlix-font-sans);font-size:var(--irlix-font-size-table)}
-.specialists-topbar-departments :deep(.ui-search-select__trigger){font-size:var(--irlix-font-size-table)}
+.specialists-topbar-departments .ui-search-select__trigger{font-size:var(--irlix-font-size-table)}
 .specialists-app .content.irlix-service-content:has(>.metric-grid){padding-top:14px}
 .specialists-app .dashboard-context{display:none}
 .specialists-app .content.irlix-service-content:has(>.specialists-catalog-section){padding-top:0}
