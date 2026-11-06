@@ -62,6 +62,7 @@ const filterDraft = reactive({
 });
 const overview = reactive({ clients: [], leads: [], contacts: [], requests: [], reportingPeriods: [] });
 const employees = ref([]);
+const historicalEmployeeNames = ref([]);
 const departments = ref([]);
 const actorEmployeeId = ref(null);
 const accountingEmployeeId = ref(null);
@@ -116,7 +117,7 @@ const requestPositionLevels = ['TechLead','TeamLead','Senior','Middle+','Middle'
 const expectedConnectionTimes = ['Неизвестно','Месяц','Квартал','Пол года','Год'];
 const acceptableTuFormats = ['Не важно','Штат','Штат / ГПХ'];
 const title = computed(() => titles[view.value]);
-const employeeMap = computed(() => new Map(employees.value.map(e => [Number(e.id), displayEmployeeName(e.full_name) || `#${e.id}`])));
+const employeeMap = computed(() => new Map([...historicalEmployeeNames.value, ...employees.value].map(e => [Number(e.id), displayEmployeeName(e.full_name) || `#${e.id}`])));
 const employeeRecordMap = computed(() => new Map(employees.value.map(e => [Number(e.id), e])));
 const employeeName = id => employeeMap.value.get(Number(id)) || (id ? `#${id}` : '—');
 const employeeOptions = computed(() => employees.value.map(e => ({ value:String(e.id), label:displayEmployeeName(e.full_name) || `#${e.id}` })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
@@ -400,6 +401,7 @@ async function load() {
     contourAccess.value = initialAccess || (await api('/api/clients/permissions/me')).data || { permissions: {} };
     if (attemptModes.value.length && !attemptModes.value.includes(attemptMode.value)) attemptMode.value = attemptModes.value[0];
     employees.value = directory.data?.employees || [];
+    historicalEmployeeNames.value = directory.data?.historical_employee_names || [];
     departments.value = directory.data?.departments || [];
     actorEmployeeId.value = Number(directory.data?.actor?.id) || null;
     accountingEmployeeId.value = directory.data?.accounting ? (Number(directory.data?.actor?.id) || null) : null;
