@@ -27,6 +27,20 @@ test('specialist drawer uses common tabs, history feeds and graded primary techn
   assert.doesNotMatch(body, /Комментарий руководителя<\/label>/);
   assert.doesNotMatch(body, /<h3>Компетенции<\/h3>/);
 });
+test('specialist identity and tabs are fixed with a single scroll region below', () => {
+  const app = read('App.vue');
+  const body = read('SpecialistProfileBody.vue');
+  const css = read('style.css');
+  assert.match(app, /:scroll-body="false"/);
+  assert.match(css, /\.specialists-profile-drawer\{display:flex;flex-direction:column;[^}]*height:100%;min-height:0;overflow:hidden/);
+  assert.match(body, /class="specialist-profile-tabs"/);
+  assert.match(body, /class="specialist-profile-scroll"/);
+  assert.match(body, /scrollArea\.value\.scrollTop = 0/);
+  assert.match(body, /:scroll-feed="false"/);
+  assert.match(body, /\.specialist-profile-scroll\{[^}]*min-height:0;overflow-y:auto;overflow-x:hidden/);
+  assert.doesNotMatch(body, /@wheel\.prevent/);
+});
+
 test('technology directory is a separate alphabetical route and list', () => {
   assert.match(read('routes.js'), /path:'\/technologies'/);
   assert.match(read('accessNavigation.js'), /id: 'technologies'/);

@@ -96,6 +96,7 @@ try {
         CLIENTS_PREVIEW: 'http://127.0.0.1:5193',
         TIMESHEETS_PREVIEW: 'http://127.0.0.1:5194',
         EQUIPMENT_PREVIEW: 'http://127.0.0.1:5195',
+        SPECIALISTS_PREVIEW: 'http://127.0.0.1:5197',
         DESIGN_SYSTEM_PREVIEW: 'http://127.0.0.1:5196',
         MIGRATION_PREVIEW: 'http://127.0.0.1:5173',
         ...scenario.env

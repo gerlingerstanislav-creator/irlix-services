@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 const props = defineProps({
   inactive: { type: Boolean, default: false },
+  scrollBody: { type: Boolean, default: true },
   open: { type: Boolean, default: false },
   title: { type: String, default: '' },
   width: { type: String, default: '520px' },
@@ -79,7 +80,8 @@ onBeforeUnmount(() => stopResize?.());
             <button type="button" class="irlix-icon-button irlix-drawer-close" aria-label="Закрыть" @click="emit('close')"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m3 3 10 10M13 3 3 13" /></svg></button>
           </div>
         </header>
-        <div class="irlix-drawer-body" :style="props.inactive ? {overflow: 'hidden'} : undefined" @wheel.stop><slot /></div>
+        <div class="irlix-drawer-body" :class="{ 'irlix-drawer-body--non-scrollable': !props.scrollBody }"
+          :style="props.inactive ? { overflow: 'hidden' } : undefined" @wheel.stop><slot /></div>
       </aside>
     </div>
   </Teleport>
