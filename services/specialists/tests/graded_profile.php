@@ -54,14 +54,14 @@ $check($db->table('additional_technologies')->count() === 1,
 $check($db->table('specialist_additional_technologies')->count() === 2,
     'All historical secondary assignments, including another employee, must survive');
 // Both associations are a required snapshot, not required-to-be-nonempty.
-$rules = \\App\\Http\\Controllers\\SpecialistProfessionalController::profileUpdateRules();
+$rules = \App\Http\Controllers\SpecialistProfessionalController::profileUpdateRules();
 $validSnapshots = [
     ['primary'=>[], 'secondary_ids'=>[]],
     ['primary'=>[['technology_id'=>1,'grade'=>'Junior']], 'secondary_ids'=>[]],
     ['primary'=>[], 'secondary_ids'=>[1]],
 ];
 foreach ($validSnapshots as $snapshot) {
-    $check(\\Illuminate\\Support\\Facades\\Validator::make($snapshot, $rules)->passes(),
+    $check(\Illuminate\Support\Facades\Validator::make($snapshot, $rules)->passes(),
         'Empty primary or additional array must pass the HTTP validation contract');
 }
 $invalidSnapshots = [
@@ -75,7 +75,7 @@ $invalidSnapshots = [
     ['primary'=>[['technology_id'=>1,'grade'=>'Unknown']], 'secondary_ids'=>[]],
 ];
 foreach ($invalidSnapshots as $snapshot) {
-    $check(\\Illuminate\\Support\\Facades\\Validator::make($snapshot, $rules)->fails(),
+    $check(\Illuminate\Support\Facades\Validator::make($snapshot, $rules)->fails(),
         'Missing, malformed or ungraded technologies must still be rejected');
 }
 $check($service->technologies(11)[0]['kind'] === 'primary',
