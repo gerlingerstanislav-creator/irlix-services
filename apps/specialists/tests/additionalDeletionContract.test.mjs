@@ -46,3 +46,21 @@ test('admin catalog shows a conditional action and explicit replacement dialog',
   assert.match(app, /canEditTechnologyCatalog\.value/);
   assert.match(app, /<UiToast v-if="catalogToast"/);
 });
+
+
+test('additional catalog DELETE has an exact method and URL permission gate', () => {
+  const middleware = source('services/specialists/app/Http/Middleware/ServiceEntitlement.php');
+  assert.ok(middleware.includes("$method==='DELETE'"));
+  assert.ok(middleware.includes("preg_match('#^api/catalog/additional-technologies/[0-9]+$#',$path)"));
+  assert.match(middleware, /specialists\.catalog\.manage/);
+  assert.match(source('services/specialists/Dockerfile'), /tests\/additional_delete_admission\.php/);
+});
+
+test('specialists deletion modal uses compact shared typography tokens', () => {
+  const styles = source('apps/specialists/src/style.css');
+  const app = source('apps/specialists/src/App.vue');
+  assert.match(styles, /\.modal-card\{[^}]*font-family:var\(--irlix-font-sans\);font-size:var\(--irlix-font-size-body\)/);
+  assert.match(styles, /\.modal-head h2\{[^}]*font-size:var\(--irlix-font-size-section-title\)/);
+  assert.match(styles, /\.specialists-additional-delete-modal \.specialists-delete-description\{[^}]*font-size:var\(--irlix-font-size-body\)/);
+  assert.match(app, /class="modal-card specialists-additional-delete-modal"/);
+});
