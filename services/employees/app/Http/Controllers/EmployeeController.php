@@ -126,7 +126,7 @@ final class EmployeeController extends Controller
             'started_at' => ['required','date'],
             'gross_salary' => ['required','numeric','min:0'],
         ])->validate();
-        $row = $this->read->record($employee);
+        $row = $this->read->recordBusiness($employee);
         if (!$row) return response()->json(['message' => 'Employee not found'], 404);
         if ($row->employment_status !== 'Ожидает трудоустройства') return response()->json([
             'message' => 'Трудоустроить можно только сотрудника в ожидании.',
@@ -146,7 +146,7 @@ final class EmployeeController extends Controller
 
     public function update(Request $request, int $employee): JsonResponse
     {
-        $current = $this->read->record($employee);
+        $current = $this->read->recordBusiness($employee);
         if (!$current) return response()->json(['message' => 'Employee not found'], 404);
         if ($current->login === 'admin' && $request->has('login')
             && $request->input('login') !== 'admin') return response()->json([
@@ -177,7 +177,7 @@ final class EmployeeController extends Controller
     {
         $validator = Validator::make($request->all(), ['date' => ['required','date']]);
         if ($validator->fails()) return response()->json(['errors' => $validator->errors()], 422);
-        $row = $this->read->record($employee);
+        $row = $this->read->recordBusiness($employee);
         if (!$row) return response()->json(['message' => 'Employee not found'], 404);
         if ($row->login === 'admin') return response()->json([
             'message' => 'Системный аккаунт IRLIX нельзя уволить.',
@@ -210,7 +210,7 @@ final class EmployeeController extends Controller
             'position' => ['nullable','string','max:255'],
         ]);
         if ($validator->fails()) return response()->json(['errors' => $validator->errors()], 422);
-        $row = $this->read->record($employee);
+        $row = $this->read->recordBusiness($employee);
         if (!$row) return response()->json(['message' => 'Employee not found'], 404);
         if ($row->employment_status !== 'Уволен') return response()->json([
             'message' => 'Вернуть можно только уволенного сотрудника.',
@@ -235,7 +235,7 @@ final class EmployeeController extends Controller
             'cooperation_type' => ['required',Rule::in(self::COOPERATION_TYPES)],
         ]);
         if ($validator->fails()) return response()->json(['errors' => $validator->errors()], 422);
-        $row = $this->read->record($employee);
+        $row = $this->read->recordBusiness($employee);
         if (!$row) return response()->json(['message' => 'Employee not found'], 404);
         if ($row->employment_status !== 'Трудоустроен') return response()->json([
             'message' => 'Тип сотрудничества можно менять только у трудоустроенного сотрудника.',
@@ -253,7 +253,7 @@ final class EmployeeController extends Controller
 
     public function addSalary(Request $request, int $employee): JsonResponse
     {
-        $row = $this->read->record($employee);
+        $row = $this->read->recordBusiness($employee);
         if (!$row) return response()->json(['message' => 'Employee not found'], 404);
         $validator = Validator::make($request->all(), [
             'effective_from' => ['required','date'],
@@ -301,6 +301,7 @@ final class EmployeeController extends Controller
 
     public function deleteSalary(int $employee, int $salary): \Symfony\Component\HttpFoundation\Response
     {
+        if (!$this->read->recordBusiness($employee)) return response()->json(['message' => 'Employee not found'], 404);
         $item = SalaryHistory::query()->whereKey($salary)->where('employee_id', $employee)->first();
         if (!$item) return response()->json(['message' => 'Salary history item not found'], 404);
         $this->lifecycle->deleteSalary($employee, $item);

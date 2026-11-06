@@ -85,6 +85,7 @@ Administrator concepts are intentionally separate:
 
 - `company-admin` is the normal business/platform administrator assigned to a concrete employee. It grants full Employees permissions and can be managed from Employees by another full administrator.
 - `admin` in realm `irlix` is the technical **application bootstrap administrator** used to recover/manage IRLIX Services before normal administrators exist. Its password comes from GitHub Actions secret `TEMP_ADMIN_PASSWORD` and it receives realm role `platform-admin`.
+  In Employees its existing numeric ID and Keycloak mapping remain stable, but it is classified as `account_type=system`, not as company staff. Employee-facing directories, headcounts, HR histories and payroll exclude it; `/employees/system-accounts` shows technical accounts to `platform-admin` only. A human employee assigned `platform-admin` retains `account_type=employee` and remains listed normally.
 - `keycloak-admin` in realm `master` is the dedicated **Keycloak Admin Console** administrator. Its password comes from GitHub Actions secret `KEYCLOAK_ADMIN_PWD`. Bootstrap assigns the master `admin` realm role (when present) and the `realm-management / realm-admin` client role.
 
 The technical bootstrap administrator is not intended as the normal day-to-day company administrator. Once real employees receive `company-admin`, `platform-admin` remains an emergency/bootstrap path.

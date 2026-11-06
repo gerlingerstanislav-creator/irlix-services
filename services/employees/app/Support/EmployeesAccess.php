@@ -47,7 +47,8 @@ class EmployeesAccess
         $personnel = in_array(SpecialRoles::PersonnelOfficer, $roles, true);
         $managerIds = [];
         foreach ($departments as $department) {
-            if ((int) ($department->manager_id ?? 0) === (int) $employee->id) {
+            if (($employee->account_type ?? 'employee') !== 'system'
+                && (int) ($department->manager_id ?? 0) === (int) $employee->id) {
                 $managerIds = array_merge($managerIds, $this->subtreeIds((int) $department->id, $departments));
             }
         }
@@ -286,7 +287,7 @@ class EmployeesAccess
     {
         if (!($access['permissions']['employees.read'] ?? false)) return false;
         if (($access['scope'] ?? 'none') === 'all') return true;
-        $departmentId = Employee::query()->where('id', $employeeId)->value('department_id');
+        $departmentId = Employee::query()->business()->where('id', $employeeId)->value('department_id');
         return $departmentId !== null && in_array((int) $departmentId, $access['department_ids'] ?? [], true);
     }
 
@@ -320,11 +321,12 @@ class EmployeesAccess
         if (!$inClientTeams && $employee !== null && $previewProductionManager === null) {
             $inClientTeams = RoleLabels::belongsToClientContour($employee, $this->departments());
         }
-        $isProductionManager = $previewProductionManager ?? ($employee && Department::query()
+        $isProductionManager = $previewProductionManager ?? ($employee
+            && ($employee->account_type ?? 'employee') !== 'system' && Department::query()
             ->where('manager_id', $employee->id)->where('is_production', true)->exists());
         // A concrete, current eligibility set for local CV head:* policies.
         // A signed head:legal claim does not make Legal a production direction.
-        $productionHeadRoles = $employee?->id
+        $productionHeadRoles = $employee?->id && ($employee->account_type ?? 'employee') !== 'system'
             ? Department::query()->where('manager_id', $employee->id)
                 ->where('is_production', true)->pluck('alias')
                 ->filter(static fn ($alias) => is_string($alias)
@@ -375,7 +377,7 @@ class EmployeesAccess
             'system' => in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true),
         ];
         $managedSalaryDepartments = [];
-        if ($employee?->id) {
+        if ($employee?->id && ($employee->account_type ?? 'employee') !== 'system') {
             foreach (Department::query()->where('manager_id', $employee->id)->pluck('id') as $managedRoot) {
                 $managedSalaryDepartments = array_merge($managedSalaryDepartments, $this->subtreeIds((int) $managedRoot, $this->departments()));
             }

@@ -58,12 +58,13 @@ COPY tests/storage_pilot_session_runtime.php /app/tests/storage_pilot_session_ru
 COPY tests/eloquent_architecture.php /app/tests/eloquent_architecture.php
 COPY tests/eloquent_services.php /app/tests/eloquent_services.php
 COPY tests/layered_workflows.php /app/tests/layered_workflows.php
+COPY tests/system_accounts_separation.php /app/tests/system_accounts_separation.php
 COPY tests/assignment_history_edit.php /app/tests/assignment_history_edit.php
 COPY tests/staff_positions_import.php /app/tests/staff_positions_import.php
 COPY tests/specialists_history_smoke.php /app/tests/specialists_history_smoke.php
 COPY tests/employee_purge_orchestration.php /app/tests/employee_purge_orchestration.php
 COPY tests/employee_local_purge_smoke.php /app/tests/employee_local_purge_smoke.php
-RUN php /app/tests/clients_production_head_aliases.php && php /app/tests/role_labels.php && php /app/tests/inherited_permission_rules.php && php /app/tests/cv_production_heads_access.php && php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php && php /app/tests/vacations_historical_directory.php && php /app/tests/platform_roles.php && php /app/tests/eloquent_architecture.php && php /app/tests/eloquent_services.php && php /app/tests/layered_workflows.php && php /app/tests/assignment_history_edit.php && php /app/tests/staff_positions_import.php && php /app/tests/specialists_history_smoke.php && php /app/tests/employee_purge_orchestration.php && php /app/tests/employee_local_purge_smoke.php
+RUN php /app/tests/clients_production_head_aliases.php && php /app/tests/role_labels.php && php /app/tests/inherited_permission_rules.php && php /app/tests/cv_production_heads_access.php && php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php && php /app/tests/vacations_historical_directory.php && php /app/tests/platform_roles.php && php /app/tests/eloquent_architecture.php && php /app/tests/eloquent_services.php && php /app/tests/layered_workflows.php && php /app/tests/system_accounts_separation.php && php /app/tests/assignment_history_edit.php && php /app/tests/staff_positions_import.php && php /app/tests/specialists_history_smoke.php && php /app/tests/employee_purge_orchestration.php && php /app/tests/employee_local_purge_smoke.php
 RUN find /app/app/Models /app/app/Services /app/app/Http/Controllers -name '*.php' -exec php -l {} \; \
     && php -l /app/routes/api.php \
     && php -l /app/routes/self.php \

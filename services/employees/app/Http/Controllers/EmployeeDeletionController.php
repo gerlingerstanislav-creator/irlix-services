@@ -22,7 +22,7 @@ final class EmployeeDeletionController extends Controller
 
         $row = $this->deletions->find($employee);
         if (!$row) return response()->json(['message' => 'Employee not found'], 404);
-        if ($row->login === 'admin') return response()->json([
+        if ($row->login === 'admin' || $row->account_type === 'system') return response()->json([
             'message' => 'Системный аккаунт IRLIX нельзя удалить.',
         ], 409);
 

@@ -14,7 +14,7 @@ final class SpecialRoleService
         foreach (SpecialRoles::catalog() as $role) {
             // An automatic role is a live projection over Departments and
             // must never depend on or write employee_access_roles rows.
-            $query = Employee::query()->from('employees as e')
+            $query = Employee::query()->from('employees as e')->business('e')
                 ->leftJoin('departments as d', 'd.id', '=', 'e.department_id');
             if (SpecialRoles::isAutomatic($role['key'])) {
                 $query->join('departments as managed', 'managed.manager_id', '=', 'e.id')

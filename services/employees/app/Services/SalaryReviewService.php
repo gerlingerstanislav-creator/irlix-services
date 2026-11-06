@@ -13,6 +13,8 @@ final class SalaryReviewService
 {
     public function scope(array $access, int $employee): bool
     {
+        // Even full organizational scope never converts technical identities into staff.
+        if (!Employee::query()->business()->whereKey($employee)->exists()) return false;
         if (($access['scope'] ?? 'none') === 'all') return true;
         $department = Employee::query()->whereKey($employee)->value('department_id');
         return $department !== null && in_array(
@@ -41,7 +43,7 @@ final class SalaryReviewService
 
     public function chain(int $employeeId, int $creator): array
     {
-        $employee = Employee::query()->whereKey($employeeId)->first();
+        $employee = Employee::query()->business()->whereKey($employeeId)->first();
         $departments = Department::query()->get()->keyBy('id');
         $cursor = (int) ($employee?->department_id ?? 0);
         $chain = [];
@@ -71,6 +73,7 @@ final class SalaryReviewService
     {
         $records = SalaryReview::query()->from('salary_reviews as r')
             ->join('employees as e', 'e.id', '=', 'r.employee_id')
+            ->where('e.account_type', Employee::TYPE_EMPLOYEE)
             ->select('r.*', 'e.full_name as employee_name')
             ->orderByDesc('r.updated_at')->limit(500)->get();
         $visible = $records->filter(fn ($r) => $this->scope($access, (int) $r->employee_id))
@@ -103,6 +106,7 @@ final class SalaryReviewService
         return SalaryReviewApproval::query()->from('salary_review_approvals as a')
             ->join('salary_reviews as r', 'r.id', '=', 'a.review_id')
             ->join('employees as e', 'e.id', '=', 'r.employee_id')
+            ->where('e.account_type', Employee::TYPE_EMPLOYEE)
             ->where('a.approver_id', $approverId)
             ->where('a.decision', 'waiting')
             ->where('r.status', 'pending')
