@@ -128,7 +128,8 @@ $prodAccess['legacy_direction_ids']=['Legacy production'=>20];
 $prodScopes = $visibility->viewScopes($prodAccess);
 $production = ClientRequest::query();
 $visibility->restrictRequestQuery($production, $prodAccess, $prodScopes);
-clientCheck($production->count()===2, 'Production head must only see its department positions');
+$productionIds = $production->pluck('id')->sort()->values()->all();
+clientCheck($productionIds===[100,101], 'Production head must only see its department positions: '.json_encode($productionIds).' SQL '.$production->toSql());
 clientCheck(ClientWorkflowVisibility::positionAllowed(['direction_department_id'=>20], ['responsible_employee_id'=>99], $prodScopes['positions.view'], $prodAccess),
     'Production manager lost own direction');
 clientCheck(!ClientWorkflowVisibility::positionAllowed(['direction_department_id'=>21], ['responsible_employee_id'=>99], $prodScopes['positions.view'], $prodAccess),
