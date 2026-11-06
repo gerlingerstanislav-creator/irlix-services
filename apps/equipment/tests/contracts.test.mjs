@@ -107,7 +107,11 @@ test('Employees is the default Equipment section with join-only asset display an
   assert.match(appRoutes, /path: '\/items', name: 'registry'/);
   assert.match(app, /id: 'employees', label: 'Сотрудники', href: '\/equipment\/', icon: 'users'/);
   assert.match(app, /const employeeDisplayFilter = ref\(\['employed', 'has-equipment'\]\)/);
-  assert.match(app, /<UiSearchSelect v-model="employeeDisplayFilter" multiple/);
+  assert.match(app, /<UiSearchSelect :model-value="employeeDisplayFilter" multiple/);
+  assert.match(app, /@update:model-value="setEmployeeDisplayFilter"/);
+  assert.match(app, /\{value:'employed-or-equipment',label:'Трудоустроенные \+ есть техника'\}/);
+  assert.match(app, /if \(employeeDisplayFilter\.value\.includes\('employed-or-equipment'\)\) return employed \|\| hasEquipment/);
+  assert.match(app, /selected\.includes\(union\) && !employeeDisplayFilter\.value\.includes\(union\)/);
   assert.match(app, /employee\.employment_status === 'Трудоустроен'/);
   assert.match(app, /equipmentByEmployee\.value\.get\(Number\(employee\.id\)\)/);
   assert.match(app, /equipmentByEmployee\.get\(Number\(employee\.id\)\)/);

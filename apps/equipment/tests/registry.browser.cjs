@@ -12,6 +12,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const employee={id:1,full_name:'Иванов Иван Иванович',department_name:'Разработка',employment_status:'Трудоустроен'};
     const former={id:2,full_name:'Петров Петр Петрович',department_name:'Тестирование',employment_status:'Уволен'};
     const withoutEquipment={id:3,full_name:'Сидоров Семен Семенович',department_name:'Разработка',employment_status:'Трудоустроен'};
+    const formerWithoutEquipment={id:4,full_name:'Кузнецов Константин Константинович',department_name:'Тестирование',employment_status:'Уволен'};
     let devices=Array.from({length:65},(_,i)=>({
       id:i+1,inventory_number:i===1?'6NXBB21205800336':'EQ-'+String(i+1).padStart(3,'0'),
       manufacturer:i%2?'Apple':'Lenovo',
@@ -50,7 +51,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       let data;
       if(path.endsWith('/employees/access/me'))data={services:{equipment:true},roles:['platform-admin']};
       else if(path.endsWith('/permissions'))data={view:true,manage:true,operate:true};
-      else if(path.endsWith('/employees-directory'))data=[employee,former,withoutEquipment];
+      else if(path.endsWith('/employees-directory'))data=[employee,former,withoutEquipment,formerWithoutEquipment];
       else if(path.endsWith('/items')||path.endsWith('/items/')){
         if(holdInitialItems){holdInitialItems=false;markInitialItemsRequested();await initialItemsGate;}
         data=devices;
@@ -230,19 +231,38 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.ok(await employeeRow.locator('.equipment-employee-device').count()>1,'issued asset appears on employee');
     await page.getByRole('button',{name:'Отображение',exact:true}).click();
     await page.locator('.equipment-filter-rail .ui-search-select__trigger').click();
-    const filterOption=label=>page.locator('.equipment-filter-rail .ui-search-select__option').filter({hasText:label});
+    const filterOption=label=>page.locator('.equipment-filter-rail .ui-search-select__option').filter({has:page.getByText(label,{exact:true})});
     assert.equal(await filterOption('Трудоустроен').getAttribute('aria-selected'),'true');
     assert.equal(await filterOption('Есть техника').getAttribute('aria-selected'),'true');
+    assert.equal(await filterOption('Трудоустроенные + есть техника').getAttribute('aria-selected'),'false');
     await filterOption('Трудоустроен').click();
     assert.equal(await page.locator('.equipment-employee-registry .ui-registry-table__table--body tbody tr').count(),2,'former employee with issued device is visible');
     const formerRow=page.locator('.equipment-employee-registry .ui-registry-table__table--body tbody tr').filter({hasText:'Петров'});
     assert.equal(await formerRow.getByRole('button',{name:'Выдать технику'}).isDisabled(),true,'former employees cannot receive an issue');
     await filterOption('Есть техника').click();
-    assert.equal(await page.locator('.equipment-employee-registry .ui-registry-table__table--body tbody tr').count(),3,'empty selection includes employees without equipment');
+    assert.equal(await page.locator('.equipment-employee-registry .ui-registry-table__table--body tbody tr').count(),4,'empty selection includes all employees');
     await filterOption('Трудоустроен').click();
     assert.equal(await page.locator('.equipment-employee-registry .ui-registry-table__table--body tbody tr').count(),2,'employment filter works independently');
     await filterOption('Есть техника').click();
     assert.equal(await page.locator('.equipment-employee-registry .ui-registry-table__table--body tbody tr').count(),1,'default intersection restores');
+    await filterOption('Трудоустроенные + есть техника').click();
+    assert.equal(await filterOption('Трудоустроенные + есть техника').getAttribute('aria-selected'),'true');
+    assert.equal(await filterOption('Трудоустроен').getAttribute('aria-selected'),'false','union replaces individual filters');
+    assert.equal(await filterOption('Есть техника').getAttribute('aria-selected'),'false','union replaces individual filters');
+    const unionRows=page.locator('.equipment-employee-registry .ui-registry-table__table--body tbody tr');
+    assert.equal(await unionRows.count(),3,'union includes employed and anyone with issued equipment');
+    assert.equal(await unionRows.filter({hasText:'Петров'}).count(),1,'former employee with device included');
+    assert.equal(await unionRows.filter({hasText:'Сидоров'}).count(),1,'employed person without device included');
+    assert.equal(await unionRows.filter({hasText:'Кузнецов'}).count(),0,'former employee without device excluded');
+    await filterOption('Трудоустроен').click();
+    assert.equal(await filterOption('Трудоустроенные + есть техника').getAttribute('aria-selected'),'false','individual filter replaces union');
+    assert.equal(await unionRows.count(),2,'employment alone excludes former holders');
+    await filterOption('Есть техника').click();
+    assert.equal(await unionRows.count(),1,'individual conditions still intersect');
+    await filterOption('Трудоустроенные + есть техника').click();
+    assert.equal(await unionRows.count(),3,'union can be selected again after intersection');
+    await filterOption('Трудоустроенные + есть техника').click();
+    assert.equal(await unionRows.count(),4,'clearing union restores unfiltered list');
     for (const [section, url, expectedColumns] of [['assignments','/equipment/assignments',5],['valuation','/equipment/valuation',11]]) {
       await page.goto(base+url);
       await page.waitForFunction(()=>document.querySelectorAll('.ui-registry-table__table--body tbody tr').length===35);

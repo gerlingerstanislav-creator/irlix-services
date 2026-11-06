@@ -30,7 +30,22 @@ const assignments = ref([]);
 const valuation = ref([]);
 const employees = ref([]);
 const employeeDisplayFilter = ref(['employed', 'has-equipment']);
-const employeeDisplayOptions = [{value:'employed',label:'Трудоустроен'}, {value:'has-equipment',label:'Есть техника'}];
+const employeeDisplayOptions = [
+  {value:'employed',label:'Трудоустроен'},
+  {value:'has-equipment',label:'Есть техника'},
+  {value:'employed-or-equipment',label:'Трудоустроенные + есть техника'},
+];
+// The union is an alternative mode: selecting it clears individual conditions
+// and selecting an individual condition clears the union.
+const setEmployeeDisplayFilter = values => {
+  const selected = Array.isArray(values) ? values : [];
+  const union = 'employed-or-equipment';
+  if (selected.includes(union) && !employeeDisplayFilter.value.includes(union)) {
+    employeeDisplayFilter.value = [union];
+  } else {
+    employeeDisplayFilter.value = selected.filter(value => value !== union);
+  }
+};
 const settings = reactive({ ...defaultSettings });
 const settingsDraft = reactive({ ...defaultSettings });
 const settingsLoaded = ref(false);
@@ -107,15 +122,18 @@ const equipmentByEmployee = computed(() => {
     || String(a.model || '').localeCompare(String(b.model || ''),'ru'));
   return result;
 });
-const filteredEmployees = computed(() => employees.value.filter(employee =>
-  (!employeeDisplayFilter.value.includes('employed') || employee.employment_status === 'Трудоустроен') &&
-  (!employeeDisplayFilter.value.includes('has-equipment') || (equipmentByEmployee.value.get(Number(employee.id))?.length || 0) > 0)
-).sort((a,b) => String(a.full_name || '').localeCompare(String(b.full_name || ''),'ru')));
+const filteredEmployees = computed(() => employees.value.filter(employee => {
+  const employed = employee.employment_status === 'Трудоустроен';
+  const hasEquipment = (equipmentByEmployee.value.get(Number(employee.id))?.length || 0) > 0;
+  if (employeeDisplayFilter.value.includes('employed-or-equipment')) return employed || hasEquipment;
+  return (!employeeDisplayFilter.value.includes('employed') || employed) &&
+    (!employeeDisplayFilter.value.includes('has-equipment') || hasEquipment);
+}).sort((a,b) => String(a.full_name || '').localeCompare(String(b.full_name || ''),'ru')));
 const freeEquipmentOptions = computed(() => items.value.filter(item => !item.assignment && !item.written_off_at)
   .map(item => ({ value: String(item.id), label: [labels[item.type] || item.type, item.manufacturer, item.model].filter(Boolean).join(' ') + ' (' + item.inventory_number + ')' }))
   .sort((a,b) => a.label.localeCompare(b.label,'ru')));
 const employeeFilterItems = computed(() => [{
-  id:'display', label:'Отображение', icon:'filter', active:employeeDisplayFilter.value.length !== employeeDisplayOptions.length,
+  id:'display', label:'Отображение', icon:'filter', active:employeeDisplayFilter.value.length !== 2 || !employeeDisplayFilter.value.includes('employed') || !employeeDisplayFilter.value.includes('has-equipment'),
   valueLabel:employeeDisplayFilter.value.map(value => employeeDisplayOptions.find(option => option.value === value)?.label).filter(Boolean).join(', '),
 }]);
 const typeFilterOptions = computed(() => ['pc','laptop','smartphone','tablet'].map((type) => ({ value: type, label: labels[type] })));
@@ -286,7 +304,7 @@ watch(() => editor.type, (type, previous) => { if(editor.open && type !== previo
     </main>
 
     <UiFilterRail v-if="section==='employees'" class="equipment-filter-rail" :items="employeeFilterItems" @reset="resetFilters">
-      <template #filter-display><label class="irlix-field"><span>Отображение</span><UiSearchSelect v-model="employeeDisplayFilter" multiple :options="employeeDisplayOptions" placeholder="Все сотрудники" /></label></template>
+      <template #filter-display><label class="irlix-field"><span>Отображение</span><UiSearchSelect :model-value="employeeDisplayFilter" multiple :options="employeeDisplayOptions" placeholder="Все сотрудники" @update:model-value="setEmployeeDisplayFilter" /></label></template>
     </UiFilterRail>
     <UiFilterRail v-else-if="section==='registry' || section==='written-off'" class="equipment-filter-rail" :items="filterItems" @reset="resetFilters">
       <template #filter-search><label class="irlix-field"><span>Поиск</span><input v-model="search" type="search" placeholder="Номер, модель, серийный №, ФИО"></label></template>
