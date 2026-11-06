@@ -1,5 +1,33 @@
 # CI/CD: service registry and release policy
 
+## Selective heavy migration checks and batched production image delivery (November 2026)
+
+The ClientMember PostgreSQL rehearsal still runs real database/schema/API contracts
+on relevant PR changes. Its 64k-row idempotent import stress and 250k-row
+bounded-memory streaming stress run only when the migration importer or their
+own test files change, when the workflow itself changes, on explicit
+`workflow_dispatch`, and on the weekly scheduled full rehearsal (Monday 03:17 UTC).
+The PR uses the *actual checked-out merge commit's* first parent as its diff
+base, not a potentially stale event base. See
+`scripts/ci/workflow_scope.py client-member-migration-pg` and its unit tests.
+Skipped volume stress does **not** waive the actual PostgreSQL upgrade,
+live HTTP contract, permissions, or ordinary mandatory CI.
+
+Production still compares from the last successfully deployed ancestor and
+transfers **every** required content-addressed image tag before deploying.
+`scripts/ci/transfer-release-images.sh` first skips tags already present on
+the server, then groups missing images into bounded three-tag `docker save`
+streams over SSH (override `IRLIX_TRANSFER_BATCH_SIZE=1..4` if runner disk
+pressure requires it). Shared image layers are transferred only once per
+batch; `set -o pipefail` and post-load tag inspection fail closed on any
+transfer error. Production never logs into GHCR; there are no tar files
+persisted on the production server. The GitHub job summary reports selected,
+already-present, transferred images, batches and elapsed time.
+
+A change to `packages/ui/src` still deliberately fans out to registered
+frontend consumers. Do not suppress this using filename heuristics without
+first proving that the built artifacts do not depend on the edited shared UI.
+
 ## Optimized pull-request checks and build scope
 
 For a PR into `development`, `.github/workflows/ci.yml` and the
