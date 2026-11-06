@@ -31,7 +31,7 @@ final class EmployeePurgeService
 {
     /**
      * Delete employee-owned Clients data without erasing other people's business
-     * records or protected reporting history. Database cleanup is atomic locally;
+     * records (including unrelated rows in paid client periods). Database cleanup is atomic locally;
      * pending CV-file removals survive a crash and are retried before success.
      */
     public function purge(int $employeeId, string $username, bool $preflight = false): void
@@ -65,6 +65,7 @@ final class EmployeePurgeService
             $termsById = $terms->keyBy('id');
             $termIds = $terms->pluck('id')->all();
 
+            $ranges = [];
             foreach ($terms as $term) {
                 $owners = [];
                 if ($term->client_member_id !== null) {
@@ -86,20 +87,11 @@ final class EmployeePurgeService
                 abort_if(!$owners || count(array_unique($owners)) !== 1, 409,
                     'Commercial term ownership requires reconciliation');
 
-                // Check the reporting period itself, not only approved-hours FKs:
-                // sent periods may already contain snapshots without live FKs.
-                abort_if(ReportingPeriod::query()->where('client_id', $owners[0])
-                    ->where('status', '<>', 'Новый')
-                    ->whereDate('period_start', '<=', $term->valid_to ?? '9999-12-31')
-                    ->whereDate('period_end', '>=', $term->valid_from)
-                    ->exists(), 423, 'Protected client reporting history requires a dedicated purge procedure');
-            }
-            if ($termIds) {
-                $approvedPeriods = ReportingPeriodApprovedHours::query()
-                    ->whereIn('member_term_id', $termIds)->pluck('reporting_period_id')->all();
-                abort_if(ReportingPeriod::query()->whereIn('id', $approvedPeriods)
-                    ->where('status', '<>', 'Новый')->exists(), 423,
-                    'Protected approved hours require a dedicated purge procedure');
+                $ranges[] = [
+                    'client_id' => $owners[0],
+                    'from' => substr((string) $term->valid_from, 0, 10),
+                    'to' => substr((string) ($term->valid_to ?? '9999-12-31'), 0, 10),
+                ];
             }
 
             // Record CV files *before* deleting attempt rows. A failed filesystem
@@ -118,8 +110,12 @@ final class EmployeePurgeService
                 }
             }
 
-            // Preflight is strictly read-only. Call before Timesheets starts its
-            // irreversible purge so protected Clients periods reject early.
+            // Paid and confirmed periods do not shield mistaken/test staff
+            // from administrative erasure. Remove their stored personal detail
+            // from snapshots without touching other employees' rows.
+            EmployeeReportingSnapshotPurge::apply(
+                $employeeId, array_keys($memberOwners), $termIds, $ranges, $preflight
+            );
             if ($preflight) return;
 
             ConnectionAttempt::query()->where('specialist_id', $employeeId)->delete();
