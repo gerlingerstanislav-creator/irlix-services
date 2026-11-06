@@ -204,6 +204,6 @@ versioned migrations. It repairs missing/stale local bootstrap anchors and
 protected platform-admin grants idempotently without touching Keycloak
 credentials or human administrators, and verifies the same API read projection.
 The deployed stand smoke runs its read-only `--verify` mode and fails if the
-technical directory is empty. The business and technical Eloquent scopes also
-exclude/include the bootstrap and explicit legacy technical cooperation type
-when `account_type` is stale; the next deployment repairs the stored type.
+technical directory is empty. The existing Eloquent business/technical scopes
+continue to rely on `account_type`; therefore the idempotent repair persists
+the correct classification *before* the directories are read.
