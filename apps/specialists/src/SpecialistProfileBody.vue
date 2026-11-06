@@ -246,7 +246,7 @@ const comment = async text => {
 .specialist-profile-body{display:flex;flex-direction:column;min-height:0;gap:0}
 .specialist-tab-history{display:flex;flex-direction:column;min-height:330px;padding:18px 20px}
 .specialist-primary-list{display:grid;gap:0}
-.specialist-primary-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--irlix-color-border)}
+.specialist-primary-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:7px 0;border:0}
 .specialist-primary-actions{display:flex;gap:8px}
 .specialist-primary-actions button,.specialist-aux-tag button{border:0;background:none;cursor:pointer;color:var(--irlix-color-text-muted);font:inherit}
 .specialist-primary-editor{display:grid;grid-template-columns:minmax(160px,1.4fr) minmax(110px,1fr) auto auto;gap:7px;align-items:start;padding:12px 0}
