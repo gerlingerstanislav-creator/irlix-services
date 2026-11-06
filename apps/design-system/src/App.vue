@@ -10,12 +10,23 @@ import { useRoute } from 'vue-router';
 import { catalogSections as nav } from './catalogSections.js';
 import { useCatalogNavigation } from './useCatalogNavigation.js';
 import tokenStyles from '../../../packages/ui/src/styles/tokens.css?raw';
-import { UiActionMenu, UiAppShell, UiAppTopbar, UiBadge, UiButton, UiCheckbox, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiRegistryTable, UiLoader, UiPreloader, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiKanbanBoard, UiClientSummary, UiStatusCheck, UiErrorState, getTheme, setTheme } from '@irlix/ui';
+import { UiActionMenu, UiAppShell, UiAppTopbar, UiBadge, UiButton, UiCheckbox, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiRegistryTable, UiLoader, UiPreloader, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiKanbanBoard, UiClientSummary, UiStatusCheck, UiErrorState, UiToast, getTheme, setTheme } from '@irlix/ui';
 
 const activeRoute = useRoute();
 const { section, navigate } = useCatalogNavigation(nav);
 const checkboxDemo = ref(true);
 const demoActionMessage = ref('');
+const toastPreview = ref(null);
+let toastPreviewSequence = 0;
+const showToastPreview = tone => {
+  toastPreview.value = {
+    id: ++toastPreviewSequence, tone,
+    message: tone === 'success' ? 'Изменения успешно сохранены.'
+      : tone === 'error' ? 'Не удалось сохранить изменения. Повторите попытку.'
+      : 'Данные обновлены.',
+    actionLabel: tone === 'error' ? 'Повторить' : '',
+  };
+};
 const checkboxUncheckedDemo = ref(false);
 const displayTheme = ref(getTheme());
 function changeDisplayTheme(mode) { displayTheme.value = mode; setTheme(mode); }
@@ -153,6 +164,16 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
           <UiPanel class="ds-row"><UiBadge v-for="tone in tones" :key="tone" :tone="tone">{{ tone }}</UiBadge><UiStatusCheck label="Подтверждено" /></UiPanel>
           <p class="ds-badge-note">Бейдж success использует парные семантические цвета для контраста текста не ниже WCAG AA (4.5:1) в светлой и тёмной темах.</p>
         </template>
+        <template v-if="entry.id === 'notifications'">
+          <UiPanel class="ds-content">
+            <p class="ds-hint">UiToast — общий всплывающий статус справа снизу. Закрывается по таймеру или кнопкой; цветная нижняя полоска показывает оставшееся время. Ошибка может содержать действие для повтора.</p>
+            <div class="ds-row ds-row--plain">
+              <UiButton @click="showToastPreview('success')">Успешное сохранение</UiButton>
+              <UiButton variant="secondary" @click="showToastPreview('error')">Ошибка сохранения</UiButton>
+              <UiButton variant="secondary" @click="showToastPreview('info')">Информация</UiButton>
+            </div>
+          </UiPanel>
+        </template>
         <template v-if="entry.id === 'panel'">
           <UiPanel class="ds-content"><strong>UiPanel</strong><p>Общий контейнер для содержимого. Раскладку примера задаёт каталог.</p></UiPanel>
         </template>
@@ -245,6 +266,9 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         </template>
         </div>
       </section>
+      <UiToast v-if="toastPreview" :key="toastPreview.id" :tone="toastPreview.tone"
+        :message="toastPreview.message" :action-label="toastPreview.actionLabel"
+        @close="toastPreview = null" @action="showToastPreview('success')" />
       <UiDrawer :open="drawerOpen" :inactive="nestedDrawerOpen" title="Демо-проект · Карточка" width="40vw" :min-width="320" @close="drawerOpen = false"><UiTabs v-model="drawerTab" :items="[{ value: 'info', label: 'Информация' }, { value: 'history', label: 'История', count: 2 }]" /><div class="ds-drawer-content"><template v-if="drawerTab === 'info'"><p>Демо-клиент Север · Frontend</p><UiButton @click="nestedDrawerOpen = true">Открыть вложенную карточку</UiButton></template><p v-else>Демонстрационная запись истории.</p></div></UiDrawer>
       <UiDrawer :open="nestedDrawerOpen" title="Демо-специалист 01" width="30vw" :min-width="240" :z-index="1050" @close="nestedDrawerOpen = false"><p>Предыдущая карточка недоступна до закрытия этой.</p><UiBadge tone="success">На проекте</UiBadge></UiDrawer>
     </template>
