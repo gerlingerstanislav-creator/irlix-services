@@ -88,6 +88,12 @@ DB::table('reporting_periods')->insert(['client_id'=>10, 'period_start'=>'2026-0
     'period_end'=>'2026-01-31', 'status'=>'Новый']);
 
 $purge = new EmployeePurgeService();
+$purge->purge(7, 'synthetic.employee', true); // strictly read-only preflight
+clientCheck(DB::table('client_members')->where('employee_id',7)->exists()
+    && DB::table('connection_attempts')->where('specialist_id',7)->exists()
+    && file_exists($cvDirectory.'/'.$cvFilename)
+    && !DB::table('employee_purge_files')->exists(),
+    'Preflight modified client membership, attempt, CV or file deletion ledger');
 $purge->purge(7, 'synthetic.employee');
 $purge->purge(7, 'synthetic.employee'); // safe retry
 clientCheck(!DB::table('client_members')->where('employee_id',7)->exists(), 'Membership was not erased');
@@ -117,6 +123,8 @@ DB::table('member_terms')->insert(['id'=>202, 'client_member_id'=>102,
     'valid_from'=>'2026-02-01', 'valid_to'=>'2026-02-28']);
 DB::table('reporting_periods')->insert(['client_id'=>10, 'period_start'=>'2026-02-01',
     'period_end'=>'2026-02-28', 'status'=>'Счет оплачен']);
+clientReject(static fn()=> $purge->purge(9, 'synthetic.protected', true), 423,
+    'Protected reporting periods must reject before destructive work');
 clientReject(static fn()=> $purge->purge(9, 'synthetic.protected'), 423,
     'Locked client reporting facts must reject hard delete');
 clientCheck(DB::table('client_members')->where('id',102)->exists()
