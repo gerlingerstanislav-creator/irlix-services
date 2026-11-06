@@ -157,6 +157,13 @@ Route::put('/people/{employee}', function(Request $request,int $employee)use($di
     return response()->json(['data'=>$profilePayload($target)]);
 })->whereNumber('employee');
 
+// Cross-contour read-only vocabulary. Do not expose Specialist profiles,
+// competencies or catalog mutation permissions to Clients users.
+Route::get('/clients-technology-catalog', fn () => response()->json([
+    'data' => [
+        'technologies' => DB::table('technologies')->where('active', true)->orderBy('name')->get(),
+    ],
+]));
 Route::get('/catalog', fn () => response()->json(['data' => $catalogPayload()]));
 
 Route::post('/catalog/technologies', function(Request $request)use($assertCatalogAdmin,$technologyPayload,$assertTechnologyParent){
