@@ -19,7 +19,7 @@ DB::swap($db);
 Model::setConnectionResolver($capsule->getDatabaseManager());
 $db->statement('CREATE TABLE bug_reports (id INTEGER PRIMARY KEY,employee_id INTEGER,employee_name TEXT,reporter_keycloak_sub TEXT,service_key TEXT,page_path TEXT,description TEXT,status TEXT,closed_by_employee_id INTEGER,closed_at TEXT,created_at TEXT)');
 $db->table('bug_reports')->insert([
- ['id'=>1,'employee_id'=>7,'employee_name'=>'Synthetic 7','reporter_keycloak_sub'=>'s7','status'=>'open'],
+ ['id'=>1,'employee_id'=>7,'employee_name'=>'Synthetic 7','reporter_keycloak_sub'=>'s7','status'=>'open','closed_by_employee_id'=>null],
  ['id'=>2,'employee_id'=>8,'employee_name'=>'Synthetic 8','reporter_keycloak_sub'=>'s8','status'=>'closed','closed_by_employee_id'=>7]
 ]);
 $purge = new EmployeePurgeService();
