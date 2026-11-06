@@ -8,6 +8,7 @@ use App\Services\EmployeeDirectoryService;
 use App\Services\FinanceDirectoryService;
 use App\Services\SpecialRoleService;
 use App\Services\SystemAccountService;
+use App\Support\RoleLabels;
 use App\Services\StorageV1DirectoryService;
 use Illuminate\Container\Container;
 use Illuminate\Database\Capsule\Manager;
@@ -34,6 +35,7 @@ $db->table('employees')->insert([
     ['id'=>2,'full_name'=>'Synthetic Bootstrap','login'=>'admin','account_type'=>'system','keycloak_user_id'=>'admin-sub','department_id'=>1,'employment_status'=>'Трудоустроен','identity_status'=>'active'],
 ]);
 $db->table('employee_access_roles')->insert(['id'=>1,'employee_id'=>2,'role'=>'platform-admin']);
+$db->table('departments')->where('id',1)->update(['manager_id'=>2]);
 $db->table('salary_history')->insert([
     ['id'=>1,'employee_id'=>1,'effective_from'=>'2026-01-01','effective_to'=>null,'gross_salary'=>100000,'status'=>'Действует'],
     ['id'=>2,'employee_id'=>2,'effective_from'=>'2026-01-01','effective_to'=>null,'gross_salary'=>99999,'status'=>'Действует'],
@@ -51,6 +53,14 @@ $directory = new EmployeeDirectoryService();
 $recipients = $directory->equipmentDirectory(true, null);
 $check(count($recipients) === 1 && (int) $recipients[0]->id === 1, 'Equipment directory leaked system account');
 $check($directory->equipmentDirectory(true, 2) === null, 'Direct equipment lookup leaked system account');
+
+$bootstrap = \App\Models\Employee::query()->findOrFail(2);
+$departments = \App\Models\Department::query()->get()->all();
+$check(RoleLabels::resolve($bootstrap, $departments, ['platform-admin']) === ['platform-admin']
+    && RoleLabels::publishedRoleClaims($bootstrap, $departments, ['platform-admin']) === ['special:platform-admin']
+    && !RoleLabels::managesProductionDirection($bootstrap, $departments)
+    && RoleLabels::ancestorDepartmentRoles($bootstrap, $departments) === [],
+    'Technical account inherited organizational or leadership permissions');
 
 $system = (new SystemAccountService())->list();
 $check(count($system) === 1 && $system[0]['login'] === 'admin' && $system[0]['protected']
