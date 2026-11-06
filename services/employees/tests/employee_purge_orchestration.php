@@ -84,8 +84,11 @@ $locked = (new EmployeeDeletionService())->purge($person);
 $check($locked['status'] === 423 && $locked['service'] === 'clients',
     'Read-only Clients preflight did not stop protected deletion');
 $requests = $factory3->recorded()->all();
-$check(count($requests) === 1
-    && str_ends_with($requests[0][0]->url(), '/purge/preflight'),
+// The HTTP client may retry 423 with the configured retry policy; every
+// request must still be read-only preflight, never a mutating purge.
+$check(count($requests) >= 1
+    && array_reduce($requests, static fn (bool $ok, $entry): bool =>
+        $ok && str_ends_with($entry[0]->url(), '/purge/preflight'), true),
     'An irreversible downstream purge was called after a failed Clients preflight');
 
 echo "Employee erasure orchestration, protected preflight and retry isolation: PASS\n";
