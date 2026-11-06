@@ -45,3 +45,15 @@ test('shared UI includes searchable trees and a consistent green superscript gra
   assert.match(grade, /<sup v-if="grade"/);
   assert.match(grade, /--irlix-status-success-text/);
 });
+
+test('compact selector typography applies to teleported popup and drawer pickers', () => {
+  const fs = readFileSync;
+  const root = new URL('../src/components/', import.meta.url);
+  const select = fs(new URL('UiSearchSelect.vue', root), 'utf8');
+  const tree = fs(new URL('UiDepartmentTreeSelect.vue', root), 'utf8');
+  assert.match(select, /compact: \{ type: Boolean, default: false \}/);
+  assert.match(select, /'ui-search-select__menu--compact': compact/);
+  assert.match(select, /\.ui-search-select__menu--compact/);
+  assert.match(select, /--irlix-font-size-table/);
+  assert.match(tree, /multiple teleport compact/);
+});

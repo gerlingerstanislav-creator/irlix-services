@@ -324,9 +324,19 @@ const openPerson = id => navigate(`people/${id}`);
 const closePerson=()=>navigate('people');
 const sortedTechnologies = computed(() => [...(workspace.value.catalog?.technologies || [])].sort((a,b) => a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })));
 const refreshSelectedProfile = async () => {
-  const id = route.value.employeeId;
-  if (id) { const latest = await api(`/people/${id}`); if (route.value.employeeId === id) selected.value = latest; }
-  await loadWorkspace();
+  // Autosave owns the live editor state. Refresh registry/dashboard projections
+  // only: reloading selected from a prior response can overwrite a newer edit
+  // that was queued while the previous save was still in flight.
+  if (!canViewProfiles.value) return;
+  try {
+    const current = await api('/workspace');
+    workspace.value = current;
+    restoreDepartments();
+  } catch (e) {
+    // A successful write must not be reported as failed because the separate
+    // registry refresh was unavailable. The next navigation reloads the list.
+    console.warn('Specialists registry refresh failed after autosave', e);
+  }
 };
 </script>
 
