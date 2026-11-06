@@ -507,3 +507,14 @@ async def v1_guard(request: Request):
 # They fail closed unless the new metadata DB and signed Employees actor are enabled.
 from .v1_api import router as v1_router
 app.include_router(v1_router, dependencies=[Depends(v1_guard)])
+
+@app.post("/internal/system/employees/{employee}/purge")
+def internal_employee_purge(employee: int, request: Request):
+    """Authenticated service-to-service erasure. Never accepts a browser cookie."""
+    expected = os.environ.get("IRLIX_INTERNAL_PURGE_TOKEN", "")
+    given = request.headers.get("X-Irlix-Internal-Purge-Token", "")
+    if not expected or not given or not __import__("hmac").compare_digest(expected, given):
+        raise HTTPException(403, "Invalid internal purge token")
+    from .employee_purge import purge_employee
+    return purge_employee(employee)
+

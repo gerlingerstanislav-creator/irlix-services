@@ -86,6 +86,7 @@ services:
     restart: unless-stopped
     environment:
       APP_NAME: IRLIX Platform Core
+      IRLIX_INTERNAL_PURGE_TOKEN: ${IRLIX_INTERNAL_PURGE_TOKEN:-irlix-local-purge-token}
       APP_KEY: ${PLATFORM_CORE_APP_KEY:?Provision server APP_KEY before Docker Compose}
       APP_PREVIOUS_KEYS: ${PLATFORM_CORE_APP_PREVIOUS_KEYS:-}
       DB_CONNECTION: pgsql

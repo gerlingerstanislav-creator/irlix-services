@@ -351,8 +351,8 @@ $call('PUT','/entries',['client_member_id'=>501,'work_date'=>'2026-10-01','hours
 $call('POST','/confirm',['dates'=>['2026-10-01']],423);
 $call('POST','/unconfirm',['dates'=>['2026-10-01']],423);
 putenv('IRLIX_INTERNAL_PURGE_TOKEN=synthetic-purge');
-$call('POST','/internal/system/employees/1/purge',[],423,['X-Irlix-Internal-Purge-Token'=>'synthetic-purge']);
-$call('POST','/internal/system/employees/100/purge',[],423,['X-Irlix-Internal-Purge-Token'=>'synthetic-purge']);
+$call('POST','/internal/system/employees/1/purge',[],403,['X-Irlix-Internal-Purge-Token'=>'invalid']);
+$call('POST','/internal/system/employees/100/purge',[],403,['X-Irlix-Internal-Purge-Token'=>'invalid']);
 $call('DELETE','/internal/system/reporting-freezes/51',['freeze_token'=>str_repeat('f',64)],409,$headers);
 $call('DELETE','/internal/system/reporting-freezes/51',['freeze_token'=>$freeze['freeze_token']],200,$headers);
 $call('DELETE','/internal/system/reporting-freezes/51',['freeze_token'=>$freeze['freeze_token']],200,$headers);
