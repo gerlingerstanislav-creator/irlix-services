@@ -63,10 +63,14 @@ foreach ([
 ] as [$id,$name,$active]) {
     AdditionalTechnology::query()->create(['id'=>$id,'name'=>$name,'active'=>$active]);
 }
-$db->table('technologies')->insert(['id'=>41,'name'=>'Core','active'=>1]);
+$db->table('technologies')->insert([
+    ['id'=>41,'name'=>'Core','active'=>1],
+    ['id'=>42,'name'=>'Primary-only rename collision','active'=>1],
+]);
 foreach ([11,12,13,14] as $id) $db->table('specialist_profiles')->insert(['employee_id'=>$id]);
 $db->table('specialist_technologies')->insert([
     ['employee_id'=>12,'technology_id'=>41,'kind'=>'primary','grade'=>'Middle'],
+    ['employee_id'=>12,'technology_id'=>42,'kind'=>'primary','grade'=>'Middle'],
 ]);
 foreach ([
     [11,1],[11,2],[12,1],[13,1],[14,2],[15,1],[17,6],
@@ -93,7 +97,8 @@ $reject(static fn () => $service->rename(4,'Renamed',100,'Admin'),404);
 $reject(static fn () => $service->rename(1,' ',100,'Admin'),422);
 $reject(static fn () => $service->rename(1,'Replacement',100,'Admin'),422);
 $reject(static fn () => $service->rename(1,'  replacement  ',100,'Admin'),422);
-$reject(static fn () => $service->rename(1,'Core',100,'Admin'),409);
+$reject(static fn () => $service->rename(1,'Core',100,'Admin'),422);
+$reject(static fn () => $service->rename(1,'Primary-only rename collision',100,'Admin'),409);
 $check($service->rename(1,'Deprecated',100,'Admin')['changed'] === false,
     'Same-name rename should be a no-op');
 $beforeCount = $count(1);
