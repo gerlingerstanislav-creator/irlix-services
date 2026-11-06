@@ -14,6 +14,8 @@ use Illuminate\Validation\ValidationException;
 $app = new Container();
 Container::setInstance($app);
 Facade::setFacadeApplication($app);
+$app->instance('date', new Illuminate\Support\DateFactory());
+$app->instance('validator', new Illuminate\Validation\Factory(new Illuminate\Translation\Translator(new Illuminate\Translation\ArrayLoader(), 'ru'), $app));
 $capsule = new Manager($app);
 $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
 $app->instance('db', $capsule->getDatabaseManager());
