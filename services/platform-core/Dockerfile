@@ -14,6 +14,7 @@ COPY database/migrations /app/database/migrations
 COPY bin /app/bin
 COPY routes/resources.php /app/routes/resources.php
 COPY routes/reports.php /app/routes/reports.php
+COPY routes/internal.php /app/routes/internal.php
 COPY tests /app/tests
 RUN find /app/app/Resources /app/app/Reports /app/app/Http/Controllers /app/app/Models /app/app/Calendar /app/database/migrations /app/bin /app/routes -name '*.php' -print0 | xargs -0 -n1 php -l
 
