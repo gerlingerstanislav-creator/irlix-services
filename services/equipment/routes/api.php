@@ -83,7 +83,26 @@ Route::patch('/settings', function(Request $r){
     DB::transaction(function()use($v){ foreach($v as $type=>$months) DB::table('equipment_settings')->updateOrInsert(['equipment_type'=>$type],['useful_life_months'=>$months,'updated_at'=>now(),'created_at'=>now()]); });
     return response()->json(['data'=>equipmentSettings()]);
 });
-Route::get('/employees-directory', function(Request $r){ if($g=equipmentGuard(equipmentCanView($r)))return $g; $base=rtrim((string)env('EMPLOYEES_URL','http://employees:8000/api'),'/'); try{$response=equipmentEmployeesRequest($r)->get("{$base}/equipment-directory");}catch(\Throwable){return response()->json(['message'=>'Employees service unavailable'],503);} if(!$response->successful())return response()->json(['message'=>'Employees directory unavailable'],502); $rows=$response->json('data'); if(!is_array($rows))$rows=[]; $data=array_values(array_map(fn($e)=>['id'=>(int)($e['id']??0),'full_name'=>$e['full_name']??'','position'=>$e['position']??null,'department_name'=>$e['department_name']??null],array_filter($rows,fn($e)=>isset($e['id'])))); return response()->json(['data'=>$data]); });
+Route::get('/employees-directory', function(Request $r){
+    if($g=equipmentGuard(equipmentCanView($r)))return $g;
+    $base=rtrim((string)env('EMPLOYEES_URL','http://employees:8000/api'),'/');
+    try{
+        // Include former employees: active equipment assignments must remain visible
+        // after employment ends. The upstream endpoint enforces the caller's access.
+        $response=equipmentEmployeesRequest($r)->get("{$base}/equipment-directory?include_former=1");
+    }catch(\Throwable){return response()->json(['message'=>'Employees service unavailable'],503);}
+    if(!$response->successful())return response()->json(['message'=>'Employees directory unavailable'],502);
+    $rows=$response->json('data');
+    if(!is_array($rows))$rows=[];
+    $data=array_values(array_map(fn($e)=>[
+        'id'=>(int)($e['id']??0),
+        'full_name'=>$e['full_name']??'',
+        'position'=>$e['position']??null,
+        'department_name'=>$e['department_name']??null,
+        'employment_status'=>$e['employment_status']??null,
+    ],array_filter($rows,fn($e)=>isset($e['id']))));
+    return response()->json(['data'=>$data]);
+});
 Route::get('/items', function(Request $r){ if($g=equipmentGuard(equipmentCanView($r)))return $g; $q=DB::table('equipment_items'); if($r->boolean('written_off'))$q->whereNotNull('written_off_at'); else if(!$r->boolean('all'))$q->whereNull('written_off_at'); if($r->filled('type'))$q->where('type',$r->string('type')); if($r->filled('search')){$s='%'.$r->string('search').'%';$q->where(fn($x)=>$x->where('inventory_number','ilike',$s)->orWhere('manufacturer','ilike',$s)->orWhere('model','ilike',$s)->orWhere('serial_number','ilike',$s));} return response()->json(['data'=>$q->orderBy('inventory_number')->get()->map(fn($x)=>equipmentDecorate($x))]); });
 Route::delete('/items/{id}', function(Request $r, int $id) {
     if ($g=equipmentGuard(equipmentCanOperate($r))) return $g;
