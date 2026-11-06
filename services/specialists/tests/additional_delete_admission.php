@@ -80,9 +80,29 @@ $check($guard->handle($make('GET',$path,['org:catalog']),$pass)->getStatusCode()
     'DELETE permission must not admit an unrelated GET endpoint');
 $check($guard->handle($make('POST',$path,['org:catalog']),$pass)->getStatusCode()===403,
     'DELETE permission must not admit an unrelated POST endpoint');
+// Rename is a separate PUT mutation, guarded by the same global catalog
+// manage grant. A profile editor or a read-only view cannot rename.
+$renameAdmin=$make('PUT',$path,['platform-admin']);
+$check($guard->handle($renameAdmin,$pass)->getStatusCode()===200,
+    'Platform admin should be admitted to rename additional technology');
+$renameCatalog=$make('PUT',$path,['org:catalog']);
+$check($guard->handle($renameCatalog,$pass)->getStatusCode()===200,
+    'All-scope catalog manager should be admitted to rename');
+$check(is_array($authorizer->assertCanManage($renameCatalog)),
+    'Controller authorization must recognize admitted catalog manager');
+$check($guard->handle($make('PUT',$path,['org:profiles']),$pass)->getStatusCode()===403,
+    'Profile-only editor must not rename a global catalog technology');
+$check($guard->handle($make('PUT',$path,[]),$pass)->getStatusCode()===403,
+    'Service admission alone must not permit rename');
+$renamePreview=$make('PUT',$path,['platform-admin']);
+$renamePreview->headers->set('X-Irlix-Role-Preview','org:catalog');
+$check($guard->handle($renamePreview,$pass)->getStatusCode()===403,
+    'Role preview must never authorize rename');
+
+
 $preview=$make('DELETE',$path,['platform-admin']);
 $preview->headers->set('X-Irlix-Role-Preview','org:catalog');
 $check($guard->handle($preview,$pass)->getStatusCode()===403,
     'Role preview must never authorize destructive catalog changes');
 
-echo "Specialists additional delete route: admin, catalog grant, profile-only deny, preview deny PASS\n";
+echo "Specialists additional catalog mutations: admin, catalog grant, profile-only deny, preview deny PASS\n";
