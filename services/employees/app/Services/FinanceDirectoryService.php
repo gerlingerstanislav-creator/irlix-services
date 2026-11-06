@@ -21,6 +21,7 @@ final class FinanceDirectoryService
                 'e.employment_status')->orderBy('e.id')->get();
 
         $salary = SalaryHistory::query()
+            ->whereIn('employee_id', $employees->pluck('id'))
             ->whereDate('effective_from', '<=', $last)
             ->where(fn ($query) => $query->whereNull('effective_to')
                 ->orWhereDate('effective_to', '>=', $first))
