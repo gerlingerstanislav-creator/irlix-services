@@ -31,6 +31,7 @@ Route::get('/production-calendar', \App\Http\Controllers\ProductionCalendarContr
 Route::get('/specialists/filter-clients', [ClientSpecialistsController::class, 'clients']);
 Route::get('/specialists/client-members', [ClientSpecialistsController::class, 'members']);
 Route::get('/specialists/people/{employee}/projects', [SpecialistsProjectDirectoryController::class, 'show'])->whereNumber('employee');
+Route::get('/specialists/people/{employee}/history', [SpecialistsProjectDirectoryController::class, 'history'])->whereNumber('employee');
 
 Route::get('/clients/{client}/client-members', [ClientMembersController::class, 'index'])->whereNumber('client');
 Route::post('/clients/{client}/client-members', [ClientMembersController::class, 'store'])->whereNumber('client');
