@@ -65,7 +65,7 @@ $blocked = (new EmployeeDeletionService())->purge($person);
 $check($blocked['status'] === 423 && $blocked['service'] === 'finance',
     'Protected Finance data did not stop Employee deletion');
 $seen2 = array_map(static fn ($r) => parse_url($r[0]->url(), PHP_URL_HOST),
-    $factory2->recorded());
+    $factory2->recorded()->all());
 $check(!in_array('storage-api', $seen2, true),
     'Orchestrator continued deleting after a downstream protected refusal');
 
