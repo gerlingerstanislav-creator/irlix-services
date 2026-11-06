@@ -52,8 +52,8 @@ foreach (range(1, 100) as $id) {
 }
 DB::table('client_requests')->insert([
     ['id'=>101,'client_id'=>2,'responsible_employee_id'=>7,'title'=>'Own migrated request','status'=>'Закрыт','created_at'=>'2026-01-01 00:00:00'],
-    ['id'=>102,'client_id'=>1,'responsible_employee_id'=>99,'title'=>'Own client request','created_at'=>'2026-01-02 00:00:00'],
-    ['id'=>103,'client_id'=>3,'responsible_employee_id'=>99,'title'=>'Delegated request','created_at'=>'2026-01-03 00:00:00'],
+    ['id'=>102,'client_id'=>1,'responsible_employee_id'=>99,'title'=>'Own client request','status'=>'Открыт','created_at'=>'2026-01-02 00:00:00'],
+    ['id'=>103,'client_id'=>3,'responsible_employee_id'=>99,'title'=>'Delegated request','status'=>'Открыт','created_at'=>'2026-01-03 00:00:00'],
 ]);
 DB::table('positions')->insert([
     ['id'=>1,'client_request_id'=>101,'direction_department_id'=>20],
