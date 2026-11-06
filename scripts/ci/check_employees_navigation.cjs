@@ -31,6 +31,7 @@ const assert = require('node:assert/strict');
       {id:3,full_name:'Синтетический сотрудник отдела',last_name:'Синтетический',first_name:'сотрудник',middle_name:'отдела',department_id:2,position_id:82,position:'Должность отдела',employment_status:'Трудоустроен'},
     ];
     const mutations = [];
+    let systemAccountFetches = 0;
     await page.route('**/*', async route => {
       const request = route.request();
       const url = new URL(request.url());
@@ -46,8 +47,10 @@ const assert = require('node:assert/strict');
           } else if (request.method() === 'POST' && url.pathname.endsWith('/reopen')) { const item=list.find(i=>i.id===id); if(item) item.closed_at=null; } else if (request.method() === 'POST' && url.pathname.endsWith('/close')) { const item=list.find(i=>i.id===id); if(item) item.closed_at='2026-10-03T20:00:00Z'; } else if (request.method() === 'POST' && url.pathname.endsWith('/staff-positions')) list.push({id:83,...body,employee_count:0,closed_at:null});
           else { const item = list.find(i => i.id === id); if (item) { Object.assign(item,body); if (body.position_id === null) item.position = null; } }
         }
+        if (url.pathname === '/api/employees/system-accounts') systemAccountFetches += 1;
         const data = url.pathname.endsWith('/access/me') ? { allowed:true,services:{employees:true,dashboard:true},roles:['platform-admin'],permissions:{'employees.manage':true,'employees.application.create':true,'employees.hire':true,'organization.manage':true,'staff_positions.manage':true,'access.manage':true,'audit.read':true,'employees.transfer':true} }
           : url.pathname.endsWith('/access/roles') ? [{key:'system-admin',label:'Синтетическая роль',description:'Демо',members:[],member_count:0}]
+          : url.pathname === '/api/employees/system-accounts' ? [{id:99, login:'admin', name:'IRLIX Admin', account_type:'system', protected:true, identity_linked:true, identity_status:'active', roles:['platform-admin']}]
           : url.pathname.endsWith('/departments') ? departments
           : url.pathname.endsWith('/staff-positions') ? positions
           : url.pathname.endsWith('/reference-data') ? {employee_statuses:['Трудоустроен','Уволен'],work_formats:[],cooperation_types:[],genders:[]}
@@ -378,6 +381,14 @@ const assert = require('node:assert/strict');
     await page.getByRole('button',{name:'Открыть должности Тестовая компания',exact:true}).click();
     await drawer.getByText('В подразделении пока нет должностей.',{exact:true}).waitFor();
     assert.equal(await drawer.locator('[data-card-position-id]').count(),0);
+    // Regression: the original page rendered an empty list forever because load()
+    // was declared but never invoked on mount. This checks real deployed JS.
+    await page.goto(tunnel + '/employees/system-accounts');
+    await page.locator('.system-accounts').getByText('IRLIX Admin',{exact:true}).waitFor();
+    assert.equal(await page.locator('.system-accounts-header').getByText('1 аккаунтов',{exact:true}).count(),1);
+    assert(systemAccountFetches > 0,'System accounts page mounted without fetching the API');
+    assert.equal(await page.getByText('Системные аккаунты не найдены',{exact:true}).count(),0);
+    console.log('[browser] Platform-admin system accounts page fetches and displays protected admin PASS');
     assert.deepEqual(errors,[],'Browser runtime errors');
     console.log('[browser] SPA navigation, removed departments page, legacy URL normalization, department purge, Back/Forward, refresh and mobile scroll PASS');
   } finally { await browser.close(); }

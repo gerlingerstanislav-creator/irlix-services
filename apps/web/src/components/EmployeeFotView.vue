@@ -126,11 +126,9 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
   <div class="fot-page">
     <div class="fot-toolbar">
       <div class="fot-department-filter">
-        <span>Направления</span>
-        <UiSearchSelect v-model="departmentIds" :options="availableDepartments" multiple placeholder="Все доступные" search-placeholder="Поиск направления" aria-label="Направления ФОТ" />
+        <UiSearchSelect v-model="departmentIds" :options="availableDepartments" multiple placeholder="Все направления" search-placeholder="Поиск направления" aria-label="Направления ФОТ" />
       </div>
       <div class="fot-department-filter">
-        <span>Статус трудоустройства</span>
         <UiSearchSelect v-model="employmentStatuses" :options="statusOptions" multiple placeholder="Все статусы" search-placeholder="Поиск статуса" aria-label="Статус трудоустройства для ФОТ" />
       </div>
     </div>
