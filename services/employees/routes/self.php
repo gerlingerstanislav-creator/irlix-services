@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\EmployeeDirectoryController;
+use App\Http\Controllers\EmployeeSpecialistHistoryController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/access/preview', [EmployeeDirectoryController::class, 'preview']);
@@ -13,5 +14,6 @@ Route::get('/client-specialist-profile/{employee}', [EmployeeDirectoryController
     ->whereNumber('employee');
 Route::get('/vacations-directory', [EmployeeDirectoryController::class, 'vacations']);
 Route::get('/specialists-directory', [EmployeeDirectoryController::class, 'specialists']);
+Route::get('/specialists-history/{employee}', [EmployeeSpecialistHistoryController::class, 'show'])->whereNumber('employee');
 Route::get('/self/absence-approval-context', [EmployeeDirectoryController::class, 'selfAbsence']);
 Route::get('/absence-approval-context/{employee}', [EmployeeDirectoryController::class, 'absence']);
