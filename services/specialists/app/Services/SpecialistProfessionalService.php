@@ -81,6 +81,19 @@ final class SpecialistProfessionalService
         }
 
         return DB::transaction(function () use ($employee, $input, $primary, $secondary, $actor, $author): array {
+            // Catalog retire/replace takes these same row locks before locking
+            // specialist profiles. A previously validated autosave must never
+            // resurrect an additional technology archived concurrently.
+            if ($secondary) {
+                $available = AdditionalTechnology::query()->whereIn('id', $secondary)
+                    ->orderBy('id')->lockForUpdate()->get(['id', 'active']);
+                if ($available->count() !== count($secondary)
+                    || $available->contains(static fn ($technology): bool => !$technology->active)) {
+                    throw ValidationException::withMessages([
+                        'secondary_ids' => ['Некоторые дополнительные технологии уже удалены. Обновите карточку.'],
+                    ]);
+                }
+            }
             SpecialistProfile::query()->firstOrCreate(['employee_id' => $employee]);
             $profile = SpecialistProfile::query()->where('employee_id', $employee)->lockForUpdate()->firstOrFail();
             $before = $this->technologies($employee);
