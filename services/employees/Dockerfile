@@ -22,6 +22,7 @@ COPY app/Support/BrandbookGate.php /app/app/Support/BrandbookGate.php
 COPY app/Support/StoragePilotGate.php /app/app/Support/StoragePilotGate.php
 COPY app/Support/EmployeeOnboardingService.php /app/app/Support/EmployeeOnboardingService.php
 COPY app/Support/StaffPositionImporter.php /app/app/Support/StaffPositionImporter.php
+COPY app/Support/EmployeePurgeRepository.php /app/app/Support/EmployeePurgeRepository.php
 COPY routes/api.php /app/routes/api.php
 COPY routes/fot.php /app/routes/fot.php
 COPY routes/finance.php /app/routes/finance.php
