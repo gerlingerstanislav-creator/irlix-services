@@ -1,7 +1,7 @@
 <?php
 
 // Isolated synthetic records: hard delete must erase only the chosen employee
-// while preserving unrelated client data and immutable financial periods.
+// while preserving unrelated clients and coworkers during paid-period erasure.
 require __DIR__.'/client_members_bootstrap.php';
 
 use App\Services\EmployeePurgeService;
@@ -17,7 +17,7 @@ $columns = [
     'member_term_lineage' => ['canonical_term_id'],
     'client_member_feedbacks' => ['client_member_id', 'created_by_username'],
     'project_assignments' => ['client_member_id'],
-    'reporting_periods' => ['client_id', 'status', 'period_start', 'period_end'],
+    'reporting_periods' => ['client_id', 'status', 'period_start', 'period_end', 'timesheet_snapshot', 'timesheet_revision', 'confirmed_hours', 'confirmed_amount'],
     'reporting_period_approved_hours' => ['reporting_period_id', 'member_term_id', 'updated_by'],
     'connection_attempts' => ['specialist_id', 'responsible_employee_id', 'cv_storage_path'],
     'leads' => ['responsible_employee_id'],
@@ -38,6 +38,7 @@ foreach ($columns as $table => $names) {
         $t->id();
         foreach ($names as $name) {
             if (in_array($name, ['period_start', 'period_end', 'valid_from', 'valid_to'], true)) $t->date($name)->nullable();
+            elseif ($name === 'timesheet_snapshot') $t->text($name)->nullable();
             elseif (in_array($name, ['status','created_by_username','updated_by','author','filename','cv_storage_path'], true)) $t->string($name)->nullable();
             else $t->unsignedBigInteger($name)->nullable();
         }
@@ -46,6 +47,7 @@ foreach ($columns as $table => $names) {
         }
         if ($table === 'project_members') $t->foreign('project_id')->references('id')->on('projects')->restrictOnDelete();
         if ($table === 'member_terms') $t->foreign('project_member_id')->references('id')->on('project_members')->restrictOnDelete();
+        if ($table === 'reporting_period_approved_hours') $t->foreign('member_term_id')->references('id')->on('member_terms')->cascadeOnDelete();
         $t->timestamps();
     });
 }
@@ -118,31 +120,77 @@ clientCheck(DB::table('client_notes')->first()->created_by_username===null
     && DB::table('reporting_period_approved_hours')->first()->updated_by===null,
     'Foreign audit authors were not anonymized');
 
-DB::table('client_members')->insert(['id'=>102, 'client_id'=>10, 'employee_id'=>9]);
-DB::table('member_terms')->insert(['id'=>202, 'client_member_id'=>102,
-    'valid_from'=>'2026-02-01', 'valid_to'=>'2026-02-28']);
-DB::table('reporting_periods')->insert(['client_id'=>10, 'period_start'=>'2026-02-01',
-    'period_end'=>'2026-02-28', 'status'=>'Счет оплачен']);
-clientReject(static fn()=> $purge->purge(9, 'synthetic.protected', true), 423,
-    'Protected reporting periods must reject before destructive work');
-clientReject(static fn()=> $purge->purge(9, 'synthetic.protected'), 423,
-    'Locked client reporting facts must reject hard delete');
-clientCheck(DB::table('client_members')->where('id',102)->exists()
-    && DB::table('member_terms')->where('id',202)->exists(),
-    'Protected records were partially erased');
+// Paid-period rows are exceptional platform-admin deletion targets, not a
+// prohibition. The client's period and another specialist's facts survive.
+DB::table('client_members')->insert([
+    ['id'=>102, 'client_id'=>10, 'employee_id'=>9],
+    ['id'=>104, 'client_id'=>10, 'employee_id'=>12],
+]);
+DB::table('member_terms')->insert([
+    ['id'=>202, 'client_member_id'=>102, 'valid_from'=>'2026-02-01', 'valid_to'=>'2026-02-28'],
+    ['id'=>206, 'client_member_id'=>104, 'valid_from'=>'2026-02-01', 'valid_to'=>'2026-02-28'],
+]);
+$paidSnapshot = [
+    'entries' => [
+        ['id'=>1,'employee_id'=>9,'client_member_id'=>102,'member_term_id'=>202,'work_date'=>'2026-02-10','hours'=>8],
+        ['id'=>2,'employee_id'=>12,'client_member_id'=>104,'member_term_id'=>206,'work_date'=>'2026-02-10','hours'=>7],
+    ],
+    'final_approvals' => [
+        ['employee_id'=>9,'client_member_id'=>102,'month'=>'2026-02-01'],
+        ['employee_id'=>12,'client_member_id'=>104,'month'=>'2026-02-01'],
+    ],
+    'final_approval_exceptions' => [
+        ['employee_id'=>9,'client_member_id'=>102,'work_date'=>'2026-02-11'],
+        ['employee_id'=>12,'client_member_id'=>104,'work_date'=>'2026-02-11'],
+    ],
+    'count'=>2, 'revision'=>'old-test-revision', 'membership_revision'=>'old-test-directory',
+];
+DB::table('reporting_periods')->insert([
+    'client_id'=>10, 'period_start'=>'2026-02-01', 'period_end'=>'2026-02-28',
+    'status'=>'Счет оплачен', 'timesheet_snapshot'=>json_encode($paidSnapshot),
+    'timesheet_revision'=>'old-test-revision', 'confirmed_hours'=>999, 'confirmed_amount'=>999,
+]);
+DB::table('reporting_period_approved_hours')->insert([
+    ['reporting_period_id'=>2,'member_term_id'=>202],
+    ['reporting_period_id'=>2,'member_term_id'=>206],
+]);
+$purge->purge(9, 'synthetic.paid', true);
+clientCheck(DB::table('member_terms')->where('id',202)->exists()
+    && DB::table('reporting_periods')->where('id',2)->value('confirmed_hours')==999,
+    'Paid preflight wrote to the database');
+$purge->purge(9, 'synthetic.paid');
+$purge->purge(9, 'synthetic.paid');
+clientCheck(!DB::table('client_members')->where('employee_id',9)->exists()
+    && !DB::table('member_terms')->where('id',202)->exists()
+    && !DB::table('reporting_period_approved_hours')->where('member_term_id',202)->exists(),
+    'Paid-period employee commercial records remain');
+clientCheck(DB::table('reporting_periods')->where('id',2)->value('status')==='Счет оплачен'
+    && DB::table('reporting_periods')->where('id',2)->value('confirmed_amount')===null,
+    'Client period or stale aggregate remained after paid employee deletion');
+$cleanSnapshot = json_decode(DB::table('reporting_periods')->where('id',2)->value('timesheet_snapshot'), true);
+clientCheck(count($cleanSnapshot['entries'])===1
+    && $cleanSnapshot['entries'][0]['employee_id']===12
+    && count($cleanSnapshot['final_approvals'])===1
+    && count($cleanSnapshot['final_approval_exceptions'])===1
+    && $cleanSnapshot['count']===1
+    && $cleanSnapshot['revision']===null,
+    'Paid snapshot still contains erased employee or lost coworker facts');
+clientCheck(DB::table('client_members')->where('employee_id',12)->exists()
+    && DB::table('reporting_period_approved_hours')->where('member_term_id',206)->exists(),
+    'Unrelated coworker facts were erased from paid period');
 
-// Approved-hour linkage must protect a paid period even if dates were edited
-// and no longer overlap the commercial term.
+// An old approved-hours FK is also erasable even if date ranges were edited.
 DB::table('client_members')->insert(['id'=>103, 'client_id'=>10, 'employee_id'=>10]);
 DB::table('member_terms')->insert(['id'=>204,'client_member_id'=>103,
     'valid_from'=>'2026-03-01', 'valid_to'=>'2026-03-31']);
 DB::table('reporting_period_approved_hours')->insert([
     'reporting_period_id'=>2,'member_term_id'=>204,
 ]);
-clientReject(static fn()=> $purge->purge(10, 'synthetic.protected'), 423,
-    'Approved hours linked to paid period must block purge regardless of term dates');
-clientCheck(DB::table('client_members')->where('id',103)->exists(),
-    'Protected approved-hours membership was erased');
+$purge->purge(10, 'synthetic.outside.period');
+clientCheck(!DB::table('client_members')->where('id',103)->exists()
+    && !DB::table('member_terms')->where('id',204)->exists()
+    && !DB::table('reporting_period_approved_hours')->where('member_term_id',204)->exists(),
+    'Historical paid approval FK retained erased employee');
 
 // A legacy row that points to a different employee's canonical membership
 // must require reconciliation rather than deleting another person's terms.
@@ -155,4 +203,4 @@ clientCheck(DB::table('member_terms')->where('id',205)->exists()
     && DB::table('client_members')->where('id',101)->exists(),
     'Cross-employee legacy term was lost');
 
-echo "Clients employee hard delete, retries, isolation and immutable reporting guard PASS\n";
+echo "Clients employee hard delete, paid snapshots, retries and isolation PASS\n";
