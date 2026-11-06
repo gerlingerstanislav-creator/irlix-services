@@ -17,7 +17,14 @@ use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Illuminate\Validation\ValidationException;
 
-$app = new Container();
+// The isolated Eloquent harness has no Foundation app; implement only its
+// abort() boundary so the domain service can raise standard HTTP exceptions.
+$app = new class extends Container {
+    public function abort(int $code, string $message = '', array $headers = []): never
+    {
+        throw new \Symfony\Component\HttpKernel\Exception\HttpException($code, $message, null, $headers);
+    }
+};
 Container::setInstance($app);
 Facade::setFacadeApplication($app);
 $app->instance('date', new Illuminate\Support\DateFactory());
