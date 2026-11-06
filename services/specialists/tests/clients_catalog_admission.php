@@ -31,6 +31,10 @@ $ok = static fn() => response()->json(['data'=>['technologies'=>[['name'=>'PHP']
 Http::fake(['*' => Http::response(['data'=>['services'=>['clients'=>true,'specialists'=>false]]], 200)]);
 $allowed = $guard->handle($make('/api/clients-technology-catalog', ['service:clients']), $ok);
 $check($allowed->getStatusCode() === 200, 'Clients-only user cannot read shared technology vocabulary');
+$preview = $make('/api/clients-technology-catalog', ['service:clients']);
+$preview->headers->set('X-Irlix-Role-Preview', 'org:sales');
+$check($guard->handle($preview, $ok)->getStatusCode() === 403,
+    'Role preview bypassed Clients reference admission');
 $check($guard->handle($make('/api/clients-technology-catalog', ['service:specialists']), $ok)->getStatusCode() === 403,
     'Specialists-only identity bypassed Clients reference admission');
 $check($guard->handle($make('/api/catalog', ['service:clients']), $ok)->getStatusCode() === 403,
