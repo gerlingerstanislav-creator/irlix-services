@@ -349,6 +349,12 @@ for service in $MIGRATE_SERVICES; do
     finance|equipment|timesheets|vacations|recruitment|clients|specialists) $SUDO sh scripts/authz/backup-local-matrices.sh "$service" ;;
   esac
   $SUDO sh -c "$COMPOSE exec -T $service php artisan migrate --force < /dev/null"
+  if [ "$service" = employees ]; then
+    # A historical migration marked as applied cannot repair a subsequently
+    # removed/reclassified bootstrap record. Enforce it after every Employees
+    # deployment, without touching human admins or Keycloak credentials.
+    $SUDO sh -c "$COMPOSE exec -T employees php /app/bin/reconcile-system-accounts.php < /dev/null"
+  fi
 done
 
 # Clients owns the existing Timesheets manager matrix. Transfer policy rows
