@@ -41,4 +41,15 @@ if(str_contains(json_encode($timeline,JSON_UNESCAPED_UNICODE),'salary'))
     throw new RuntimeException('Salary data leaked into Specialists history');
 if((new EmployeeSpecialistHistoryService())->timeline(12)!==[])
     throw new RuntimeException('Events leaked between employee IDs');
+// Employees.read is NOT required for production heads; however only GET
+// history is exempt, and the controller must enforce the target's live scope.
+$authSource = file_get_contents(__DIR__.'/../app/Http/Middleware/EmployeesAuthorization.php');
+$controllerSource = file_get_contents(__DIR__.'/../app/Http/Controllers/EmployeeSpecialistHistoryController.php');
+if (!str_contains($authSource, "\$request->isMethod('GET') && \$request->is('api/specialists-history/*')")) {
+    throw new RuntimeException('Specialists history incorrectly requires unrelated Employees.read');
+}
+if (!str_contains($controllerSource, 'specialistsDirectory($actor, $access)')
+    || !str_contains($controllerSource, "'Employee not in scope'")) {
+    throw new RuntimeException('Scoped Specialists history controller missing live scope enforcement');
+}
 echo "Employees sanitized Specialists history: PASS\n";
