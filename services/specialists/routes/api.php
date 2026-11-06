@@ -111,6 +111,7 @@ Route::put('/people/{employee}/professional', [SpecialistProfessionalController:
 Route::get('/people/{employee}/timeline', [SpecialistProfessionalController::class, 'timeline'])->whereNumber('employee');
 Route::post('/people/{employee}/timeline', [SpecialistProfessionalController::class, 'comment'])->whereNumber('employee');
 Route::post('/catalog/additional-technologies/quick', [SpecialistProfessionalController::class, 'quickCreate']);
+Route::put('/catalog/additional-technologies/{technology}', [AdditionalTechnologyCatalogController::class, 'rename'])->whereNumber('technology');
 Route::delete('/catalog/additional-technologies/{technology}', [AdditionalTechnologyCatalogController::class, 'remove'])->whereNumber('technology');
 
 Route::get('/workspace', function (Request $request) use ($directoryFor,$syncSnapshots,$catalogPayload) {
