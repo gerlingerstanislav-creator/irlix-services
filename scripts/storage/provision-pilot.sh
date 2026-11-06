@@ -35,14 +35,24 @@ case "$path" in
   /srv/irlix-storage-pilot|/mnt/irlix-storage-pilot|/mnt/storage-data|/srv/storage-data) ;;
   *) echo "Storage pilot: unexpected data path; refusing unsafe mount $path" >&2; exit 1 ;;
 esac
-# Check the parent filesystem BEFORE mkdir. This is an intentionally small,
-# synthetic-only pilot. Data on the current root drive is NOT business storage.
+# The 8 GiB guard protects *initial* pilot activation only. Once the
+# approved data directory contains SeaweedFS data, a later unrelated release
+# must not fail just because the filesystem subsequently has less free space.
+# Never remove, replace or follow a symlink to an existing data directory.
+if [ -L "$path" ] || { [ -e "$path" ] && [ ! -d "$path" ]; }; then
+  echo "Storage pilot: data path is not a regular directory; refusing unsafe mount" >&2
+  exit 1
+fi
 parent=$(dirname "$path")
 mkdir -p "$parent"
-free=$(df -Pk "$parent" | awk 'NR==2{print $4}')
-if [ -z "$free" ] || [ "$free" -lt 8388608 ]; then
-  echo "Storage pilot: needs >=8 GiB free BEFORE initial activation; current KiB: ${free:-unknown}" >&2
-  exit 1
+if [ -d "$path" ] && [ -n "$(find "$path" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+  echo "Storage pilot: existing data directory detected; initial-capacity guard not applicable."
+else
+  free=$(df -Pk "$parent" | awk 'NR==2{print $4}')
+  if [ -z "$free" ] || [ "$free" -lt 8388608 ]; then
+    echo "Storage pilot: needs >=8 GiB free BEFORE initial activation; current KiB: ${free:-unknown}" >&2
+    exit 1
+  fi
 fi
 mkdir -p "$path"
 chmod 0700 "$path"
