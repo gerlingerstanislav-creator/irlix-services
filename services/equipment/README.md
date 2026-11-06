@@ -10,18 +10,21 @@ The Keycloak bearer token is verified locally. Effective Equipment roles are the
 
 ## Employees integration
 
-Directory loading uses Employees `GET /api/equipment-directory`; assignment and history validation use `GET /api/equipment-directory/{employee}` with the caller's verified bearer token. These endpoints authorize Equipment roles independently of HR card access and return only ID, name, position, department name and employment status. The list contains employed employees; individual lookup also supports former employees for history edits. No salary or HR card access is granted.
+Directory loading uses Employees `GET /api/equipment-directory?include_former=1`; assignment and history validation use `GET /api/equipment-directory/{employee}` with the caller's verified bearer token. These endpoints authorize Equipment roles independently of HR card access and return only ID, name, position, department name and employment status. The list includes employed and former employees, including their employment status, so assets still held after departure are visible. The issue action remains restricted to employed employees; individual lookup also supports former employees for history edits. No salary or HR card access is granted.
 
 ## Frontend contract
 
 The Equipment frontend follows the Employees registry/card pattern: full-height/full-width registries, shared topbar without a separate page header, sticky table headers, and a resizable right-side equipment card at `/equipment/items/{id}`. Item attributes are edited inline through per-field actions.
 
 Service navigation:
-- `Техника` — `/equipment/`;
+- `Сотрудники` — `/equipment/` (default page); 
+- `Техника` — `/equipment/items`;
 - `Выдачи` — `/equipment/assignments`;
 - `Оценка стоимости` — `/equipment/valuation`;
 - `Списанная техника` — `/equipment/written-off`;
 - `Настройки` — `/equipment/settings`.
+
+The employees table lists full names, departments, and one link per currently assigned device (type, maker, model, inventory number). Device links open the existing equipment drawer while preserving the employee list as its background. A row action for issue is displayed for each employee, including those with existing equipment; it is disabled without operator access or when the employee is no longer employed. The form selects an available, non-written-off device and fixes the target employee. A filter in the shared rail offers independent `Трудоустроен` and `Есть техника` multi-select criteria; both are selected by default (logical AND), and clearing both shows the entire directory. Only authorized data is projected from Employees through its API.
 
 The legacy `/equipment/depreciation` route remains recognized by the frontend and maps to `Оценка стоимости` for compatibility.
 

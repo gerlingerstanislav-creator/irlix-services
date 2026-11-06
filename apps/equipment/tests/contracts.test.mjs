@@ -12,9 +12,9 @@ const routes = read('services/equipment/routes/api.php');
 const icons = read('packages/ui/src/components/UiIcon.vue');
 
 test('all Equipment lists use the shared semantic registry component', () => {
-  assert.match(app, /UiPanel v-if="section==='registry'/);
-  assert.equal((app.match(/<UiRegistryTable /g)||[]).length,3);
-  assert.equal((app.match(/<\/UiRegistryTable>/g)||[]).length,3);
+  assert.match(app, /UiPanel v-else-if="section==='registry'/);
+  assert.equal((app.match(/<UiRegistryTable /g)||[]).length,4);
+  assert.equal((app.match(/<\/UiRegistryTable>/g)||[]).length,4);
   assert.doesNotMatch(app, /equipment-table-wrap/);
   for (const label of ['Техника','Выдачи','Оценка стоимости']) {
     assert.ok(app.includes('aria-label="'+label+'"'));
@@ -58,7 +58,7 @@ test('Equipment loading indicators overlay existing content without moving the s
   assert.match(app, /UiPanel, UiRegistryTable, UiLoader, UiSearchSelect/);
   assert.doesNotMatch(app, /class="equipment-empty">Загрузка…/);
   assert.match(app, /v-if="!loading && !filtered\.length"/);
-  assert.equal((app.match(/<UiLoader v-if="loading" overlay/g)||[]).length,4);
+  assert.equal((app.match(/<UiLoader v-if="loading" overlay/g)||[]).length,5);
   assert.match(css, /\.equipment-page \.ui-panel\.equipment-registry-panel\s*\{[^}]*position: relative/);
   assert.match(css, /\.equipment-settings-panel\{position:relative/);
 });
@@ -99,4 +99,23 @@ test('Employees directory uses effective equipment entitlement rather than job t
   const access = read('services/employees/app/Support/EmployeesAccess.php');
   assert.match(access, /SpecialRoles::SystemAdministrator/);
   assert.match(access, /in_array\('accounting', \$normalizedRoles, true\)/);
+});
+
+test('Employees is the default Equipment section with join-only asset display and authorized issue action', () => {
+  const appRoutes = read('apps/equipment/src/routes.js');
+  assert.match(appRoutes, /path: '\/', name: 'employees'/);
+  assert.match(appRoutes, /path: '\/items', name: 'registry'/);
+  assert.match(app, /id: 'employees', label: 'Сотрудники', href: '\/equipment\/', icon: 'users'/);
+  assert.match(app, /const employeeDisplayFilter = ref\(\['employed', 'has-equipment'\]\)/);
+  assert.match(app, /<UiSearchSelect v-model="employeeDisplayFilter" multiple/);
+  assert.match(app, /employee\.employment_status === 'Трудоустроен'/);
+  assert.match(app, /equipmentByEmployee\.value\.get\(Number\(employee\.id\)\)/);
+  assert.match(app, /equipmentByEmployee\.get\(Number\(employee\.id\)\)/);
+  assert.match(app, /class="equipment-inventory-link equipment-employee-device" @click="openItem\(item\)"/);
+  assert.match(app, /@click="openAssignForEmployee\(employee\)"/);
+  assert.match(app, /:disabled="!permissions\.operate \|\| employee\.employment_status !== 'Трудоустроен'"/);
+  assert.match(app, /!item\.assignment && !item\.written_off_at/);
+  assert.match(app, /activeRoute\.query\.from === 'employees'/);
+  assert.match(routes, /equipment-directory\?include_former=1/);
+  assert.match(routes, /'employment_status'=>\$e\['employment_status'\]/);
 });
