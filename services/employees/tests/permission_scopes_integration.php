@@ -111,6 +111,15 @@ $rules->setRule(SpecialRoles::Managers, 'employees.salary.read', true, 'all');
 $managerAllSalary = $resolve(10);
 $check($managerAllSalary['permission_scopes']['employees.salary.read']['scope'] === 'all',
     'Explicit manager company-wide scope must be applied only to its permission');
+// If a manager does NOT hold a separate company-wide read grant, a
+// salary=all override remains bounded by readable employees.
+$db->table('employee_access_roles')->where('employee_id', 10)
+    ->where('role', SpecialRoles::PersonnelOfficer)->delete();
+$managerOnly = $resolve(10);
+$check($managerOnly['permission_scopes']['employees.read']['scope'] === 'subtree',
+    'Manager-only read should be scoped');
+$check($managerOnly['permission_scopes']['employees.salary.read']['scope'] === 'subtree',
+    'Salary=all must not bypass employee-read scope');
 $rules->setRule(SpecialRoles::Managers, 'employees.salary.read', false);
 $managerDenied = $resolve(10);
 $check(!$managerDenied['permissions']['employees.salary.read'],
