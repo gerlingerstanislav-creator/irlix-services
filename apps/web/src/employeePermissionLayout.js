@@ -7,6 +7,7 @@ const BASELINE = {
   hr: ['employees.read', 'employees.application.create', 'organization.read', 'staff_positions.read'],
   accounting: ['employees.read', 'employees.salary.read', 'employees.salary.manage', 'organization.read', 'staff_positions.read', 'employees.fot.view'],
   managers: ['employees.read', 'employees.application.create', 'employees.salary.read', 'organization.read', 'staff_positions.read', 'employees.fot.view', 'employees.fot.plan', 'employees.fot.approve'],
+  'direction-hr': ['employees.read', 'organization.read', 'staff_positions.read'],
   manager: ['employees.read', 'employees.application.create', 'employees.salary.read', 'organization.read', 'staff_positions.read', 'employees.fot.view', 'employees.fot.plan', 'employees.fot.approve'],
 };
 
