@@ -52,6 +52,11 @@ test('Role scope selectors reflect authoritative backend scopes and saved overri
   assert.deepEqual(permissionOptions('managers', 'services.employees', policies).map(o => o.value), ['deny', 'allow']);
   assert.equal(permissionDisplayValue('managers', 'employees.fot.approve', [], policies), 'allow');
   assert.equal(permissionDisplayValue('hr', 'employees.salary.read', [], policies), 'deny');
+  const hardGate = { managers: { 'organization.manage': { options: ['deny'], default: 'deny' } } };
+  assert.deepEqual(permissionOptions('managers', 'organization.manage', hardGate).map(o => o.value), ['deny']);
+  assert.equal(permissionDisplayValue('managers', 'organization.manage', [
+    { role: 'managers', permission: 'organization.manage', enabled: true },
+  ], hardGate), 'deny');
 });
 
 test('Permission sections include every permission once and keep stable group order', () => {
