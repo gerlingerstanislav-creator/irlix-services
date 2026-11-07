@@ -12,6 +12,13 @@ final class SpecialRoleService
     {
         $data = [];
         foreach (SpecialRoles::catalog() as $role) {
+            // Older synthetic schemas (and rolling schema updates) may not
+            // carry hr_id yet; absent assignment data can never grant access.
+            if ($role['key'] === SpecialRoles::DirectionHr
+                && !Employee::query()->getConnection()->getSchemaBuilder()->hasColumn('departments', 'hr_id')) {
+                $data[] = [...$role, 'members' => collect(), 'member_count' => 0];
+                continue;
+            }
             // An automatic role is a live projection over Departments and
             // must never depend on or write employee_access_roles rows.
             $query = Employee::query()->from('employees as e')->business('e')
