@@ -17,9 +17,11 @@ final class SpecialRoleService
             $query = Employee::query()->from('employees as e')->business('e')
                 ->leftJoin('departments as d', 'd.id', '=', 'e.department_id');
             if (SpecialRoles::isAutomatic($role['key'])) {
-                $query->join('departments as managed', 'managed.manager_id', '=', 'e.id')
-                    ->where('managed.is_production', true)
-                    ->select([
+                $query->join('departments as managed', 'managed.manager_id', '=', 'e.id');
+                if ($role['key'] === SpecialRoles::ProductionDirectionHead) {
+                    $query->where('managed.is_production', true);
+                }
+                $query->select([
                         'e.id', 'e.full_name', 'e.login', 'e.work_email', 'e.position',
                         'e.department_id', 'd.name as department_name',
                     ])->distinct();
