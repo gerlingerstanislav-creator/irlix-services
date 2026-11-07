@@ -12,6 +12,10 @@ $check = static function (bool $condition, string $message): void {
 $check(Policy::defaultForRole('managers') === 'own', 'Managers must default to assigned subtrees');
 $check(Policy::defaultForRole('direction-hr') === 'own', 'Direction HR must default to assigned subtrees');
 $check(Policy::defaultForRole('personnel-officer') === 'all', 'Personnel officer needs company-wide staffing scope');
+$check(Policy::defaultForRole('backend') === 'deny',
+    'Unrelated department role must never gain global salary access by legacy boolean');
+$check(Policy::merge(['backend' => ['enabled' => true, 'scope' => null, 'department_ids' => []]])['scope'] === 'none',
+    'Legacy unrelated role without ownership must remain non-effective');
 $check(Policy::options('personnel-officer', 'employees.read') === ['deny', 'all'],
     'Personnel officer must not get an undefined own-department option');
 $check(Policy::options('managers', 'employees.salary.read') === ['deny', 'own', 'all'],
