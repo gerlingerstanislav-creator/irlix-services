@@ -47,7 +47,8 @@ final class PermissionRuleController extends Controller
         $scope = $enabled && PermissionScopePolicy::scoped($permission)
             ? ($data['scope'] ?? PermissionScopePolicy::defaultForRole($role)) : null;
         $options = PermissionScopePolicy::options($role, $permission);
-        if (($scope !== null && !in_array($scope, $options, true))
+        if (($enabled && $options === ['deny'])
+            || ($scope !== null && !in_array($scope, $options, true))
             || (!PermissionScopePolicy::scoped($permission) && !empty($data['scope']))
             || (!$enabled && !empty($data['scope']))) {
             return response()->json(['message' => 'Unsupported scope for this role and permission'], 422);
