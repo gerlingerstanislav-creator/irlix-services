@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { UiButton, UiLoader, UiSearchSelect } from '@irlix/ui';
 import {
-  moveRoleColumn, orderedRoleColumns, permissionEnabled, permissionSections, shiftRoleColumn,
+  moveRoleColumn, orderedRoleColumns, permissionDisplayValue, permissionEnabled, permissionOptions, permissionSections, shiftRoleColumn,
 } from '../employeePermissionLayout.js';
 
 const matrix = ref(null);
@@ -30,7 +30,7 @@ const availableRoles = computed(() => {
   const displayed = new Set(displayedRoles.value.map(role => role.key));
   const remaining = allRoles.value.filter(role => !displayed.has(role.key));
   const special = remaining.filter(role =>
-    ['platform-admin', 'personnel-officer', 'managers', 'top-management', 'manager', 'system-admin', 'production-direction-head'].includes(role.key));
+    ['platform-admin', 'personnel-officer', 'managers', 'direction-hr', 'top-management', 'manager', 'system-admin', 'production-direction-head'].includes(role.key));
   const departments = remaining.filter(role => !special.includes(role));
   return [
     ...optionGroup('Специальные и собирательные роли', special),
@@ -104,10 +104,15 @@ async function load() {
   finally { loading.value = false; }
 }
 
-async function setPermission(role, permission, enabled) {
+async function setPermission(role, permission, value) {
   if (role.locked || saving.value) return;
   const key = role.key + ':' + permission.key;
-  if (permissionEnabled(role.key, permission.key, matrix.value?.rules) === enabled) return;
+  // A legacy boolean allow may have no proven scope (rendered as "deny").
+  // Allow explicitly disabling such a stored grant instead of doing nothing.
+  if (permissionDisplayValue(role.key, permission.key, matrix.value?.rules, matrix.value?.scope_policies) === value
+    && (value !== 'deny' || !permissionEnabled(role.key, permission.key, matrix.value?.rules))) return;
+  const enabled = value !== 'deny';
+  const scope = value === 'own' || value === 'all' ? value : null;
   saving.value = key;
   error.value = '';
   try {
@@ -115,13 +120,13 @@ async function setPermission(role, permission, enabled) {
       encodeURIComponent(role.key) + '/' + encodeURIComponent(permission.key), {
       method: 'PUT',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({ enabled, scope }),
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.message || 'Не удалось сохранить разрешение');
     const existing = matrix.value.rules.find(item => item.role === role.key && item.permission === permission.key);
-    if (existing) existing.enabled = enabled;
-    else matrix.value.rules.push({ role: role.key, permission: permission.key, enabled });
+    if (existing) { existing.enabled = enabled; existing.scope = scope; }
+    else matrix.value.rules.push({ role: role.key, permission: permission.key, enabled, scope });
   } catch (e) { error.value = e.message; }
   finally { saving.value = ''; }
 }
@@ -145,7 +150,7 @@ onMounted(load);
         :clearable="false"
         @update:model-value="addRole"
       />
-      <span class="permissions-toolbar-hint">Скрытие столбца не изменяет разрешения.</span>
+      <span class="permissions-toolbar-hint">Область каждого действия задаётся отдельно. Для просмотра итоговых прав конкретного сотрудника откройте его карточку.</span>
     </div>
 
     <div v-if="error" class="error-banner" role="alert">
@@ -157,7 +162,7 @@ onMounted(load);
       <table class="permissions-table">
         <colgroup>
           <col class="permissions-name-col">
-          <col v-for="role in displayedRoles" :key="role.key" class="permissions-role-col">
+          <col v-for="role in displayedRoles" :key="role.key" class="permissions-role-col" :class="{ 'permissions-scope-col': ['managers', 'direction-hr'].includes(role.key) }">
         </colgroup>
         <thead>
           <tr>
@@ -215,12 +220,11 @@ onMounted(load);
               <td v-for="role in displayedRoles" :key="role.key">
                 <select
                   :aria-label="permission.label + ': ' + role.label"
-                  :value="permissionEnabled(role.key, permission.key, matrix.rules) ? 'allow' : 'deny'"
+                  :value="permissionDisplayValue(role.key, permission.key, matrix.rules, matrix.scope_policies)"
                   :disabled="role.locked || !!saving"
-                  @change="setPermission(role, permission, $event.target.value === 'allow')"
+                  @change="setPermission(role, permission, $event.target.value)"
                 >
-                  <option value="deny">Нет доступа</option>
-                  <option value="allow">Разрешено</option>
+                  <option v-for="option in permissionOptions(role.key, permission.key, matrix.scope_policies)" :key="option.value" :value="option.value">{{ option.label }}</option>
                 </select>
               </td>
             </tr>
@@ -240,6 +244,7 @@ onMounted(load);
 .permissions-table { border-collapse:separate; border-spacing:0; table-layout:fixed; width:max-content; background:var(--irlix-color-surface); }
 .permissions-name-col { width:260px; }
 .permissions-role-col { width:158px; }
+.permissions-scope-col { width:238px; }
 .permissions-table th, .permissions-table td { box-sizing:border-box; padding:6px 8px; border-right:1px solid var(--irlix-color-border); border-bottom:1px solid var(--irlix-color-border); text-align:left; font-size:var(--irlix-font-size-caption); }
 .permissions-table thead th { position:sticky; top:0; z-index:3; height:68px; vertical-align:top; background:var(--irlix-color-surface-muted); }
 .permissions-table thead th:first-child { left:0; z-index:5; }
@@ -261,5 +266,6 @@ onMounted(load);
   .permissions-toolbar { padding:10px; }
   .permissions-name-col, .permissions-table tbody th:first-child { width:210px; }
   .permissions-role-col { width:148px; }
+  .permissions-scope-col { width:238px; }
 }
 </style>

@@ -27,7 +27,7 @@ Model::setConnectionResolver($capsule->getDatabaseManager());
 $db->statement('CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, alias TEXT, parent_id INTEGER, manager_id INTEGER, is_production INTEGER, created_at TEXT, updated_at TEXT)');
 $db->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, full_name TEXT, login TEXT, work_email TEXT, position TEXT, department_id INTEGER, employment_status TEXT, keycloak_user_id TEXT, created_at TEXT, updated_at TEXT, account_type TEXT DEFAULT "employee")');
 $db->statement('CREATE TABLE employee_access_roles (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER, role TEXT, created_at TEXT, updated_at TEXT, UNIQUE(employee_id, role))');
-$db->statement('CREATE TABLE employee_permission_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT, permission TEXT, enabled INTEGER, created_at TEXT, updated_at TEXT, UNIQUE(role, permission))');
+$db->statement('CREATE TABLE employee_permission_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT, permission TEXT, enabled INTEGER, scope TEXT, created_at TEXT, updated_at TEXT, UNIQUE(role, permission))');
 
 $db->table('departments')->insert(['id' => 5, 'name' => 'Synthetic team', 'alias' => 'engineering', 'parent_id' => null, 'is_production' => 1]);
 $db->table('employees')->insert([

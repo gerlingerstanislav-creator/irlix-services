@@ -25,6 +25,9 @@ final class RoleLabels
         if (self::managesDepartment($employee, $departments)) {
             $labels[] = SpecialRoles::Managers;
         }
+        if (self::assignedDirectionHr($employee, $departments)) {
+            $labels[] = SpecialRoles::DirectionHr;
+        }
         if (self::managesProductionDirection($employee, $departments)) {
             $labels[] = SpecialRoles::ProductionDirectionHead;
         }
@@ -116,6 +119,9 @@ final class RoleLabels
         if (self::managesDepartment($employee, $departments)) {
             $claims[] = 'special:'.SpecialRoles::Managers;
         }
+        if (self::assignedDirectionHr($employee, $departments)) {
+            $claims[] = 'special:'.SpecialRoles::DirectionHr;
+        }
         if (self::managesProductionDirection($employee, $departments)) {
             $claims[] = 'special:'.SpecialRoles::ProductionDirectionHead;
         }
@@ -129,6 +135,18 @@ final class RoleLabels
      * Aggregate role: only direct department manager_id assignments count.
      * System identities, titles and hierarchy ancestry are not managers.
      */
+    /** A direction HR assignment is independent of own department and HR job title. */
+    public static function assignedDirectionHr(?object $employee, array $departments): bool
+    {
+        if (!$employee || ($employee->account_type ?? 'employee') === 'system') return false;
+        $employeeId = (int) ($employee->id ?? 0);
+        if ($employeeId <= 0) return false;
+        foreach ($departments as $department) {
+            if ((int) ($department->hr_id ?? 0) === $employeeId) return true;
+        }
+        return false;
+    }
+
     public static function managesDepartment(?object $employee, array $departments): bool
     {
         if (!$employee || ($employee->account_type ?? 'employee') === 'system') return false;

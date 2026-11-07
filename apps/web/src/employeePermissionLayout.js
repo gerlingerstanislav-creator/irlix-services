@@ -7,6 +7,7 @@ const BASELINE = {
   hr: ['employees.read', 'employees.application.create', 'organization.read', 'staff_positions.read'],
   accounting: ['employees.read', 'employees.salary.read', 'employees.salary.manage', 'organization.read', 'staff_positions.read', 'employees.fot.view'],
   managers: ['employees.read', 'employees.application.create', 'employees.salary.read', 'organization.read', 'staff_positions.read', 'employees.fot.view', 'employees.fot.plan', 'employees.fot.approve'],
+  'direction-hr': ['employees.read', 'organization.read', 'staff_positions.read'],
   manager: ['employees.read', 'employees.application.create', 'employees.salary.read', 'organization.read', 'staff_positions.read', 'employees.fot.view', 'employees.fot.plan', 'employees.fot.approve'],
 };
 
@@ -17,6 +18,32 @@ export function permissionEnabled(role, permission, rules = []) {
   if (override) return Boolean(override.enabled);
   const baselineRole = role.endsWith('-head') ? 'manager' : role;
   return (BASELINE[baselineRole] || []).includes(permission);
+}
+
+/**
+ * Scope choices come from the server. The matrix displays a role's own
+ * grant; a concrete employee may inherit an independently scoped union.
+ */
+export function permissionDisplayValue(role, permission, rules = [], scopePolicies = {}) {
+  if (role === 'platform-admin') return scopePolicies?.[role]?.[permission] ? 'all' : 'allow';
+  if (scopePolicies?.[role]?.[permission]?.options?.length === 1
+    && scopePolicies[role][permission].options[0] === 'deny') return 'deny';
+  if (!permissionEnabled(role, permission, rules)) return 'deny';
+  const scope = scopePolicies?.[role]?.[permission];
+  if (!scope) return 'allow';
+  const override = rules.find(rule => rule.role === role && rule.permission === permission);
+  return override?.scope || scope.default;
+}
+
+export function permissionOptions(role, permission, scopePolicies = {}) {
+  const values = scopePolicies?.[role]?.[permission]?.options || ['deny', 'allow'];
+  const labels = {
+    deny: 'Нет доступа',
+    own: 'В зоне ответственности',
+    all: 'Вся компания',
+    allow: 'Разрешено',
+  };
+  return values.map(value => ({ value, label: labels[value] }));
 }
 
 export function permissionSections(catalog = {}) {
@@ -44,7 +71,7 @@ export function orderedRoleColumns(catalog = {}, savedKeys = null) {
   const roles = Object.entries(catalog).map(([key, label]) => ({ key, label, locked: key === 'platform-admin' }));
   if (!Array.isArray(savedKeys)) return roles;
   const byKey = new Map(roles.map(role => [role.key, role]));
-  const keys = [...new Set([...savedKeys, 'platform-admin', 'managers'])];
+  const keys = [...new Set([...savedKeys, 'platform-admin', 'managers', 'direction-hr'])];
   return keys.filter(key => byKey.has(key)).map(key => byKey.get(key));
 }
 

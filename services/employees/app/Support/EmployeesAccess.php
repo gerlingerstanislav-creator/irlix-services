@@ -34,7 +34,12 @@ class EmployeesAccess
         }
 
         if (!$employee) return $this->withMatrix($this->result(null, false, false, false, false, false, 'none', [], []));
+        return $this->resolveEmployee($employee);
+    }
 
+    /** Evaluate one current employee from authoritative Employees data, without impersonation. */
+    public function resolveEmployee(Employee $employee): array
+    {
         $departments = $this->departments();
         $special = array_values(array_intersect(
             EmployeeAccessRole::query()->where('employee_id', $employee->id)->pluck('role')->all(),
@@ -53,8 +58,33 @@ class EmployeesAccess
             }
         }
         $managerIds = array_values(array_unique($managerIds));
+        $hrIds = [];
+        foreach ($departments as $department) {
+            if (($employee->account_type ?? 'employee') !== 'system'
+                && (int) ($department->hr_id ?? 0) === (int) $employee->id) {
+                $hrIds = array_merge($hrIds, $this->subtreeIds((int) $department->id, $departments));
+            }
+        }
+        $hrIds = array_values(array_unique($hrIds));
+        $productionManagerIds = [];
+        foreach ($departments as $department) {
+            if (($employee->account_type ?? 'employee') !== 'system'
+                && (int) ($department->manager_id ?? 0) === (int) $employee->id
+                && ($department->is_production ?? false)) {
+                $productionManagerIds = array_merge($productionManagerIds, $this->subtreeIds((int) $department->id, $departments));
+            }
+        }
+        $roleDepartments = [
+            SpecialRoles::Managers => $managerIds,
+            SpecialRoles::DirectionHr => $hrIds,
+            SpecialRoles::ProductionDirectionHead => array_values(array_unique($productionManagerIds)),
+            'manager' => $managerIds,
+        ];
+        foreach ($roles as $role) {
+            if (str_ends_with($role, '-head')) $roleDepartments[$role] = $managerIds;
+        }
         $manager = count($managerIds) > 0;
-        $read = $privileged || $accounting || $hr || $personnel || $manager;
+        $read = $privileged || $accounting || $hr || $personnel || $manager || $hrIds !== [];
         $salary = $privileged || $accounting || $manager;
         $fullScope = $privileged || $accounting || $hr || $personnel;
         $scope = $fullScope ? 'all' : ($manager ? 'subtree' : 'none');
@@ -63,7 +93,7 @@ class EmployeesAccess
         $access = $this->withMatrix($this->result(
             $employee, $read, $salary, $privileged, $privileged || $accounting,
             $privileged, $scope, $roles, $ids
-        ), RoleLabels::ancestorDepartmentRoles($employee, $departments));
+        ), RoleLabels::ancestorDepartmentRoles($employee, $departments), $roleDepartments);
         // JWT V2 claims are descriptive identities, NOT additional entries
         // in the legacy permission matrix or global service-entry rules.
         $access['role_claims'] = RoleLabels::publishedRoleClaims($employee, $departments, $special);
@@ -159,16 +189,24 @@ class EmployeesAccess
         $salary = $accounting || $manager;
         $scope = ($accounting || $hr || $personnel) ? 'all' : ($manager ? 'subtree' : 'none');
         $ids = $scope === 'all' ? array_map(fn ($d) => (int) $d->id, $departments) : $scopedDepartments;
+        $previewRoleDepartments = [
+            SpecialRoles::Managers => $scopedDepartments,
+            SpecialRoles::ProductionDirectionHead => $productionManager ? $scopedDepartments : [],
+            'manager' => $scopedDepartments,
+        ];
+        foreach ($roles as $role) {
+            if (str_ends_with($role, '-head')) $previewRoleDepartments[$role] = $scopedDepartments;
+        }
         $access = $this->withMatrix($this->result(
             $employee, $read, $salary, false, $accounting, false, $scope, $roles, $ids,
             $productionManager
-        ));
+        ), [], $previewRoleDepartments);
         $access['role_preview'] = ['value' => $scenario, 'label' => $labels[$scenario], 'read_only' => true];
         $access['role_preview_options'] = $catalog;
         return $access;
     }
 
-    private function withMatrix(array $access, array $ancestorRoles = []): array
+    private function withMatrix(array $access, array $ancestorRoles = [], array $roleDepartments = []): array
     {
         // A tester marker never contributes business or administrative grants.
         $roles = array_values(array_diff($access['roles'], [SpecialRoles::PlatformTester]));
@@ -181,7 +219,7 @@ class EmployeesAccess
             $access['permissions']['employees.fot.plan'] = true;
             $access['permissions']['employees.fot.approve'] = true;
             $access['permissions']['employees.transfer'] = true;
-            return $access;
+            return $this->withPermissionScopes($access, $roles, [SpecialRoles::PlatformAdmin => PermissionScopePolicy::keys()], [], [], $roleDepartments);
         }
 
         $defaults = [
@@ -191,6 +229,7 @@ class EmployeesAccess
             'accounting' => ['employees.read','employees.salary.read','employees.salary.manage','organization.read','staff_positions.read','employees.fot.view'],
             'manager' => ['employees.read','employees.application.create','employees.salary.read','organization.read','staff_positions.read','employees.fot.view','employees.fot.plan','employees.fot.approve'],
             SpecialRoles::Managers => ['employees.read','employees.application.create','employees.salary.read','organization.read','staff_positions.read','employees.fot.view','employees.fot.plan','employees.fot.approve'],
+            SpecialRoles::DirectionHr => ['employees.read','organization.read','staff_positions.read'],
             'system-admin' => [],
         ];
         $permissions = array_values(array_unique(array_merge(array_keys($access['permissions']), [
@@ -204,11 +243,14 @@ class EmployeesAccess
             'organization.read', 'staff_positions.read'];
         $ancestorRoles = array_values(array_diff($ancestorRoles, $roles));
         $overrides = [];
+        $scopeOverrides = [];
         if (Schema::hasTable('employee_permission_rules')) {
             foreach (EmployeePermissionRule::query()->whereIn('role', array_values(array_unique([
                 ...$roles, ...$ancestorRoles,
             ])))->get() as $rule) {
                 $overrides[$rule->role][$rule->permission] = (bool) $rule->enabled;
+                // Legacy rows do not have a scope; their default is role-based.
+                $scopeOverrides[$rule->role][$rule->permission] = $rule->scope ?? null;
             }
         }
         foreach ($permissions as $permission) {
@@ -254,9 +296,13 @@ class EmployeesAccess
             }
             $access['permissions'][$permission] = $granted;
         }
+        // Role rules cannot bypass these established hard authorization gates.
+        // Keep the matrix's effective result consistent with actual controllers.
         $access['permissions']['employees.permissions.manage'] = false;
-        // A platform tester must not acquire personnel-only transfer rights via '*'.
-        $access['permissions']['employees.transfer'] = in_array('personnel-officer',$roles,true);
+        $access['permissions']['organization.manage'] = false;
+        $access['permissions']['access.manage'] = false;
+        $access['permissions']['employees.transfer'] = in_array(SpecialRoles::PersonnelOfficer, $roles, true)
+            && ($overrides[SpecialRoles::PersonnelOfficer]['employees.transfer'] ?? true);
         // The global matrix controls SERVICE ENTRY. Domain permissions still
         // belong to the service and cannot be bypassed by this grant.
         // Explicit denies take priority over inherited grants.
@@ -288,15 +334,107 @@ class EmployeesAccess
         $access['services']['brandbook'] = in_array(SpecialRoles::TopManagement, $roles, true);
         $access['allowed'] = (bool) ($access['permissions']['employees.read'] ?? false);
         $access['services']['employees'] = $access['services']['employees'] && $access['allowed'];
+        return $this->withPermissionScopes(
+            $access, $roles, $defaults, $overrides, $scopeOverrides, $roleDepartments, $ancestorRoles
+        );
+    }
+
+    /**
+     * Calculate a separate, auditable department set per business permission.
+     * A broad employees.read grant from a personnel officer cannot widen
+     * employees.salary.read granted by an unrelated manager role.
+     */
+    private function withPermissionScopes(
+        array $access, array $roles, array $defaults,
+        array $overrides, array $scopeOverrides, array $roleDepartments,
+        array $ancestorRoles = []
+    ): array {
+        $permissionScopes = [];
+        foreach (PermissionScopePolicy::keys() as $permission) {
+            $grants = [];
+            if ($access['permissions'][$permission] ?? false) {
+                foreach ($roles as $role) {
+                    $roleGrants = $defaults[$role] ?? (str_ends_with($role, '-head')
+                        ? ($defaults['manager'] ?? []) : []);
+                    $enabled = in_array('*', $roleGrants, true) || in_array($permission, $roleGrants, true);
+                    if (array_key_exists($permission, $overrides[$role] ?? [])) {
+                        $enabled = $overrides[$role][$permission];
+                    }
+                    if (!$enabled) continue;
+                    $grants[$role] = [
+                        'enabled' => true,
+                        'scope' => $scopeOverrides[$role][$permission] ?? null,
+                        'department_ids' => $roleDepartments[$role] ?? [],
+                    ];
+                }
+                // Inherited read grants must not become company-wide grants.
+                // Only the concrete employee's organizational boundary can be inherited.
+                foreach ($ancestorRoles as $role) {
+                    if (!($overrides[$role][$permission] ?? false)) continue;
+                    $grants['ancestor:'.$role] = [
+                        'enabled' => true,
+                        'scope' => 'own',
+                        'department_ids' => $roleDepartments[$role] ?? [],
+                    ];
+                }
+            }
+            $permissionScopes[$permission] = PermissionScopePolicy::merge($grants);
+        }
+
+        // All employee-bound actions require being able to read the subject.
+        // Otherwise a role-level "all" could misleadingly appear effective
+        // outside the actual employees.read area and conflict with API gates.
+        foreach (PermissionScopePolicy::keys() as $permission) {
+            if ($permission === 'employees.read') continue;
+            $permissionScopes[$permission] = PermissionScopePolicy::intersect(
+                $permissionScopes[$permission], $permissionScopes['employees.read']
+            );
+        }
+
+        foreach (['employees.fot.view', 'employees.fot.plan'] as $permission) {
+            // FOT data contains salaries; both independent grants are required.
+            $permissionScopes[$permission] = PermissionScopePolicy::intersect(
+                $permissionScopes[$permission], $permissionScopes['employees.salary.read']
+            );
+        }
+
+        foreach ($permissionScopes as $permission => $policy) {
+            $access['permissions'][$permission] = $policy['scope'] !== 'none';
+        }
+        $access['permission_scopes'] = $permissionScopes;
+        $employeeRead = $permissionScopes['employees.read'];
+        $access['scope'] = $employeeRead['scope'];
+        $access['department_ids'] = $employeeRead['scope'] === 'all' ? $this->allDepartmentIds() : $employeeRead['department_ids'];
+        $access['allowed'] = $access['permissions']['employees.read'];
+        $access['services']['employees'] = (bool) ($access['services']['employees'] ?? false) && $access['allowed'];
         return $access;
+    }
+
+    public static function scopeFor(array $access, string $permission): array
+    {
+        return $access['permission_scopes'][$permission] ?? ['scope' => 'none', 'department_ids' => []];
+    }
+
+    public static function departmentIdsFor(array $access, string $permission, array $allIds): array
+    {
+        $scope = self::scopeFor($access, $permission);
+        if ($scope['scope'] === 'all') return $allIds;
+        return $scope['scope'] === 'subtree' ? $scope['department_ids'] : [];
+    }
+
+    public function canSeePermissionEmployee(array $access, string $permission, int $employeeId): bool
+    {
+        if (!($access['permissions'][$permission] ?? false)) return false;
+        $scope = self::scopeFor($access, $permission);
+        if ($scope['scope'] === 'all') return Employee::query()->business()->whereKey($employeeId)->exists();
+        if ($scope['scope'] !== 'subtree') return false;
+        $departmentId = Employee::query()->business()->whereKey($employeeId)->value('department_id');
+        return $departmentId !== null && in_array((int) $departmentId, $scope['department_ids'], true);
     }
 
     public function canSeeEmployee(array $access, int $employeeId): bool
     {
-        if (!($access['permissions']['employees.read'] ?? false)) return false;
-        if (($access['scope'] ?? 'none') === 'all') return true;
-        $departmentId = Employee::query()->business()->where('id', $employeeId)->value('department_id');
-        return $departmentId !== null && in_array((int) $departmentId, $access['department_ids'] ?? [], true);
+        return $this->canSeePermissionEmployee($access, 'employees.read', $employeeId);
     }
 
     public function canSeeDepartment(array $access, ?int $departmentId): bool
@@ -419,7 +557,9 @@ class EmployeesAccess
 
     private function departments(): array
     {
-        return Department::query()->select(['id', 'parent_id', 'name', 'alias', 'manager_id', 'is_production'])->get()->all();
+        $fields = ['id', 'parent_id', 'name', 'alias', 'manager_id', 'is_production'];
+        if (Schema::hasColumn('departments', 'hr_id')) $fields[] = 'hr_id';
+        return Department::query()->select($fields)->get()->all();
     }
 
     private function allDepartmentIds(): array

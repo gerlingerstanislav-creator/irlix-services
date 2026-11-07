@@ -104,6 +104,11 @@ class EmployeesAuthorization
             return response()->json(['message' => 'Salary management permission required'], 403);
         }
 
+        if ($isSalaryMutation && preg_match('#^api/employees/(\d+)/salary-history#', $path, $salaryMatch)
+            && !$this->accessResolver->canSeePermissionEmployee($access, 'employees.salary.manage', (int) $salaryMatch[1])) {
+            return response()->json(['message' => 'Salary management scope required'], 403);
+        }
+
         if ($method === 'POST' && $path === 'api/employees' && !($access['permissions']['employees.application.create'] ?? false)) {
             return response()->json(['message'=>'Employment application permission required'],403);
         }
@@ -123,6 +128,19 @@ class EmployeesAuthorization
         $isStaffPositionMutation = str_starts_with($path, 'api/staff-positions') && $method !== 'GET';
         if ($isStaffPositionMutation && !($access['permissions']['staff_positions.manage'] ?? false)) {
             return response()->json(['message' => 'Staff position management permission required'], 403);
+        }
+
+        // A broad employees.read grant does not make other actions global.
+        if (preg_match('#^api/employees/(\d+)#', $path, $subject) && $method !== 'GET') {
+            $action = $isSalaryMutation ? 'employees.salary.manage' : (
+                preg_match('#^api/employees/\d+/hire$#', $path) ? 'employees.hire' : (
+                preg_match('#^api/employees/\d+/transfer$#', $path) ? 'employees.transfer'
+                    : 'employees.manage'
+                )
+            );
+            if (!$this->accessResolver->canSeePermissionEmployee($access, $action, (int) $subject[1])) {
+                return response()->json(['message' => 'Action outside permitted departments'], 403);
+            }
         }
 
         $response = $next($request);
@@ -149,22 +167,34 @@ class EmployeesAuthorization
             $response->setData($payload);
         }
 
-        if ($method === 'GET' && preg_match('#^api/employees/\d+$#', $path) && isset($payload['data']) && is_array($payload['data']) && !($access['permissions']['employees.salary.read'] ?? false)) {
+        if ($method === 'GET' && preg_match('#^api/employees/(\d+)$#', $path, $salarySubject) && isset($payload['data']) && is_array($payload['data'])
+            && !$this->accessResolver->canSeePermissionEmployee($access, 'employees.salary.read', (int) $salarySubject[1])) {
             $payload['data']['salary_history'] = [];
             $payload['meta']['salary_visible'] = false;
             $response->setData($payload);
         }
 
-        if ($method === 'GET' && !($access['permissions']['employees.salary.read'] ?? false)) {
-            if ($path === 'api/employees' && isset($payload['data']) && is_array($payload['data'])) {
-                foreach ($payload['data'] as &$employeeRecord) unset($employeeRecord['application_gross_salary']);
-                unset($employeeRecord);
-                $response->setData($payload);
+        if ($method === 'GET' && $path === 'api/employees' && isset($payload['data']) && is_array($payload['data'])) {
+            // Application salary is sensitive even outside salary_history.
+            $policy = EmployeesAccess::scopeFor($access, 'employees.salary.read');
+            foreach ($payload['data'] as &$employeeRecord) {
+                if ($policy['scope'] === 'all') continue;
+                if ($policy['scope'] !== 'subtree'
+                    || !in_array((int) ($employeeRecord['department_id'] ?? 0), $policy['department_ids'], true)) {
+                    unset($employeeRecord['application_gross_salary']);
+                }
             }
-            if (preg_match('#^api/employees/[0-9]+$#', $path) && isset($payload['data']['employee'])) {
-                unset($payload['data']['employee']['application_gross_salary']);
-                $response->setData($payload);
-            }
+            unset($employeeRecord);
+            $response->setData($payload);
+        }
+        if ($method === 'GET' && preg_match('#^api/employees/(\d+)$#', $path, $salarySubject)
+            && isset($payload['data']['employee'])) {
+            $visible = $this->accessResolver->canSeePermissionEmployee(
+                $access, 'employees.salary.read', (int) $salarySubject[1]
+            );
+            if (!$visible) unset($payload['data']['employee']['application_gross_salary']);
+            $payload['meta']['salary_visible'] = $visible;
+            $response->setData($payload);
         }
 
         return $response;

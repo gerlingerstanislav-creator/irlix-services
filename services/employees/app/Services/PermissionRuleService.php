@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Department;
 use App\Models\EmployeePermissionRule;
 use App\Support\SpecialRoles;
+use App\Support\PermissionScopePolicy;
 
 final class PermissionRuleService
 {
@@ -17,6 +18,7 @@ final class PermissionRuleService
             SpecialRoles::PlatformAdmin => 'Администратор платформы',
             SpecialRoles::PersonnelOfficer => 'Специалист по кадрам',
             SpecialRoles::Managers => 'Руководители',
+            SpecialRoles::DirectionHr => 'HR направлений',
         ];
         $orgRoles = [];
         foreach (Department::query()->whereNotNull('alias')->get(['alias', 'name']) as $department) {
@@ -81,18 +83,37 @@ final class PermissionRuleService
         ];
     }
 
-    public function rules()
+    /** Server-authoritative selector choices and legacy default scopes. */
+    public function scopeCatalog(): array
     {
-        return EmployeePermissionRule::query()->get(['role', 'permission', 'enabled']);
+        $catalog = [];
+        foreach ($this->roleCatalog() as $role => $_label) {
+            foreach ($this->permissionCatalog() as $permission => $_name) {
+                $immutableDenied = PermissionScopePolicy::immutableDenied($role, $permission);
+                if (!PermissionScopePolicy::scoped($permission) && !$immutableDenied) continue;
+                $catalog[$role][$permission] = [
+                    'options' => PermissionScopePolicy::options($role, $permission),
+                    'default' => $immutableDenied ? 'deny' : PermissionScopePolicy::defaultForRole($role),
+                ];
+            }
+        }
+        return $catalog;
     }
 
-    public function setRule(string $role, string $permission, bool $enabled): void
+    public function rules()
     {
+        return EmployeePermissionRule::query()->get(['role', 'permission', 'enabled', 'scope']);
+    }
+
+    public function setRule(string $role, string $permission, bool $enabled, ?string $scope = null): void
+    {
+        $scope = $enabled && PermissionScopePolicy::scoped($permission)
+            ? ($scope ?? PermissionScopePolicy::defaultForRole($role)) : null;
         EmployeePermissionRule::query()->upsert(
             [['role' => $role, 'permission' => $permission, 'enabled' => $enabled,
-              'created_at' => now(), 'updated_at' => now()]],
+              'scope' => $scope, 'created_at' => now(), 'updated_at' => now()]],
             ['role', 'permission'],
-            ['enabled', 'updated_at']
+            ['enabled', 'scope', 'updated_at']
         );
     }
 }

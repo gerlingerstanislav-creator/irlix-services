@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Department;
+use App\Support\EmployeesAccess;
 use App\Models\Employee;
 use App\Models\EmploymentAssignmentHistory;
 use App\Models\EmploymentPeriod;
@@ -30,14 +31,17 @@ final class StaffPositionService
         $roles = array_map(static fn ($role) => str_replace('_', '-', mb_strtolower((string) $role)),
             (array) ($access['roles'] ?? []));
         $admin = in_array('platform-admin', $roles, true);
-        $accounting = (bool) ($access['staff_positions_salary_all'] ?? false);
-        $managed = array_map('intval', (array) ($access['staff_positions_salary_departments'] ?? []));
+        // Never re-expand salary access from an unrelated broad HR/personnel
+        // role or legacy manager flag. Use the salary permission's own scope.
+        $salaryPolicy = EmployeesAccess::scopeFor($access, 'employees.salary.read');
 
         return $this->query()->orderByRaw('p.closed_at IS NOT NULL')
             ->orderBy('d.name')->orderBy('p.name')->get()
-            ->map(static function (StaffPosition $position) use ($admin, $accounting, $managed): object {
+            ->map(static function (StaffPosition $position) use ($admin, $salaryPolicy): object {
                 $row = (object) $position->getRawOriginal();
-                $row->salary_visible = $admin || $accounting || in_array((int) $row->direction_id, $managed, true);
+                $row->salary_visible = $admin || $salaryPolicy['scope'] === 'all'
+                    || ($salaryPolicy['scope'] === 'subtree'
+                        && in_array((int) $row->direction_id, $salaryPolicy['department_ids'], true));
                 if (!$row->salary_visible) $row->base_salary = null;
                 return $row;
             });

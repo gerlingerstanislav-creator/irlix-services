@@ -14,6 +14,10 @@ const props = defineProps({
 });
 const emit = defineEmits(['close', 'updated']);
 const loading = ref(true); const error = ref(''); const detail = ref(null); const activeTab = ref('info');
+const salaryVisible = ref(false);
+const effectiveRights = ref(null);
+const rightsLoading = ref(false);
+const rightsError = ref('');
 const editField = ref(null); const editValue = ref(''); const actionModal = ref(null); const lifecycleMode = ref(null);
 const deleting = ref(false); const resendingOnboarding = ref(false); const onboardingMessage = ref('');
 const drawerWidth = ref(690);
@@ -53,16 +57,27 @@ const periods = computed(() => detail.value?.employment_periods ?? []);
 const salaries = computed(() => detail.value?.salary_history ?? []);
 const statuses = computed(() => detail.value?.status_history ?? []);
 const assignments = computed(() => detail.value?.assignment_history ?? []);
-const canManage = computed(() => Boolean(props.access.permissions?.['employees.manage']));
+const withinPermissionScope = (permission) => {
+  if (!props.access.permissions?.[permission]) return false;
+  const policy = props.access.permission_scopes?.[permission];
+  if (!policy) return true;
+  return policy.scope === 'all'
+    || (policy.scope === 'subtree' && policy.department_ids?.includes(Number(employee.value?.department_id)));
+};
+const canManage = computed(() => withinPermissionScope('employees.manage'));
 const canManageAccess = computed(() => Boolean(props.access.permissions?.['access.manage']));
-const canReadSalary = computed(() => Boolean(props.access.permissions?.['employees.salary.read']));
-const canHire = computed(() => Boolean(props.access.permissions?.['employees.hire']));
+const canReadSalary = computed(() => withinPermissionScope('employees.salary.read') && salaryVisible.value);
+const canHire = computed(() => withinPermissionScope('employees.hire'));
 const hireForm = ref({ started_at: new Date().toLocaleDateString('en-CA'), gross_salary: '' });
 const hiring = ref(false);
-const canManageSalary = computed(() => Boolean(props.access.permissions?.['employees.salary.manage']));
-const canTransfer = computed(() => Boolean(props.access.permissions?.['employees.transfer']));
+const canManageSalary = computed(() => withinPermissionScope('employees.salary.manage'));
+const canTransfer = computed(() => withinPermissionScope('employees.transfer'));
 const isPlatformAdmin = computed(() => (props.access.roles || []).includes('platform-admin'));
-const managementActions = computed(() => employeeManagementActions(employee.value, props.access.permissions, { deleting: deleting.value, resendingOnboarding: resendingOnboarding.value }));
+const cardPermissions = computed(() => Object.fromEntries(Object.entries(props.access.permissions || {})
+  .map(([permission, enabled]) => [permission, props.access.permission_scopes?.[permission]
+    ? withinPermissionScope(permission) : enabled])));
+const managementActions = computed(() => employeeManagementActions(employee.value, cardPermissions.value,
+  { deleting: deleting.value, resendingOnboarding: resendingOnboarding.value }));
 
 const fields = computed(() => [
   { title: 'Основная информация', rows: [
@@ -96,11 +111,39 @@ const request = async (url, options = {}) => {
 const load = async () => {
   loading.value = true; error.value = '';
   try {
-    detail.value = (await request(`/api/employees/employees/${props.employeeId}`)).data;
+    const payload = await request(`/api/employees/employees/${props.employeeId}`);
+    detail.value = payload.data;
+    salaryVisible.value = payload.meta?.salary_visible ?? Boolean(props.access.permissions?.['employees.salary.read']);
     if (!canReadSalary.value && activeTab.value === 'salary') activeTab.value = 'info';
   } catch (e) { error.value = e.message; }
   finally { loading.value = false; }
 };
+const scopedRights = computed(() => Object.entries(effectiveRights.value?.permission_scopes || {})
+  .map(([key, policy]) => ({
+    key,
+    label: effectiveRights.value?.permission_labels?.[key] || key,
+    ...policy,
+    sourceText: (policy.sources || []).map((source) => {
+      const role = effectiveRights.value?.role_labels?.[source.role] || source.role;
+      const names = (source.department_ids || []).map((id) =>
+        effectiveRights.value?.department_names?.[id] || `#${id}`);
+      return source.scope === 'all' ? `${role} (вся компания)`
+        : `${role} (${names.join(', ') || 'назначенные подразделения'})`;
+    }).join('; '),
+  })));
+const showRights = async () => {
+  activeTab.value = 'rights';
+  if (!isPlatformAdmin.value || rightsLoading.value || effectiveRights.value) return;
+  rightsLoading.value = true;
+  rightsError.value = '';
+  try {
+    const result = await request(`/api/employees/access/permissions/effective/${props.employeeId}`);
+    effectiveRights.value = result.data;
+  } catch (e) { rightsError.value = e.message; }
+  finally { rightsLoading.value = false; }
+};
+const scopeLabel = (scope) => scope === 'all' ? 'Вся компания'
+  : scope === 'subtree' ? 'В зоне ответственности' : 'Нет доступа';
 const date = (value) => value ? new Date(`${value}T00:00:00`).toLocaleDateString('ru-RU') : 'Бессрочно';
 const money = (value) => value == null ? '—' : new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(Number(value));
 const display = (field) => {
@@ -267,7 +310,12 @@ const resizeMove = (event) => { const max = Math.max(520, window.innerWidth - 90
 const stopResize = () => { document.removeEventListener('pointermove', resizeMove); document.removeEventListener('pointerup', stopResize); document.body.classList.remove('employee-drawer-resizing'); };
 const startResize = (event) => { resizeStartX = event.clientX; resizeStartWidth = drawerWidth.value; document.body.classList.add('employee-drawer-resizing'); document.addEventListener('pointermove', resizeMove); document.addEventListener('pointerup', stopResize); };
 
-watch(() => props.employeeId, load);
+watch(() => props.employeeId, () => {
+  effectiveRights.value = null;
+  rightsError.value = '';
+  activeTab.value = 'info';
+  load();
+});
 onMounted(load);
 watch(employee, (current) => { if (current?.employment_status === 'Ожидает трудоустройства') hireForm.value.gross_salary = current.application_gross_salary ?? ''; });
 onBeforeUnmount(stopResize);
@@ -280,7 +328,7 @@ onBeforeUnmount(stopResize);
     <div v-if="loading" class="employee-card-loading">Загрузка…</div>
     <template v-else-if="employee">
       <section class="employee-card-hero"><div class="employee-avatar">♙</div><div><h2>{{ shortEmployeeName(employee) }}</h2><p>{{ employee.work_email || 'Рабочая почта не указана' }}</p></div><div><UiBadge :tone="employee.employment_status === 'Трудоустроен' ? 'success' : 'neutral'">{{ employee.employment_status }}</UiBadge></div></section>
-      <nav class="employee-card-tabs" :class="canReadSalary ? 'three' : 'two'"><button :class="{ active: activeTab === 'info' }" @click="activeTab='info'">♙ Инфо</button><button :class="{ active: activeTab === 'employment' }" @click="activeTab='employment'">▣ ТУ</button><button v-if="canReadSalary" :class="{ active: activeTab === 'salary' }" @click="activeTab='salary'">♙ Зарплаты</button></nav>
+      <nav class="employee-card-tabs" :class="isPlatformAdmin ? (canReadSalary ? 'four' : 'three') : (canReadSalary ? 'three' : 'two')"><button :class="{ active: activeTab === 'info' }" @click="activeTab='info'">♙ Инфо</button><button :class="{ active: activeTab === 'employment' }" @click="activeTab='employment'">▣ ТУ</button><button v-if="canReadSalary" :class="{ active: activeTab === 'salary' }" @click="activeTab='salary'">♙ Зарплаты</button><button v-if="isPlatformAdmin" :class="{ active: activeTab === 'rights' }" @click="showRights">Права</button></nav>
       <div v-if="error" class="employee-card-error">{{ error }}</div>
       <div v-if="onboardingMessage" class="employee-onboarding-note">{{ onboardingMessage }}</div>
 
@@ -316,7 +364,22 @@ onBeforeUnmount(stopResize);
         <h3 class="history-title">Переводы</h3><div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>Подразделение</th><th>Должность</th><th>С</th><th>По</th><th v-if="isPlatformAdmin" class="employee-history-actions"></th></tr></thead><tbody><tr v-for="a in assignments" :key="a.id"><td>{{a.department_name||'—'}}</td><td>{{a.position||'—'}}</td><td>{{date(a.effective_from)}}</td><td>{{date(a.effective_to)}}</td><td v-if="isPlatformAdmin" class="employee-history-actions"><UiButton compact variant="secondary" :aria-label="`Редактировать перевод от ${date(a.effective_from)}`" @click="editAssignment(a)">✎</UiButton></td></tr></tbody></table></div>
       </section>
 
-      <section v-else-if="canReadSalary" class="employee-card-content">
+      <section v-else-if="activeTab === 'rights' && isPlatformAdmin" class="employee-card-content employee-effective-rights">
+        <h3>Итоговые области доступа</h3>
+        <p>Результат совмещения ролей сотрудника. Приведены реальные границы доступа к кадровым данным, включая ограничения по окладам.</p>
+        <p v-if="rightsLoading">Загрузка прав…</p>
+        <p v-else-if="rightsError" role="alert">{{ rightsError }} <button type="button" @click="showRights">Повторить</button></p>
+        <div v-else-if="effectiveRights">
+          <div v-for="right in scopedRights" :key="right.key" class="employee-effective-rights-row">
+            <strong>{{ right.label }}</strong>
+            <span>{{ scopeLabel(right.scope) }}</span>
+            <small v-if="right.sourceText">Источник: {{ right.sourceText }}</small>
+            <small v-if="['employees.fot.view', 'employees.fot.plan'].includes(right.key) && right.scope !== 'none'">Дополнительно ограничено разрешением на просмотр окладов.</small>
+          </div>
+        </div>
+      </section>
+
+      <section v-else-if="activeTab === 'salary' && canReadSalary" class="employee-card-content">
         <div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>С</th><th>По</th><th>Оклад</th><th>Премия</th><th>Статус</th><th v-if="canManageSalary"></th></tr></thead><tbody><tr v-for="s in salaries" :key="s.id"><td>{{date(s.effective_from)}}</td><td>{{date(s.effective_to)}}</td><td>{{money(s.gross_salary)}}</td><td>{{money(s.bonus)}}</td><td><UiBadge :tone="s.effective_to ? 'neutral' : 'success'">{{s.status}}</UiBadge></td><td v-if="canManageSalary"><UiButton variant="danger" compact @click="removeSalary(s.id)">×</UiButton></td></tr></tbody></table></div>
       </section>
     </template>

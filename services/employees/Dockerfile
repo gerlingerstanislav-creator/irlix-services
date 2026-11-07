@@ -15,6 +15,7 @@ COPY app/Models /app/app/Models
 COPY app/Services /app/app/Services
 COPY app/Http/Controllers /app/app/Http/Controllers
 COPY app/Support/EmployeesAccess.php /app/app/Support/EmployeesAccess.php
+COPY app/Support/PermissionScopePolicy.php /app/app/Support/PermissionScopePolicy.php
 COPY app/Support/RoleLabels.php /app/app/Support/RoleLabels.php
 COPY app/Support/KeycloakAuthorizationSync.php /app/app/Support/KeycloakAuthorizationSync.php
 COPY app/Support/SpecialRoles.php /app/app/Support/SpecialRoles.php
@@ -49,6 +50,8 @@ COPY database/migrations /app/database/migrations
 COPY tests/role_labels.php /app/tests/role_labels.php
 COPY tests/clients_production_head_aliases.php /app/tests/clients_production_head_aliases.php
 COPY tests/inherited_permission_rules.php /app/tests/inherited_permission_rules.php
+COPY tests/permission_scope_policy.php /app/tests/permission_scope_policy.php
+COPY tests/permission_scopes_integration.php /app/tests/permission_scopes_integration.php
 COPY tests/cv_production_heads_access.php /app/tests/cv_production_heads_access.php
 COPY tests/position_catalog.php /app/tests/position_catalog.php
 COPY tests/position_lifecycle.php /app/tests/position_lifecycle.php
@@ -67,7 +70,7 @@ COPY tests/staff_positions_import.php /app/tests/staff_positions_import.php
 COPY tests/specialists_history_smoke.php /app/tests/specialists_history_smoke.php
 COPY tests/employee_purge_orchestration.php /app/tests/employee_purge_orchestration.php
 COPY tests/employee_local_purge_smoke.php /app/tests/employee_local_purge_smoke.php
-RUN php /app/tests/clients_production_head_aliases.php && php /app/tests/role_labels.php && php /app/tests/inherited_permission_rules.php && php /app/tests/cv_production_heads_access.php && php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php && php /app/tests/vacations_historical_directory.php && php /app/tests/platform_roles.php && php /app/tests/eloquent_architecture.php && php /app/tests/eloquent_services.php && php /app/tests/layered_workflows.php && php /app/tests/system_accounts_separation.php && php /app/tests/system_accounts_bootstrap.php && php /app/tests/system_accounts_runtime_reconcile.php && php /app/tests/assignment_history_edit.php && php /app/tests/staff_positions_import.php && php /app/tests/specialists_history_smoke.php && php /app/tests/employee_purge_orchestration.php && php /app/tests/employee_local_purge_smoke.php
+RUN php /app/tests/clients_production_head_aliases.php && php /app/tests/role_labels.php && php /app/tests/inherited_permission_rules.php && php /app/tests/permission_scope_policy.php && php /app/tests/permission_scopes_integration.php && php /app/tests/cv_production_heads_access.php && php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php && php /app/tests/vacations_historical_directory.php && php /app/tests/platform_roles.php && php /app/tests/eloquent_architecture.php && php /app/tests/eloquent_services.php && php /app/tests/layered_workflows.php && php /app/tests/system_accounts_separation.php && php /app/tests/system_accounts_bootstrap.php && php /app/tests/system_accounts_runtime_reconcile.php && php /app/tests/assignment_history_edit.php && php /app/tests/staff_positions_import.php && php /app/tests/specialists_history_smoke.php && php /app/tests/employee_purge_orchestration.php && php /app/tests/employee_local_purge_smoke.php
 RUN find /app/app/Models /app/app/Services /app/app/Http/Controllers -name '*.php' -exec php -l {} \; \
     && php -l /app/routes/api.php \
     && php -l /app/routes/self.php \
@@ -85,6 +88,7 @@ RUN find /app/app/Models /app/app/Services /app/app/Http/Controllers -name '*.ph
     && php -l /app/app/Http/Middleware/EmployeeMutationJournal.php \
     && php -l /app/app/Http/Middleware/EmployeePositionCatalog.php \
     && php -l /app/app/Support/EmployeesAccess.php \
+    && php -l /app/app/Support/PermissionScopePolicy.php \
     && php -l /app/app/Support/RoleLabels.php \
     && php -l /app/app/Support/KeycloakAuthorizationSync.php \
     && php -l /app/app/Support/SpecialRoles.php \

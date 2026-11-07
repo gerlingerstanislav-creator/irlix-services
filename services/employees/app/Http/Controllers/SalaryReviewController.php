@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Employee;
+use App\Models\Department;
+use App\Support\EmployeesAccess;
 use App\Models\StaffPosition;
 use App\Services\EmployeeTransferService;
 use App\Services\PayrollOverviewService;
@@ -46,7 +48,10 @@ final class SalaryReviewController extends Controller
                 'string', 'distinct', Rule::in(['Трудоустроен', 'Уволен', 'Ожидает трудоустройства']),
             ],
         ])->validate();
-        $permitted = array_map('intval', $access['department_ids'] ?? []);
+        $permitted = EmployeesAccess::departmentIdsFor(
+            $access, 'employees.fot.view',
+            Department::query()->pluck('id')->map(static fn ($id) => (int) $id)->all()
+        );
         $departments = array_map('intval', $data['department_ids'] ?? []);
         if (!$departments && isset($data['department_id'])) {
             $departments = [(int) $data['department_id']];
@@ -73,7 +78,7 @@ final class SalaryReviewController extends Controller
     public function inbox(Request $request): JsonResponse
     {
         $access = $this->access($request, 'employees.fot.approve');
-        return response()->json(['data' => $this->reviews->inbox((int) ($access['employee_id'] ?? 0))]);
+        return response()->json(['data' => $this->reviews->inbox((int) ($access['employee_id'] ?? 0), $access)]);
     }
 
     public function store(Request $request): JsonResponse
@@ -88,7 +93,7 @@ final class SalaryReviewController extends Controller
         if (CarbonImmutable::parse($data['effective_month'])->day !== 1) {
             return response()->json(['message' => 'Пересмотр может начинаться только с первого числа'], 422);
         }
-        if (!$this->reviews->scope($access, (int) $data['employee_id'])) {
+        if (!$this->reviews->scope($access, (int) $data['employee_id'], 'employees.fot.plan')) {
             return response()->json(['message' => 'Сотрудник вне вашего направления'], 403);
         }
         if ($this->reviews->conflicts((int) $data['employee_id'], $data['effective_month'])) {
@@ -105,7 +110,7 @@ final class SalaryReviewController extends Controller
         $item = $this->reviews->review($review);
         if (!$item) return response()->json(['message' => 'Пересмотр не найден'], 404);
         if ((int) $item->created_by !== (int) $access['employee_id']
-            || !$this->reviews->scope($access, (int) $item->employee_id)) {
+            || !$this->reviews->scope($access, (int) $item->employee_id, 'employees.fot.plan')) {
             return response()->json(['message' => 'Недоступно'], 403);
         }
         if (!in_array($item->status, ['draft','returned','approved'], true)) {
@@ -134,7 +139,7 @@ final class SalaryReviewController extends Controller
         $item = $this->reviews->review($review);
         if (!$item) return response()->json(['message' => 'Не найдено'], 404);
         if ((int) $item->created_by !== (int) $access['employee_id']
-            || !$this->reviews->scope($access, (int) $item->employee_id)) {
+            || !$this->reviews->scope($access, (int) $item->employee_id, 'employees.fot.plan')) {
             return response()->json(['message' => 'Недоступно'], 403);
         }
         if (!in_array($item->status, ['draft','returned'], true)) {
@@ -151,6 +156,10 @@ final class SalaryReviewController extends Controller
             'decision' => ['required', Rule::in(['approved','returned'])],
             'comment' => ['required_if:decision,returned','nullable','string','max:3000'],
         ])->validate();
+        $reviewRecord = $this->reviews->review($review);
+        if (!$reviewRecord || !$this->reviews->scope($access, (int) $reviewRecord->employee_id)) {
+            return response()->json(['message' => 'Пересмотр вне доступной области'], 403);
+        }
         $result = $this->reviews->decide($review, (int) $access['employee_id'], $data);
         $status = $result['status'];
         unset($result['status']);
@@ -163,7 +172,7 @@ final class SalaryReviewController extends Controller
         $item = $this->reviews->review($review);
         if (!$item) return response()->json(['message' => 'Не найдено'], 404);
         if ((int) $item->created_by !== (int) $access['employee_id']
-            || !$this->reviews->scope($access, (int) $item->employee_id)) {
+            || !$this->reviews->scope($access, (int) $item->employee_id, 'employees.fot.plan')) {
             return response()->json(['message' => 'Недоступно'], 403);
         }
         return response()->json(['data' => $this->reviews->cancel($item)]);

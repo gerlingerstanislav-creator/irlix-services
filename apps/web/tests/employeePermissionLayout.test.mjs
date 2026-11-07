@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  moveRoleColumn, orderedRoleColumns, permissionEnabled, permissionSections, shiftRoleColumn,
+  moveRoleColumn, orderedRoleColumns, permissionDisplayValue, permissionEnabled, permissionOptions, permissionSections, shiftRoleColumn,
 } from '../src/employeePermissionLayout.js';
 
 test('Employees matrix reflects backend boolean defaults and respects explicit overrides', () => {
@@ -19,6 +19,44 @@ test('Employees matrix reflects backend boolean defaults and respects explicit o
   assert.equal(permissionEnabled('hr', 'employees.salary.read', [
     { role: 'hr', permission: 'employees.salary.read', enabled: true },
   ]), true);
+});
+
+test('Role scope selectors reflect authoritative backend scopes and saved overrides', () => {
+  const policies = {
+    managers: {
+      'employees.read': { options: ['deny', 'own', 'all'], default: 'own' },
+      'employees.salary.read': { options: ['deny', 'own', 'all'], default: 'own' },
+    },
+    'direction-hr': {
+      'employees.read': { options: ['deny', 'own', 'all'], default: 'own' },
+    },
+    'personnel-officer': {
+      'employees.read': { options: ['deny', 'all'], default: 'all' },
+    },
+    accounting: {
+      'employees.salary.read': { options: ['deny', 'all'], default: 'all' },
+    },
+  };
+  assert.equal(permissionDisplayValue('managers', 'employees.salary.read', [], policies), 'own');
+  assert.deepEqual(permissionOptions('managers', 'employees.salary.read', policies).map(o => o.value), ['deny', 'own', 'all']);
+  assert.equal(permissionDisplayValue('managers', 'employees.salary.read', [
+    { role: 'managers', permission: 'employees.salary.read', enabled: true, scope: 'all' },
+  ], policies), 'all');
+  assert.equal(permissionDisplayValue('managers', 'employees.salary.read', [
+    { role: 'managers', permission: 'employees.salary.read', enabled: false },
+  ], policies), 'deny');
+  assert.equal(permissionDisplayValue('direction-hr', 'employees.read', [], policies), 'own');
+  assert.equal(permissionDisplayValue('personnel-officer', 'employees.read', [], policies), 'all');
+  assert.deepEqual(permissionOptions('personnel-officer', 'employees.read', policies).map(o => o.value), ['deny', 'all']);
+  assert.equal(permissionDisplayValue('accounting', 'employees.salary.read', [], policies), 'all');
+  assert.deepEqual(permissionOptions('managers', 'services.employees', policies).map(o => o.value), ['deny', 'allow']);
+  assert.equal(permissionDisplayValue('managers', 'employees.fot.approve', [], policies), 'allow');
+  assert.equal(permissionDisplayValue('hr', 'employees.salary.read', [], policies), 'deny');
+  const hardGate = { managers: { 'organization.manage': { options: ['deny'], default: 'deny' } } };
+  assert.deepEqual(permissionOptions('managers', 'organization.manage', hardGate).map(o => o.value), ['deny']);
+  assert.equal(permissionDisplayValue('managers', 'organization.manage', [
+    { role: 'managers', permission: 'organization.manage', enabled: true },
+  ], hardGate), 'deny');
 });
 
 test('Permission sections include every permission once and keep stable group order', () => {
@@ -47,6 +85,7 @@ test('Hiding a column is only a display change; admin cannot be hidden', () => {
   assert.deepEqual(orderedRoleColumns(catalog).map(role => role.key), ['platform-admin', 'hr', 'accounting']);
   assert.deepEqual(orderedRoleColumns(catalog, ['accounting']).map(role => role.key), ['accounting', 'platform-admin']);
   assert.deepEqual(orderedRoleColumns({ 'platform-admin': 'Admin', managers: 'Руководители', hr: 'HR' }, ['hr']).map(role => role.key), ['hr', 'platform-admin', 'managers']);
+  assert.deepEqual(orderedRoleColumns({ 'platform-admin': 'Admin', managers: 'Managers', 'direction-hr': 'HR направлений' }, ['managers']).map(role => role.key), ['managers', 'platform-admin', 'direction-hr']);
   assert.deepEqual(orderedRoleColumns(catalog, ['deleted-role', 'hr', 'hr']).map(role => role.key), ['hr', 'platform-admin']);
 });
 
@@ -66,8 +105,12 @@ test('Employees UI keeps permission management and presentation distinct', () =>
   const view = readFileSync(new URL('../src/components/EmployeePermissionsView.vue', import.meta.url), 'utf8');
   assert.match(view, /UiSearchSelect/);
   assert.match(view, /permissionEnabled/);
+  assert.match(view, /permissionDisplayValue/);
+  assert.match(view, /permissionOptions/);
+  assert.match(view, /Только своего направления|option in permissionOptions/);
   assert.match(view, /:disabled="role.locked \|\| !!saving"/);
-  assert.match(view, /Скрытие столбца не изменяет разрешения/);
+  assert.match(view, /Область каждого действия задаётся отдельно/);
+  assert.match(view, /matrix.scope_policies/);
   assert.match(view, /@drop="dropColumn/);
 });
 

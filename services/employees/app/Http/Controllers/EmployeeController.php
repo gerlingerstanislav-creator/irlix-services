@@ -7,6 +7,7 @@ use App\Models\EmploymentPeriod;
 use App\Models\SalaryHistory;
 use App\Models\StaffPosition;
 use App\Services\EmployeeLifecycleService;
+use App\Support\EmployeesAccess;
 use App\Services\EmployeeReadService;
 use Carbon\Carbon;
 use DomainException;
@@ -81,13 +82,18 @@ final class EmployeeController extends Controller
         $validator = Validator::make($request->all(), $rules);
         if ($validator->fails()) return response()->json(['errors' => $validator->errors()], 422);
         $data = $validator->validated();
-        if (($access['scope'] ?? 'none') !== 'all'
-            && !in_array((int) $data['department_id'],
-                array_map('intval', $access['department_ids'] ?? []), true)) {
+        $applicationScope = EmployeesAccess::scopeFor($access, 'employees.application.create');
+        if ($applicationScope['scope'] !== 'all'
+            && !($applicationScope['scope'] === 'subtree'
+                && in_array((int) $data['department_id'], $applicationScope['department_ids'], true))) {
             return response()->json(['message' => 'Подразделение вне доступного контура'], 403);
         }
+        $hiringScope = EmployeesAccess::scopeFor($access, 'employees.hire');
         if (!empty($data['hire_immediately'])
-            && !($access['permissions']['employees.hire'] ?? false)) {
+            && (!($access['permissions']['employees.hire'] ?? false)
+                || ($hiringScope['scope'] !== 'all'
+                    && !($hiringScope['scope'] === 'subtree'
+                        && in_array((int) $data['department_id'], $hiringScope['department_ids'], true))))) {
             return response()->json(['message' => 'Только кадровик может трудоустроить сразу.'], 403);
         }
         if (!empty($data['hire_immediately']) && empty($data['hired_at'])) {
