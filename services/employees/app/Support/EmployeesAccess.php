@@ -377,6 +377,16 @@ class EmployeesAccess
             $permissionScopes[$permission] = PermissionScopePolicy::merge($grants);
         }
 
+        // All employee-bound actions require being able to read the subject.
+        // Otherwise a role-level "all" could misleadingly appear effective
+        // outside the actual employees.read area and conflict with API gates.
+        foreach (PermissionScopePolicy::keys() as $permission) {
+            if ($permission === 'employees.read') continue;
+            $permissionScopes[$permission] = PermissionScopePolicy::intersect(
+                $permissionScopes[$permission], $permissionScopes['employees.read']
+            );
+        }
+
         foreach (['employees.fot.view', 'employees.fot.plan'] as $permission) {
             // FOT data contains salaries; both independent grants are required.
             $permissionScopes[$permission] = PermissionScopePolicy::intersect(
