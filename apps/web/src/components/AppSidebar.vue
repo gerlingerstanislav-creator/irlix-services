@@ -29,20 +29,24 @@ const items = computed(() => [
   [
     { id: 'systemAccounts', label: 'Системные аккаунты', icon: 'user-badge', visible: props.canManageSystemAccounts },
     { id: 'roles', label: 'Роли', icon: 'user-badge', visible: props.canManageRoles },
-    { id: 'permissions', label: 'Разрешения', icon: 'permissions', visible: props.canManagePermissions },
-    { id: 'audit', label: 'История действий', icon: 'audit', visible: props.canReadAudit },
   ],
 ].map(group => group.filter(item => item.visible !== false))
   .filter(group => group.length > 0)
   .flatMap((group, index) => group.map((item, itemIndex) => ({
     ...item, groupStart: index > 0 && itemIndex === 0,
   }))));
+
+const bottomItems = computed(() => [
+  { id: 'permissions', label: 'Разрешения', icon: 'permissions', visible: props.canManagePermissions },
+  { id: 'audit', label: 'История действий', icon: 'audit', visible: props.canReadAudit },
+].filter(item => item.visible !== false));
 </script>
 
 <template>
   <UiAppSidebar
     :section="section"
     :items="items"
+    :bottom-items="bottomItems"
     current-service="employees"
     :current-user="auth.user"
     :platform-access="() => auth.fetch('/api/employees/access/me')"
