@@ -36,8 +36,12 @@ final class PermissionScopePolicy
 
     public static function defaultForRole(string $role): string
     {
-        return in_array($role, [SpecialRoles::Managers, SpecialRoles::DirectionHr, 'manager'], true)
-            || str_ends_with($role, '-head') ? 'own' : 'all';
+        // Default to fail-closed for unrelated/legacy department roles.
+        // Only established global Employees audiences get "all" by default.
+        // A new explicit scope=all is necessary to expand any other role.
+        return in_array($role, [
+            SpecialRoles::PlatformAdmin, SpecialRoles::PersonnelOfficer, 'hr', 'accounting',
+        ], true) ? 'all' : 'own';
     }
 
     /** Only roles with a concrete ownership relationship may select "own". */
