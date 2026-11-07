@@ -69,7 +69,7 @@ export function orderedRoleColumns(catalog = {}, savedKeys = null) {
   const roles = Object.entries(catalog).map(([key, label]) => ({ key, label, locked: key === 'platform-admin' }));
   if (!Array.isArray(savedKeys)) return roles;
   const byKey = new Map(roles.map(role => [role.key, role]));
-  const keys = [...new Set([...savedKeys, 'platform-admin', 'managers'])];
+  const keys = [...new Set([...savedKeys, 'platform-admin', 'managers', 'direction-hr'])];
   return keys.filter(key => byKey.has(key)).map(key => byKey.get(key));
 }
 
