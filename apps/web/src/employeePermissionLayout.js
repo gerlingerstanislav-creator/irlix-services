@@ -52,8 +52,7 @@ export function permissionSections(catalog = {}) {
     { key: 'employees', label: 'Сотрудники и ФОТ', matches: key => key.startsWith('employees.') },
     { key: 'organization', label: 'Оргструктура и должности', matches: key => key.startsWith('organization.') || key.startsWith('staff_positions.') },
     { key: 'administration', label: 'Администрирование', matches: key => key === 'access.manage' || key === 'audit.read' },
-    { key: 'services', label: 'Доступ к сервисам', matches: key => key.startsWith('services.') },
-    { key: 'other', label: 'Прочее', matches: () => true },
+    { key: 'services', label: 'Доступ к сервису', matches: key => key === 'services.employees' },
   ];
   const assigned = new Set();
   return sections.map(section => {
