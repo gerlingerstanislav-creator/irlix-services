@@ -296,9 +296,13 @@ class EmployeesAccess
             }
             $access['permissions'][$permission] = $granted;
         }
+        // Role rules cannot bypass these established hard authorization gates.
+        // Keep the matrix's effective result consistent with actual controllers.
         $access['permissions']['employees.permissions.manage'] = false;
-        // A platform tester must not acquire personnel-only transfer rights via '*'.
-        $access['permissions']['employees.transfer'] = in_array('personnel-officer',$roles,true);
+        $access['permissions']['organization.manage'] = false;
+        $access['permissions']['access.manage'] = false;
+        $access['permissions']['employees.transfer'] = in_array(SpecialRoles::PersonnelOfficer, $roles, true)
+            && ($overrides[SpecialRoles::PersonnelOfficer]['employees.transfer'] ?? true);
         // The global matrix controls SERVICE ENTRY. Domain permissions still
         // belong to the service and cannot be bypassed by this grant.
         // Explicit denies take priority over inherited grants.
