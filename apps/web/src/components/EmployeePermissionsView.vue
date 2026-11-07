@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { UiButton, UiLoader, UiSearchSelect } from '@irlix/ui';
 import {
-  moveRoleColumn, orderedRoleColumns, permissionEnabled, permissionSections, shiftRoleColumn,
+  moveRoleColumn, orderedRoleColumns, permissionDisplayValue, permissionEnabled, permissionOptions, permissionSections, shiftRoleColumn,
 } from '../employeePermissionLayout.js';
 
 const matrix = ref(null);
@@ -145,7 +145,7 @@ onMounted(load);
         :clearable="false"
         @update:model-value="addRole"
       />
-      <span class="permissions-toolbar-hint">Скрытие столбца не изменяет разрешения.</span>
+      <span class="permissions-toolbar-hint">Скрытие столбца не изменяет разрешения. Для руководителей доступ к данным ограничен управляемыми подразделениями.</span>
     </div>
 
     <div v-if="error" class="error-banner" role="alert">
@@ -215,12 +215,11 @@ onMounted(load);
               <td v-for="role in displayedRoles" :key="role.key">
                 <select
                   :aria-label="permission.label + ': ' + role.label"
-                  :value="permissionEnabled(role.key, permission.key, matrix.rules) ? 'allow' : 'deny'"
+                  :value="permissionDisplayValue(role.key, permission.key, matrix.rules)"
                   :disabled="role.locked || !!saving"
-                  @change="setPermission(role, permission, $event.target.value === 'allow')"
+                  @change="setPermission(role, permission, $event.target.value !== 'deny')"
                 >
-                  <option value="deny">Нет доступа</option>
-                  <option value="allow">Разрешено</option>
+                  <option v-for="option in permissionOptions(role.key, permission.key)" :key="option.value" :value="option.value">{{ option.label }}</option>
                 </select>
               </td>
             </tr>
