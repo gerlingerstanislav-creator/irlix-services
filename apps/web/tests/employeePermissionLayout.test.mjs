@@ -21,25 +21,37 @@ test('Employees matrix reflects backend boolean defaults and respects explicit o
   ]), true);
 });
 
-test('Manager permission matrix shows real department scope, never company-wide grants', () => {
-  for (const permission of ['employees.read', 'employees.salary.read', 'employees.fot.view', 'employees.fot.plan']) {
-    assert.deepEqual(permissionOptions('managers', permission).map(option => option.value), ['deny', 'own']);
-    assert.equal(permissionDisplayValue('managers', permission), 'own');
-    assert.equal(permissionDisplayValue('managers', permission, [
-      { role: 'managers', permission, enabled: false },
-    ]), 'deny');
-    assert.equal(permissionDisplayValue('managers', permission, [
-      { role: 'managers', permission, enabled: true },
-    ]), 'own');
-  }
-  // Administrative permissions and service-entry grants are not scoped data reads.
-  assert.equal(permissionDisplayValue('managers', 'services.employees'), 'deny');
-  assert.equal(permissionDisplayValue('managers', 'employees.fot.approve'), 'allow');
-  assert.deepEqual(permissionOptions('managers', 'services.employees').map(option => option.value), ['deny', 'allow']);
-  // The same permission may be global for an accounting member.
-  assert.equal(permissionDisplayValue('accounting', 'employees.salary.read'), 'allow');
-  assert.deepEqual(permissionOptions('accounting', 'employees.salary.read').map(option => option.value), ['deny', 'allow']);
-  assert.equal(permissionDisplayValue('hr', 'employees.salary.read'), 'deny');
+test('Role scope selectors reflect authoritative backend scopes and saved overrides', () => {
+  const policies = {
+    managers: {
+      'employees.read': { options: ['deny', 'own', 'all'], default: 'own' },
+      'employees.salary.read': { options: ['deny', 'own', 'all'], default: 'own' },
+    },
+    'direction-hr': {
+      'employees.read': { options: ['deny', 'own', 'all'], default: 'own' },
+    },
+    'personnel-officer': {
+      'employees.read': { options: ['deny', 'all'], default: 'all' },
+    },
+    accounting: {
+      'employees.salary.read': { options: ['deny', 'all'], default: 'all' },
+    },
+  };
+  assert.equal(permissionDisplayValue('managers', 'employees.salary.read', [], policies), 'own');
+  assert.deepEqual(permissionOptions('managers', 'employees.salary.read', policies).map(o => o.value), ['deny', 'own', 'all']);
+  assert.equal(permissionDisplayValue('managers', 'employees.salary.read', [
+    { role: 'managers', permission: 'employees.salary.read', enabled: true, scope: 'all' },
+  ], policies), 'all');
+  assert.equal(permissionDisplayValue('managers', 'employees.salary.read', [
+    { role: 'managers', permission: 'employees.salary.read', enabled: false },
+  ], policies), 'deny');
+  assert.equal(permissionDisplayValue('direction-hr', 'employees.read', [], policies), 'own');
+  assert.equal(permissionDisplayValue('personnel-officer', 'employees.read', [], policies), 'all');
+  assert.deepEqual(permissionOptions('personnel-officer', 'employees.read', policies).map(o => o.value), ['deny', 'all']);
+  assert.equal(permissionDisplayValue('accounting', 'employees.salary.read', [], policies), 'all');
+  assert.deepEqual(permissionOptions('managers', 'services.employees', policies).map(o => o.value), ['deny', 'allow']);
+  assert.equal(permissionDisplayValue('managers', 'employees.fot.approve', [], policies), 'allow');
+  assert.equal(permissionDisplayValue('hr', 'employees.salary.read', [], policies), 'deny');
 });
 
 test('Permission sections include every permission once and keep stable group order', () => {
@@ -91,7 +103,8 @@ test('Employees UI keeps permission management and presentation distinct', () =>
   assert.match(view, /permissionOptions/);
   assert.match(view, /Только своего направления|option in permissionOptions/);
   assert.match(view, /:disabled="role.locked \|\| !!saving"/);
-  assert.match(view, /Скрытие столбца не изменяет разрешения/);
+  assert.match(view, /Область каждого действия задаётся отдельно/);
+  assert.match(view, /matrix.scope_policies/);
   assert.match(view, /@drop="dropColumn/);
 });
 
