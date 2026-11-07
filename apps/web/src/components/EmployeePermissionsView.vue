@@ -107,7 +107,10 @@ async function load() {
 async function setPermission(role, permission, value) {
   if (role.locked || saving.value) return;
   const key = role.key + ':' + permission.key;
-  if (permissionDisplayValue(role.key, permission.key, matrix.value?.rules, matrix.value?.scope_policies) === value) return;
+  // A legacy boolean allow may have no proven scope (rendered as "deny").
+  // Allow explicitly disabling such a stored grant instead of doing nothing.
+  if (permissionDisplayValue(role.key, permission.key, matrix.value?.rules, matrix.value?.scope_policies) === value
+    && (value !== 'deny' || !permissionEnabled(role.key, permission.key, matrix.value?.rules))) return;
   const enabled = value !== 'deny';
   const scope = value === 'own' || value === 'all' ? value : null;
   saving.value = key;
