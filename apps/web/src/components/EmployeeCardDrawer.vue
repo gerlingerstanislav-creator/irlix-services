@@ -73,7 +73,11 @@ const hiring = ref(false);
 const canManageSalary = computed(() => withinPermissionScope('employees.salary.manage'));
 const canTransfer = computed(() => withinPermissionScope('employees.transfer'));
 const isPlatformAdmin = computed(() => (props.access.roles || []).includes('platform-admin'));
-const managementActions = computed(() => employeeManagementActions(employee.value, props.access.permissions, { deleting: deleting.value, resendingOnboarding: resendingOnboarding.value }));
+const cardPermissions = computed(() => Object.fromEntries(Object.entries(props.access.permissions || {})
+  .map(([permission, enabled]) => [permission, props.access.permission_scopes?.[permission]
+    ? withinPermissionScope(permission) : enabled])));
+const managementActions = computed(() => employeeManagementActions(employee.value, cardPermissions.value,
+  { deleting: deleting.value, resendingOnboarding: resendingOnboarding.value }));
 
 const fields = computed(() => [
   { title: 'Основная информация', rows: [
@@ -129,7 +133,7 @@ const scopedRights = computed(() => Object.entries(effectiveRights.value?.permis
   })));
 const showRights = async () => {
   activeTab.value = 'rights';
-  if (!isPlatformAdmin.value || effectiveRights.value || rightsLoading.value) return;
+  if (!isPlatformAdmin.value || rightsLoading.value || effectiveRights.value) return;
   rightsLoading.value = true;
   rightsError.value = '';
   try {
@@ -324,7 +328,7 @@ onBeforeUnmount(stopResize);
     <div v-if="loading" class="employee-card-loading">Загрузка…</div>
     <template v-else-if="employee">
       <section class="employee-card-hero"><div class="employee-avatar">♙</div><div><h2>{{ shortEmployeeName(employee) }}</h2><p>{{ employee.work_email || 'Рабочая почта не указана' }}</p></div><div><UiBadge :tone="employee.employment_status === 'Трудоустроен' ? 'success' : 'neutral'">{{ employee.employment_status }}</UiBadge></div></section>
-      <nav class="employee-card-tabs" :class="canReadSalary ? 'three' : 'two'"><button :class="{ active: activeTab === 'info' }" @click="activeTab='info'">♙ Инфо</button><button :class="{ active: activeTab === 'employment' }" @click="activeTab='employment'">▣ ТУ</button><button v-if="canReadSalary" :class="{ active: activeTab === 'salary' }" @click="activeTab='salary'">♙ Зарплаты</button><button v-if="isPlatformAdmin" :class="{ active: activeTab === 'rights' }" @click="showRights">Права</button></nav>
+      <nav class="employee-card-tabs" :class="isPlatformAdmin ? (canReadSalary ? 'four' : 'three') : (canReadSalary ? 'three' : 'two')"><button :class="{ active: activeTab === 'info' }" @click="activeTab='info'">♙ Инфо</button><button :class="{ active: activeTab === 'employment' }" @click="activeTab='employment'">▣ ТУ</button><button v-if="canReadSalary" :class="{ active: activeTab === 'salary' }" @click="activeTab='salary'">♙ Зарплаты</button><button v-if="isPlatformAdmin" :class="{ active: activeTab === 'rights' }" @click="showRights">Права</button></nav>
       <div v-if="error" class="employee-card-error">{{ error }}</div>
       <div v-if="onboardingMessage" class="employee-onboarding-note">{{ onboardingMessage }}</div>
 
