@@ -139,7 +139,7 @@ class EmployeesAccess
             foreach ($roots as $root) {
                 $scopedDepartments = array_merge($scopedDepartments, $this->subtreeIds((int) $root, $departments));
             }
-            $roles = [$alias, $scenario];
+            $roles = [$alias, $scenario, SpecialRoles::Managers];
             $productionManager = true;
         } elseif ($scenario !== 'employee') {
             $roles = [$scenario];
@@ -190,6 +190,7 @@ class EmployeesAccess
             'hr' => ['employees.read','employees.application.create','organization.read','staff_positions.read'],
             'accounting' => ['employees.read','employees.salary.read','employees.salary.manage','organization.read','staff_positions.read','employees.fot.view'],
             'manager' => ['employees.read','employees.application.create','employees.salary.read','organization.read','staff_positions.read','employees.fot.view','employees.fot.plan','employees.fot.approve'],
+            SpecialRoles::Managers => ['employees.read','employees.application.create','employees.salary.read','organization.read','staff_positions.read','employees.fot.view','employees.fot.plan','employees.fot.approve'],
             'system-admin' => [],
         ];
         $permissions = array_values(array_unique(array_merge(array_keys($access['permissions']), [
@@ -234,6 +235,13 @@ class EmployeesAccess
                     $roleGrant = $overrides[$role][$permission];
                 }
                 if ($roleGrant) $granted = true;
+            }
+            // A group-wide management denial must not be bypassed by legacy
+            // per-department head defaults or other positive role grants.
+            if (in_array(SpecialRoles::Managers, $roles, true)
+                && array_key_exists($permission, $overrides[SpecialRoles::Managers] ?? [])
+                && $overrides[SpecialRoles::Managers][$permission] === false) {
+                $granted = false;
             }
             if (in_array($permission, $inheritable, true)) {
                 $denied = false;
