@@ -25,7 +25,9 @@ function savedColumns() {
 const columnOrder = ref(savedColumns());
 const allRoles = computed(() => Object.entries(matrix.value?.roles || {})
   .map(([key, label]) => ({ key, label, locked: key === 'platform-admin' })));
-const displayedRoles = computed(() => orderedRoleColumns(matrix.value?.roles, columnOrder.value));
+const displayedRoles = computed(() => orderedRoleColumns(
+  matrix.value?.roles, columnOrder.value, matrix.value?.default_role_keys,
+));
 const availableRoles = computed(() => {
   const displayed = new Set(displayedRoles.value.map(role => role.key));
   const remaining = allRoles.value.filter(role => !displayed.has(role.key));
