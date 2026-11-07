@@ -26,6 +26,8 @@ export function permissionEnabled(role, permission, rules = []) {
  */
 export function permissionDisplayValue(role, permission, rules = [], scopePolicies = {}) {
   if (role === 'platform-admin') return scopePolicies?.[role]?.[permission] ? 'all' : 'allow';
+  if (scopePolicies?.[role]?.[permission]?.options?.length === 1
+    && scopePolicies[role][permission].options[0] === 'deny') return 'deny';
   if (!permissionEnabled(role, permission, rules)) return 'deny';
   const scope = scopePolicies?.[role]?.[permission];
   if (!scope) return 'allow';
