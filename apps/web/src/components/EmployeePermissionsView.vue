@@ -30,7 +30,7 @@ const availableRoles = computed(() => {
   const displayed = new Set(displayedRoles.value.map(role => role.key));
   const remaining = allRoles.value.filter(role => !displayed.has(role.key));
   const special = remaining.filter(role =>
-    ['platform-admin', 'personnel-officer', 'managers', 'top-management', 'manager', 'system-admin', 'production-direction-head'].includes(role.key));
+    ['platform-admin', 'personnel-officer', 'managers', 'direction-hr', 'top-management', 'manager', 'system-admin', 'production-direction-head'].includes(role.key));
   const departments = remaining.filter(role => !special.includes(role));
   return [
     ...optionGroup('Специальные и собирательные роли', special),
@@ -104,10 +104,12 @@ async function load() {
   finally { loading.value = false; }
 }
 
-async function setPermission(role, permission, enabled) {
+async function setPermission(role, permission, value) {
   if (role.locked || saving.value) return;
   const key = role.key + ':' + permission.key;
-  if (permissionEnabled(role.key, permission.key, matrix.value?.rules) === enabled) return;
+  if (permissionDisplayValue(role.key, permission.key, matrix.value?.rules, matrix.value?.scope_policies) === value) return;
+  const enabled = value !== 'deny';
+  const scope = value === 'own' || value === 'all' ? value : null;
   saving.value = key;
   error.value = '';
   try {
@@ -115,13 +117,13 @@ async function setPermission(role, permission, enabled) {
       encodeURIComponent(role.key) + '/' + encodeURIComponent(permission.key), {
       method: 'PUT',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({ enabled, scope }),
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.message || 'Не удалось сохранить разрешение');
     const existing = matrix.value.rules.find(item => item.role === role.key && item.permission === permission.key);
-    if (existing) existing.enabled = enabled;
-    else matrix.value.rules.push({ role: role.key, permission: permission.key, enabled });
+    if (existing) { existing.enabled = enabled; existing.scope = scope; }
+    else matrix.value.rules.push({ role: role.key, permission: permission.key, enabled, scope });
   } catch (e) { error.value = e.message; }
   finally { saving.value = ''; }
 }
@@ -145,7 +147,7 @@ onMounted(load);
         :clearable="false"
         @update:model-value="addRole"
       />
-      <span class="permissions-toolbar-hint">Скрытие столбца не изменяет разрешения. Для руководителей доступ к данным ограничен управляемыми подразделениями.</span>
+      <span class="permissions-toolbar-hint">Область каждого действия задаётся отдельно. Для просмотра итоговых прав конкретного сотрудника откройте его карточку.</span>
     </div>
 
     <div v-if="error" class="error-banner" role="alert">
@@ -157,7 +159,7 @@ onMounted(load);
       <table class="permissions-table">
         <colgroup>
           <col class="permissions-name-col">
-          <col v-for="role in displayedRoles" :key="role.key" class="permissions-role-col" :class="{ 'permissions-scope-col': role.key === 'managers' }">
+          <col v-for="role in displayedRoles" :key="role.key" class="permissions-role-col" :class="{ 'permissions-scope-col': ['managers', 'direction-hr'].includes(role.key) }">
         </colgroup>
         <thead>
           <tr>
@@ -215,11 +217,11 @@ onMounted(load);
               <td v-for="role in displayedRoles" :key="role.key">
                 <select
                   :aria-label="permission.label + ': ' + role.label"
-                  :value="permissionDisplayValue(role.key, permission.key, matrix.rules)"
+                  :value="permissionDisplayValue(role.key, permission.key, matrix.rules, matrix.scope_policies)"
                   :disabled="role.locked || !!saving"
-                  @change="setPermission(role, permission, $event.target.value !== 'deny')"
+                  @change="setPermission(role, permission, $event.target.value)"
                 >
-                  <option v-for="option in permissionOptions(role.key, permission.key)" :key="option.value" :value="option.value">{{ option.label }}</option>
+                  <option v-for="option in permissionOptions(role.key, permission.key, matrix.scope_policies)" :key="option.value" :value="option.value">{{ option.label }}</option>
                 </select>
               </td>
             </tr>
