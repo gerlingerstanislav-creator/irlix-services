@@ -25,12 +25,23 @@ const comments = reactive({});
 const canPlan = computed(() => !!props.access?.permissions?.['employees.fot.plan']);
 const canApprove = computed(() => !!props.access?.permissions?.['employees.fot.approve']);
 const months = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
-const scopedEmployeeOptions = computed(() => employeeTreeOptions(props.departments, props.employees));
+// FOT can have a smaller organizational scope than employees.read, e.g.
+// for a personnel officer who is also a manager. Never offer out-of-scope
+// employees or departments in the planning / overview controls.
+const scopeAllows = (permission, departmentId) => {
+  const policy = props.access?.permission_scopes?.[permission];
+  if (!policy) return false;
+  return policy.scope === 'all' || (policy.scope === 'subtree'
+    && policy.department_ids?.includes(Number(departmentId)));
+};
+const scopedEmployeeOptions = computed(() => employeeTreeOptions(
+  props.departments.filter(dept => scopeAllows('employees.fot.plan', dept.id)),
+  props.employees.filter(employee => scopeAllows('employees.fot.plan', employee.department_id)),
+));
 const availableDepartments = computed(() => {
-  const permitted = new Set((props.access?.department_ids || []).map(String));
   const data = overview.value.departments?.length
-    ? overview.value.departments
-    : props.departments.filter(dept => permitted.has(String(dept.id)));
+    ? overview.value.departments.filter(dept => scopeAllows('employees.fot.view', dept.id))
+    : props.departments.filter(dept => scopeAllows('employees.fot.view', dept.id));
   return departmentOptions(data);
 });
 const statusOptions = ['Трудоустроен', 'Уволен', 'Ожидает трудоустройства'].map(status => ({ value: status, label: status }));
