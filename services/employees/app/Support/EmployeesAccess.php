@@ -380,7 +380,7 @@ class EmployeesAccess
         $access['permission_scopes'] = $permissionScopes;
         $employeeRead = $permissionScopes['employees.read'];
         $access['scope'] = $employeeRead['scope'];
-        $access['department_ids'] = $employeeRead['department_ids'];
+        $access['department_ids'] = $employeeRead['scope'] === 'all' ? $this->allDepartmentIds() : $employeeRead['department_ids'];
         $access['allowed'] = $access['permissions']['employees.read'];
         $access['services']['employees'] = (bool) ($access['services']['employees'] ?? false) && $access['allowed'];
         return $access;
