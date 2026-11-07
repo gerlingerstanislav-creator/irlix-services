@@ -34,7 +34,12 @@ class EmployeesAccess
         }
 
         if (!$employee) return $this->withMatrix($this->result(null, false, false, false, false, false, 'none', [], []));
+        return $this->resolveEmployee($employee);
+    }
 
+    /** Evaluate one current employee from authoritative Employees data, without impersonation. */
+    public function resolveEmployee(Employee $employee): array
+    {
         $departments = $this->departments();
         $special = array_values(array_intersect(
             EmployeeAccessRole::query()->where('employee_id', $employee->id)->pluck('role')->all(),
