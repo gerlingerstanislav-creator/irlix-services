@@ -89,10 +89,11 @@ final class PermissionRuleService
         $catalog = [];
         foreach ($this->roleCatalog() as $role => $_label) {
             foreach ($this->permissionCatalog() as $permission => $_name) {
-                if (!PermissionScopePolicy::scoped($permission)) continue;
+                $immutableDenied = PermissionScopePolicy::immutableDenied($role, $permission);
+                if (!PermissionScopePolicy::scoped($permission) && !$immutableDenied) continue;
                 $catalog[$role][$permission] = [
                     'options' => PermissionScopePolicy::options($role, $permission),
-                    'default' => PermissionScopePolicy::defaultForRole($role),
+                    'default' => $immutableDenied ? 'deny' : PermissionScopePolicy::defaultForRole($role),
                 ];
             }
         }
