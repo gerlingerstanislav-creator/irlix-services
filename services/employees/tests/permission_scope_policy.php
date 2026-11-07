@@ -22,6 +22,14 @@ $check(Policy::options('managers', 'employees.salary.read') === ['deny', 'own', 
     'Managers need explicitly configurable per-permission scopes');
 $check(Policy::options('managers', 'services.employees') === ['deny', 'allow'],
     'Service admission is not a department scope');
+$check(Policy::options('managers', 'organization.manage') === ['deny'],
+    'Manager must not receive a fictitious organization admin grant');
+$check(Policy::options('personnel-officer', 'employees.transfer') === ['deny', 'all'],
+    'Personnel transfer may be scoped by its role');
+$check(Policy::options('managers', 'employees.transfer') === ['deny'],
+    'Manager must not receive the personnel-only transfer grant');
+$check(Policy::options('managers', 'services.finance') === ['deny'],
+    'Finance admission is restricted to eligible roles');
 $check(Policy::savedValue('managers', 'employees.salary.read', true) === 'own',
     'Legacy manager grants stay scoped');
 $check(Policy::savedValue('personnel-officer', 'employees.read', true) === 'all',
