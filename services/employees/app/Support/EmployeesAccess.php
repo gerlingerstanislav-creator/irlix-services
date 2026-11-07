@@ -204,7 +204,7 @@ class EmployeesAccess
             $access['permissions']['employees.fot.plan'] = true;
             $access['permissions']['employees.fot.approve'] = true;
             $access['permissions']['employees.transfer'] = true;
-            return $this->withPermissionScopes($access, $roles, [], [], [], $roleDepartments);
+            return $this->withPermissionScopes($access, $roles, [SpecialRoles::PlatformAdmin => PermissionScopePolicy::keys()], [], [], $roleDepartments);
         }
 
         $defaults = [
@@ -528,7 +528,9 @@ class EmployeesAccess
 
     private function departments(): array
     {
-        return Department::query()->select(['id', 'parent_id', 'name', 'alias', 'manager_id', 'hr_id', 'is_production'])->get()->all();
+        $fields = ['id', 'parent_id', 'name', 'alias', 'manager_id', 'is_production'];
+        if (Schema::hasColumn('departments', 'hr_id')) $fields[] = 'hr_id';
+        return Department::query()->select($fields)->get()->all();
     }
 
     private function allDepartmentIds(): array
