@@ -62,6 +62,7 @@ jobs:
         run: |
           node --test apps/web/tests/staffTree.test.js
           node --test apps/web/tests/employeeStatusFilter.test.js
+          node --test apps/web/tests/employeePermissionLayout.test.mjs
           node --test apps/web/tests/employeeManagementActions.test.js
           node --test apps/web/tests/fotFilters.test.js
           node --test apps/web/tests/systemAccountsView.test.js
