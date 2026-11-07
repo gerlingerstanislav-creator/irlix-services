@@ -156,6 +156,10 @@ final class SalaryReviewController extends Controller
             'decision' => ['required', Rule::in(['approved','returned'])],
             'comment' => ['required_if:decision,returned','nullable','string','max:3000'],
         ])->validate();
+        $reviewRecord = $this->reviews->review($review);
+        if (!$reviewRecord || !$this->reviews->scope($access, (int) $reviewRecord->employee_id)) {
+            return response()->json(['message' => 'Пересмотр вне доступной области'], 403);
+        }
         $result = $this->reviews->decide($review, (int) $access['employee_id'], $data);
         $status = $result['status'];
         unset($result['status']);
