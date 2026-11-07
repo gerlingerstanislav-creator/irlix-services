@@ -80,6 +80,7 @@ test('Hiding a column is only a display change; admin cannot be hidden', () => {
   assert.deepEqual(orderedRoleColumns(catalog).map(role => role.key), ['platform-admin', 'hr', 'accounting']);
   assert.deepEqual(orderedRoleColumns(catalog, ['accounting']).map(role => role.key), ['accounting', 'platform-admin']);
   assert.deepEqual(orderedRoleColumns({ 'platform-admin': 'Admin', managers: 'Руководители', hr: 'HR' }, ['hr']).map(role => role.key), ['hr', 'platform-admin', 'managers']);
+  assert.deepEqual(orderedRoleColumns({ 'platform-admin': 'Admin', managers: 'Managers', 'direction-hr': 'HR направлений' }, ['managers']).map(role => role.key), ['managers', 'platform-admin', 'direction-hr']);
   assert.deepEqual(orderedRoleColumns(catalog, ['deleted-role', 'hr', 'hr']).map(role => role.key), ['hr', 'platform-admin']);
 });
 
