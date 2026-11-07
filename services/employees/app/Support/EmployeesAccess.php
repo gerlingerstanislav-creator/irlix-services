@@ -66,9 +66,18 @@ class EmployeesAccess
             }
         }
         $hrIds = array_values(array_unique($hrIds));
+        $productionManagerIds = [];
+        foreach ($departments as $department) {
+            if (($employee->account_type ?? 'employee') !== 'system'
+                && (int) ($department->manager_id ?? 0) === (int) $employee->id
+                && ($department->is_production ?? false)) {
+                $productionManagerIds = array_merge($productionManagerIds, $this->subtreeIds((int) $department->id, $departments));
+            }
+        }
         $roleDepartments = [
             SpecialRoles::Managers => $managerIds,
             SpecialRoles::DirectionHr => $hrIds,
+            SpecialRoles::ProductionDirectionHead => array_values(array_unique($productionManagerIds)),
             'manager' => $managerIds,
         ];
         foreach ($roles as $role) {
@@ -182,6 +191,7 @@ class EmployeesAccess
         $ids = $scope === 'all' ? array_map(fn ($d) => (int) $d->id, $departments) : $scopedDepartments;
         $previewRoleDepartments = [
             SpecialRoles::Managers => $scopedDepartments,
+            SpecialRoles::ProductionDirectionHead => $productionManager ? $scopedDepartments : [],
             'manager' => $scopedDepartments,
         ];
         foreach ($roles as $role) {
