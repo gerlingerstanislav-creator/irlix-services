@@ -100,7 +100,10 @@ $assert($read->details(3) === null && $read->recordBusiness(3) === null
     && $read->record(3) !== null, 'Technical account leaked into HR profile or lost identity mapping');
 
 $reviews = new SalaryReviewService();
-$access = ['scope' => 'subtree', 'department_ids' => [2]];
+$access = ['scope' => 'subtree', 'department_ids' => [2],
+    'permissions' => ['employees.fot.view' => true],
+    'permission_scopes' => ['employees.fot.view' => ['scope' => 'subtree', 'department_ids' => [2]]],
+];
 $assert($reviews->scope($access, 2), 'Valid direction scope rejected');
 $assert(!$reviews->scope(['scope' => 'all'], 3), 'System account received salary planning scope');
 $assert(!$reviews->scope($access, 1), 'Foreign direction payroll leaked');
@@ -124,6 +127,6 @@ $assert($wrong['status'] === 403, 'Unauthorized approver gained access');
 $good = $reviews->decide((int) $created->id, 1, ['decision' => 'approved']);
 $assert($good['status'] === 200 && $good['data']->status === 'approved',
     'Approved review workflow failed');
-$assert($reviews->inbox(1)->isEmpty(), 'Completed review remained in pending inbox');
+$assert($reviews->inbox(1, $access)->isEmpty(), 'Completed review remained in pending inbox');
 
 echo "Employees layered Eloquent workflows: PASS\n";
