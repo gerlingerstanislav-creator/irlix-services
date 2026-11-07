@@ -11,6 +11,7 @@ final class SpecialRoles
     public const SystemAdministrator = 'system-admin';
     public const ProductionDirectionHead = 'production-direction-head';
     public const Managers = 'managers';
+    public const DirectionHr = 'direction-hr';
 
     public static function catalog(): array
     {
@@ -47,6 +48,12 @@ final class SpecialRoles
                 'description' => 'Автоматически: руководители любых подразделений, назначенные в оргструктуре. Область доступа ограничена управляемыми подразделениями.',
                 'automatic' => true,
             ],
+            self::DirectionHr => [
+                'key' => self::DirectionHr,
+                'label' => 'HR направлений',
+                'description' => 'Автоматически: сотрудники, закреплённые HR за подразделениями через hr_id. Область доступа — закреплённые подразделения и их дочерние.',
+                'automatic' => true,
+            ],
             self::ProductionDirectionHead => [
                 'key' => self::ProductionDirectionHead,
                 'label' => 'Руководитель производственного направления',
@@ -58,7 +65,7 @@ final class SpecialRoles
 
     public static function isAutomatic(string $role): bool
     {
-        return in_array($role, [self::Managers, self::ProductionDirectionHead], true);
+        return in_array($role, [self::Managers, self::DirectionHr, self::ProductionDirectionHead], true);
     }
 
     public static function isPlatformPrivileged(array $roles): bool
