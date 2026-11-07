@@ -19,6 +19,36 @@ export function permissionEnabled(role, permission, rules = []) {
   return (BASELINE[baselineRole] || []).includes(permission);
 }
 
+/**
+ * The Employees permission rule is boolean, but a manager's actual data
+ * visibility is bounded separately by EmployeesAccess::department_ids.
+ * Never imply company-wide access or offer an editable "all" scope where
+ * the API cannot grant/verify it.
+ */
+const MANAGER_DEPARTMENT_SCOPED = new Set([
+  'employees.read',
+  'employees.salary.read',
+  'employees.fot.view',
+  'employees.fot.plan',
+]);
+
+export function permissionDisplayValue(role, permission, rules = []) {
+  if (!permissionEnabled(role, permission, rules)) return 'deny';
+  return role === 'managers' && MANAGER_DEPARTMENT_SCOPED.has(permission) ? 'own' : 'allow';
+}
+
+export function permissionOptions(role, permission) {
+  return role === 'managers' && MANAGER_DEPARTMENT_SCOPED.has(permission)
+    ? [
+      { value: 'deny', label: 'Нет доступа' },
+      { value: 'own', label: 'Только своего направления' },
+    ]
+    : [
+      { value: 'deny', label: 'Нет доступа' },
+      { value: 'allow', label: 'Разрешено' },
+    ];
+}
+
 export function permissionSections(catalog = {}) {
   const permissions = Object.entries(catalog).map(([key, label]) => ({ key, label }));
   const sections = [
