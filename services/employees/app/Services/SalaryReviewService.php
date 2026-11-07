@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Department;
 use App\Models\Employee;
+use App\Support\EmployeesAccess;
 use App\Models\SalaryReview;
 use App\Models\SalaryReviewApproval;
 use App\Models\SalaryReviewVersion;
@@ -11,14 +12,17 @@ use Illuminate\Support\Facades\DB;
 
 final class SalaryReviewService
 {
-    public function scope(array $access, int $employee): bool
+    public function scope(array $access, int $employee, string $permission = 'employees.fot.view'): bool
     {
         // Even full organizational scope never converts technical identities into staff.
         if (!Employee::query()->business()->whereKey($employee)->exists()) return false;
-        if (($access['scope'] ?? 'none') === 'all') return true;
+        $policy = EmployeesAccess::scopeFor($access, $permission);
+        if (!($access['permissions'][$permission] ?? false)) return false;
+        if ($policy['scope'] === 'all') return true;
+        if ($policy['scope'] !== 'subtree') return false;
         $department = Employee::query()->whereKey($employee)->value('department_id');
         return $department !== null && in_array(
-            (int) $department, array_map('intval', $access['department_ids'] ?? []), true
+            (int) $department, array_map('intval', $policy['department_ids']), true
         );
     }
 
@@ -101,7 +105,7 @@ final class SalaryReviewService
         })->all();
     }
 
-    public function inbox(int $approverId): \Illuminate\Support\Collection
+    public function inbox(int $approverId, array $access): \Illuminate\Support\Collection
     {
         return SalaryReviewApproval::query()->from('salary_review_approvals as a')
             ->join('salary_reviews as r', 'r.id', '=', 'a.review_id')
@@ -119,7 +123,9 @@ final class SalaryReviewService
                     ->where('prior.decision', '<>', 'approved');
             })
             ->select('r.*', 'e.full_name as employee_name', 'a.id as approval_id')
-            ->get()->map(static fn ($row) => (object) $row->getRawOriginal());
+            ->get()
+            ->filter(fn ($row) => $this->scope($access, (int) $row->employee_id))
+            ->values()->map(static fn ($row) => (object) $row->getRawOriginal());
     }
 
     public function create(array $data, int $actorId): object
