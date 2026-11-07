@@ -6,6 +6,7 @@ const BASELINE = {
   'personnel-officer': ['employees.read', 'employees.application.create', 'employees.hire', 'organization.read', 'staff_positions.read', 'employees.transfer'],
   hr: ['employees.read', 'employees.application.create', 'organization.read', 'staff_positions.read'],
   accounting: ['employees.read', 'employees.salary.read', 'employees.salary.manage', 'organization.read', 'staff_positions.read', 'employees.fot.view'],
+  managers: ['employees.read', 'employees.application.create', 'employees.salary.read', 'organization.read', 'staff_positions.read', 'employees.fot.view', 'employees.fot.plan', 'employees.fot.approve'],
   manager: ['employees.read', 'employees.application.create', 'employees.salary.read', 'organization.read', 'staff_positions.read', 'employees.fot.view', 'employees.fot.plan', 'employees.fot.approve'],
 };
 
@@ -43,7 +44,7 @@ export function orderedRoleColumns(catalog = {}, savedKeys = null) {
   const roles = Object.entries(catalog).map(([key, label]) => ({ key, label, locked: key === 'platform-admin' }));
   if (!Array.isArray(savedKeys)) return roles;
   const byKey = new Map(roles.map(role => [role.key, role]));
-  const keys = [...new Set([...savedKeys, 'platform-admin'])];
+  const keys = [...new Set([...savedKeys, 'platform-admin', 'managers'])];
   return keys.filter(key => byKey.has(key)).map(key => byKey.get(key));
 }
 
