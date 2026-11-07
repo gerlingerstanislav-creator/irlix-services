@@ -21,7 +21,8 @@ final class PermissionRuleController extends Controller
         if (!$this->canManage($request)) return response()->json(['message' => 'Forbidden'], 403);
 
         return response()->json(['data' => [
-            'roles' => $this->rules->roleCatalog(),
+            'roles' => $this->rules->availableRoleCatalog(),
+            'default_role_keys' => array_keys($this->rules->roleCatalog()),
             'permissions' => $this->rules->permissionCatalog(),
             'rules' => $this->rules->rules(),
             'scope_policies' => $this->rules->scopeCatalog(),
@@ -31,7 +32,7 @@ final class PermissionRuleController extends Controller
     public function update(Request $request, string $role, string $permission): JsonResponse
     {
         if (!$this->canManage($request)) return response()->json(['message' => 'Forbidden'], 403);
-        if (!isset($this->rules->roleCatalog()[$role])
+        if (!isset($this->rules->availableRoleCatalog()[$role])
             || !isset($this->rules->permissionCatalog()[$permission])) {
             return response()->json(['message' => 'Unknown role or permission'], 404);
         }
@@ -87,7 +88,7 @@ final class PermissionRuleController extends Controller
 
     private function roleLabels(array $roles): array
     {
-        $labels = $this->rules->roleCatalog();
+        $labels = $this->rules->availableRoleCatalog();
         return array_replace(array_fill_keys($roles, ''), array_intersect_key($labels, array_flip($roles)));
     }
 

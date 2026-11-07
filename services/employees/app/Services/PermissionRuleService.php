@@ -52,6 +52,33 @@ final class PermissionRuleService
         return $roles;
     }
 
+    /**
+     * Complete set of roles that an administrator may deliberately add as
+     * matrix columns. Unlike roleCatalog(), this is NOT an access filter:
+     * rendering a column must not grant Employees entry or data permissions.
+     * Platform-tester is excluded because it contributes no business grants.
+     */
+    public function availableRoleCatalog(): array
+    {
+        $roles = [
+            SpecialRoles::PlatformAdmin => 'Администратор платформы',
+            SpecialRoles::PersonnelOfficer => 'Специалист по кадрам',
+            SpecialRoles::Managers => 'Руководители',
+            SpecialRoles::DirectionHr => 'HR направлений',
+            SpecialRoles::TopManagement => 'Топ-менеджмент',
+            SpecialRoles::SystemAdministrator => 'Системный администратор',
+            SpecialRoles::ProductionDirectionHead => 'Руководитель производственного направления',
+            'manager' => 'Руководитель подразделения (совместимость)',
+        ];
+        foreach (Department::query()->whereNotNull('alias')->get(['alias', 'name']) as $department) {
+            $alias = (string) $department->alias;
+            if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $alias) !== 1) continue;
+            if (!array_key_exists($alias, $roles)) $roles[$alias] = $department->name;
+        }
+        // Preserve existing labels and all previously configured audiences.
+        return array_replace($roles, $this->roleCatalog());
+    }
+
     public function permissionCatalog(): array
     {
         return [
@@ -87,7 +114,7 @@ final class PermissionRuleService
     public function scopeCatalog(): array
     {
         $catalog = [];
-        foreach ($this->roleCatalog() as $role => $_label) {
+        foreach ($this->availableRoleCatalog() as $role => $_label) {
             foreach ($this->permissionCatalog() as $permission => $_name) {
                 $immutableDenied = PermissionScopePolicy::immutableDenied($role, $permission);
                 if (!PermissionScopePolicy::scoped($permission) && !$immutableDenied) continue;

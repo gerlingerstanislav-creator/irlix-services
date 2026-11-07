@@ -87,6 +87,20 @@ test('Hiding a column is only a display change; admin cannot be hidden', () => {
   assert.deepEqual(orderedRoleColumns({ 'platform-admin': 'Admin', managers: 'Руководители', hr: 'HR' }, ['hr']).map(role => role.key), ['hr', 'platform-admin', 'managers']);
   assert.deepEqual(orderedRoleColumns({ 'platform-admin': 'Admin', managers: 'Managers', 'direction-hr': 'HR направлений' }, ['managers']).map(role => role.key), ['managers', 'platform-admin', 'direction-hr']);
   assert.deepEqual(orderedRoleColumns(catalog, ['deleted-role', 'hr', 'hr']).map(role => role.key), ['hr', 'platform-admin']);
+  const allCandidates = {
+    'platform-admin': 'Администратор', 'personnel-officer': 'Кадровик',
+    managers: 'Руководители', 'direction-hr': 'HR направлений',
+    sales: 'Продажи', 'system-admin': 'Системный администратор',
+  };
+  const defaults = ['platform-admin', 'personnel-officer', 'managers', 'direction-hr'];
+  assert.deepEqual(orderedRoleColumns(allCandidates, null, defaults).map(role => role.key), defaults,
+    'Unentitled roles must not become visible by default');
+  assert.deepEqual(orderedRoleColumns(allCandidates, [...defaults, 'sales'], defaults).map(role => role.key),
+    [...defaults, 'sales'], 'Explicitly added role must stay visible');
+  assert.deepEqual(orderedRoleColumns(allCandidates, ['system-admin'], defaults).map(role => role.key),
+    ['system-admin', 'platform-admin', 'managers', 'direction-hr'],
+    'User visibility preference must persist alongside mandatory columns');
+
 });
 
 test('Mouse drag and keyboard arrows only reorder the role objects', () => {

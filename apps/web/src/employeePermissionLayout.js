@@ -67,11 +67,14 @@ export function permissionSections(catalog = {}) {
  * Saved columns are a local display preference, not a set of configured roles.
  * Platform admin remains visible to make its non-editable privileges explicit.
  */
-export function orderedRoleColumns(catalog = {}, savedKeys = null) {
+export function orderedRoleColumns(catalog = {}, savedKeys = null, defaultKeys = null) {
   const roles = Object.entries(catalog).map(([key, label]) => ({ key, label, locked: key === 'platform-admin' }));
-  if (!Array.isArray(savedKeys)) return roles;
+  // Server limits which audiences appear initially, but the complete catalog
+  // remains selectable. A user's saved visible columns always take precedence.
+  const visibleKeys = Array.isArray(savedKeys) ? savedKeys : defaultKeys;
+  if (!Array.isArray(visibleKeys)) return roles;
   const byKey = new Map(roles.map(role => [role.key, role]));
-  const keys = [...new Set([...savedKeys, 'platform-admin', 'managers', 'direction-hr'])];
+  const keys = [...new Set([...visibleKeys, 'platform-admin', 'managers', 'direction-hr'])];
   return keys.filter(key => byKey.has(key)).map(key => byKey.get(key));
 }
 
