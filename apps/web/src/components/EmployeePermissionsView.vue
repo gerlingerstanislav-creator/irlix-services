@@ -157,7 +157,7 @@ onMounted(load);
       <table class="permissions-table">
         <colgroup>
           <col class="permissions-name-col">
-          <col v-for="role in displayedRoles" :key="role.key" class="permissions-role-col">
+          <col v-for="role in displayedRoles" :key="role.key" class="permissions-role-col" :class="{ 'permissions-scope-col': role.key === 'managers' }">
         </colgroup>
         <thead>
           <tr>
@@ -239,6 +239,7 @@ onMounted(load);
 .permissions-table { border-collapse:separate; border-spacing:0; table-layout:fixed; width:max-content; background:var(--irlix-color-surface); }
 .permissions-name-col { width:260px; }
 .permissions-role-col { width:158px; }
+.permissions-scope-col { width:238px; }
 .permissions-table th, .permissions-table td { box-sizing:border-box; padding:6px 8px; border-right:1px solid var(--irlix-color-border); border-bottom:1px solid var(--irlix-color-border); text-align:left; font-size:var(--irlix-font-size-caption); }
 .permissions-table thead th { position:sticky; top:0; z-index:3; height:68px; vertical-align:top; background:var(--irlix-color-surface-muted); }
 .permissions-table thead th:first-child { left:0; z-index:5; }
@@ -260,5 +261,6 @@ onMounted(load);
   .permissions-toolbar { padding:10px; }
   .permissions-name-col, .permissions-table tbody th:first-child { width:210px; }
   .permissions-role-col { width:148px; }
+  .permissions-scope-col { width:238px; }
 }
 </style>
