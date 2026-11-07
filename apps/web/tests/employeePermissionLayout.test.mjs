@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  moveRoleColumn, orderedRoleColumns, permissionEnabled, permissionSections, shiftRoleColumn,
+  moveRoleColumn, orderedRoleColumns, permissionDisplayValue, permissionEnabled, permissionOptions, permissionSections, shiftRoleColumn,
 } from '../src/employeePermissionLayout.js';
 
 test('Employees matrix reflects backend boolean defaults and respects explicit overrides', () => {
@@ -19,6 +19,27 @@ test('Employees matrix reflects backend boolean defaults and respects explicit o
   assert.equal(permissionEnabled('hr', 'employees.salary.read', [
     { role: 'hr', permission: 'employees.salary.read', enabled: true },
   ]), true);
+});
+
+test('Manager permission matrix shows real department scope, never company-wide grants', () => {
+  for (const permission of ['employees.read', 'employees.salary.read', 'employees.fot.view', 'employees.fot.plan']) {
+    assert.deepEqual(permissionOptions('managers', permission).map(option => option.value), ['deny', 'own']);
+    assert.equal(permissionDisplayValue('managers', permission), 'own');
+    assert.equal(permissionDisplayValue('managers', permission, [
+      { role: 'managers', permission, enabled: false },
+    ]), 'deny');
+    assert.equal(permissionDisplayValue('managers', permission, [
+      { role: 'managers', permission, enabled: true },
+    ]), 'own');
+  }
+  // Administrative permissions and service-entry grants are not scoped data reads.
+  assert.equal(permissionDisplayValue('managers', 'services.employees'), 'deny');
+  assert.equal(permissionDisplayValue('managers', 'employees.fot.approve'), 'allow');
+  assert.deepEqual(permissionOptions('managers', 'services.employees').map(option => option.value), ['deny', 'allow']);
+  // The same permission may be global for an accounting member.
+  assert.equal(permissionDisplayValue('accounting', 'employees.salary.read'), 'allow');
+  assert.deepEqual(permissionOptions('accounting', 'employees.salary.read').map(option => option.value), ['deny', 'allow']);
+  assert.equal(permissionDisplayValue('hr', 'employees.salary.read'), 'deny');
 });
 
 test('Permission sections include every permission once and keep stable group order', () => {
@@ -66,6 +87,9 @@ test('Employees UI keeps permission management and presentation distinct', () =>
   const view = readFileSync(new URL('../src/components/EmployeePermissionsView.vue', import.meta.url), 'utf8');
   assert.match(view, /UiSearchSelect/);
   assert.match(view, /permissionEnabled/);
+  assert.match(view, /permissionDisplayValue/);
+  assert.match(view, /permissionOptions/);
+  assert.match(view, /Только своего направления|option in permissionOptions/);
   assert.match(view, /:disabled="role.locked \|\| !!saving"/);
   assert.match(view, /Скрытие столбца не изменяет разрешения/);
   assert.match(view, /@drop="dropColumn/);
