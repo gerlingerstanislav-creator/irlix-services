@@ -4,23 +4,48 @@ namespace App\Services;
 
 use App\Models\Department;
 use App\Models\EmployeePermissionRule;
+use App\Support\SpecialRoles;
 
 final class PermissionRuleService
 {
     public function roleCatalog(): array
     {
+        // Employees' matrix presents only effective entry audiences.
+        // Existing -head rules are preserved in storage and still evaluated,
+        // but managers must now be configured through the aggregate role.
         $roles = [
-            'platform-admin' => 'Администратор платформы',
-            'personnel-officer' => 'Специалист по кадрам',
-            'top-management' => 'Топ-менеджмент',
-            'manager' => 'Руководитель подразделения (совместимость)',
-            'system-admin' => 'Системный администратор',
+            SpecialRoles::PlatformAdmin => 'Администратор платформы',
+            SpecialRoles::PersonnelOfficer => 'Специалист по кадрам',
+            SpecialRoles::Managers => 'Руководители',
         ];
+        $orgRoles = [];
         foreach (Department::query()->whereNotNull('alias')->get(['alias', 'name']) as $department) {
             $alias = (string) $department->alias;
             if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $alias) !== 1) continue;
-            $roles[$alias] = $department->name;
-            $roles[$alias.'-head'] = 'Руководитель: '.$department->name;
+            $orgRoles[$alias] = $department->name;
+            if (in_array($alias, ['hr', 'accounting'], true)) $roles[$alias] = $department->name;
+        }
+
+        // An otherwise unrelated role appears only when explicitly granted
+        // BOTH reading Employees and entry into the Employees service.
+        $explicit = [];
+        foreach (EmployeePermissionRule::query()
+            ->whereIn('permission', ['employees.read', 'services.employees'])
+            ->get(['role', 'permission', 'enabled']) as $rule) {
+            $explicit[$rule->role][$rule->permission] = (bool) $rule->enabled;
+        }
+        $extraRoles = [
+            SpecialRoles::TopManagement => 'Топ-менеджмент',
+            SpecialRoles::SystemAdministrator => 'Системный администратор',
+            SpecialRoles::ProductionDirectionHead => 'Руководитель производственного направления',
+            'manager' => 'Руководитель подразделения (совместимость)',
+        ];
+        foreach (array_merge($orgRoles, $extraRoles) as $role => $label) {
+            if (str_ends_with($role, '-head')) continue;
+            if (($explicit[$role]['employees.read'] ?? false)
+                && ($explicit[$role]['services.employees'] ?? false)) {
+                $roles[$role] = $label;
+            }
         }
         return $roles;
     }
