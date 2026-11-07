@@ -130,4 +130,29 @@ $check(!in_array('sales-manager', $financeSalesTitle['roles'], true)
 $addRule('client-operations', 'services.clients', false);
 $check($resolve(34)['services']['clients'] === false, 'Explicit local service denial was bypassed');
 
+// The aggregate manager is derived from any direct department manager,
+// including non-production units. It must not widen read scope or bypass
+// explicit denials; individual head roles are absent from the new picker.
+$db->table('departments')->where('id', 3)->update(['manager_id' => 31]);
+$managerAccess = $resolve(31);
+$check(in_array('managers', $managerAccess['roles'], true), 'Aggregate manager label missing');
+$check($managerAccess['scope'] === 'subtree' && $managerAccess['department_ids'] === [3],
+    'Aggregate manager expanded the department scope');
+$check($managerAccess['permissions']['employees.salary.read'] === true,
+    'Manager baseline salary read missing');
+$catalog = (new \App\Services\PermissionRuleService())->roleCatalog();
+$check(isset($catalog['managers']) && !isset($catalog['backend-head'])
+    && !isset($catalog['top-management']) && !isset($catalog['system-admin']),
+    'Employees permission picker contains unrelated or individual head roles');
+$addRule('managers', 'employees.salary.read', false);
+$addRule('managers', 'services.employees', false);
+$restricted = $resolve(31);
+$check($restricted['permissions']['employees.salary.read'] === false
+    && $restricted['services']['employees'] === false,
+    'Aggregate manager denial was bypassed by per-head baseline');
+$addRule('backend', 'employees.read', true);
+$addRule('backend', 'services.employees', true);
+$catalog = (new \App\Services\PermissionRuleService())->roleCatalog();
+$check(isset($catalog['backend']) && !isset($catalog['backend-head']),
+    'An explicitly admitted department role must remain editable');
 echo "Employees inherited baseline permissions and service gates: PASS\n";
