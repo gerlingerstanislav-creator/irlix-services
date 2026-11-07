@@ -20,33 +20,27 @@ export function permissionEnabled(role, permission, rules = []) {
 }
 
 /**
- * The Employees permission rule is boolean, but a manager's actual data
- * visibility is bounded separately by EmployeesAccess::department_ids.
- * Never imply company-wide access or offer an editable "all" scope where
- * the API cannot grant/verify it.
+ * Scope choices come from the server. The matrix displays a role's own
+ * grant; a concrete employee may inherit an independently scoped union.
  */
-const MANAGER_DEPARTMENT_SCOPED = new Set([
-  'employees.read',
-  'employees.salary.read',
-  'employees.fot.view',
-  'employees.fot.plan',
-]);
-
-export function permissionDisplayValue(role, permission, rules = []) {
+export function permissionDisplayValue(role, permission, rules = [], scopePolicies = {}) {
+  if (role === 'platform-admin') return scopePolicies?.[role]?.[permission] ? 'all' : 'allow';
   if (!permissionEnabled(role, permission, rules)) return 'deny';
-  return role === 'managers' && MANAGER_DEPARTMENT_SCOPED.has(permission) ? 'own' : 'allow';
+  const scope = scopePolicies?.[role]?.[permission];
+  if (!scope) return 'allow';
+  const override = rules.find(rule => rule.role === role && rule.permission === permission);
+  return override?.scope || scope.default;
 }
 
-export function permissionOptions(role, permission) {
-  return role === 'managers' && MANAGER_DEPARTMENT_SCOPED.has(permission)
-    ? [
-      { value: 'deny', label: 'Нет доступа' },
-      { value: 'own', label: 'Только своего направления' },
-    ]
-    : [
-      { value: 'deny', label: 'Нет доступа' },
-      { value: 'allow', label: 'Разрешено' },
-    ];
+export function permissionOptions(role, permission, scopePolicies = {}) {
+  const values = scopePolicies?.[role]?.[permission]?.options || ['deny', 'allow'];
+  const labels = {
+    deny: 'Нет доступа',
+    own: 'В зоне ответственности',
+    all: 'Вся компания',
+    allow: 'Разрешено',
+  };
+  return values.map(value => ({ value, label: labels[value] }));
 }
 
 export function permissionSections(catalog = {}) {
