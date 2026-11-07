@@ -80,6 +80,7 @@ final class PermissionRuleController extends Controller
             'permissions' => $access['permissions'],
             'department_names' => $names,
             'role_labels' => $this->roleLabels($access['roles']),
+            'permission_labels' => $this->rules->permissionCatalog(),
         ]]);
     }
 
