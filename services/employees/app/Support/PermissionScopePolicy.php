@@ -39,16 +39,21 @@ final class PermissionScopePolicy
         // Default to fail-closed for unrelated/legacy department roles.
         // Only established global Employees audiences get "all" by default.
         // A new explicit scope=all is necessary to expand any other role.
-        return in_array($role, [
+        if (in_array($role, [
             SpecialRoles::PlatformAdmin, SpecialRoles::PersonnelOfficer, 'hr', 'accounting',
-        ], true) ? 'all' : 'own';
+        ], true)) return 'all';
+        if (in_array($role, [
+            SpecialRoles::Managers, SpecialRoles::DirectionHr,
+            SpecialRoles::ProductionDirectionHead, 'manager',
+        ], true) || str_ends_with($role, '-head')) return 'own';
+        return 'deny'; // No proven organizational boundary for unrelated roles.
     }
 
     /** Only roles with a concrete ownership relationship may select "own". */
     public static function options(string $role, string $permission): array
     {
         if (!self::scoped($permission)) return ['deny', 'allow'];
-        if ($role === SpecialRoles::Managers || $role === SpecialRoles::DirectionHr) {
+        if (in_array($role, [SpecialRoles::Managers, SpecialRoles::DirectionHr, SpecialRoles::ProductionDirectionHead, 'manager'], true) || str_ends_with($role, '-head')) {
             return ['deny', 'own', 'all'];
         }
         return ['deny', 'all'];
@@ -78,7 +83,7 @@ final class PermissionScopePolicy
             if (!$grant['enabled']) continue;
             $mode = $grant['scope'] ?: self::defaultForRole($role);
             $roleIds = array_values(array_unique(array_map('intval', $grant['department_ids'] ?? [])));
-            if ($mode === 'own' && !$roleIds) continue; // Missing assignment never becomes company-wide.
+            if ($mode === 'deny' || ($mode === 'own' && !$roleIds)) continue; // Missing assignment never becomes company-wide.
             if ($mode === 'all') $all = true;
             else $ids = array_merge($ids, $roleIds);
             $sources[] = [
