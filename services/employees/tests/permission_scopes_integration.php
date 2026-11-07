@@ -107,6 +107,24 @@ $check($admin['scope'] === 'all'
     'Platform admin must keep full scoped rights');
 
 $rules = new PermissionRuleService();
+$rules->setRule(SpecialRoles::Managers, 'employees.salary.read', true, 'all');
+$managerAllSalary = $resolve(10);
+$check($managerAllSalary['permission_scopes']['employees.salary.read']['scope'] === 'all',
+    'Explicit manager company-wide scope must be applied only to its permission');
+// If a manager does NOT hold a separate company-wide read grant, a
+// salary=all override remains bounded by readable employees.
+$db->table('employee_access_roles')->where('employee_id', 10)
+    ->where('role', SpecialRoles::PersonnelOfficer)->delete();
+$managerOnly = $resolve(10);
+$check($managerOnly['permission_scopes']['employees.read']['scope'] === 'subtree',
+    'Manager-only read should be scoped');
+$check($managerOnly['permission_scopes']['employees.salary.read']['scope'] === 'subtree',
+    'Salary=all must not bypass employee-read scope');
+$rules->setRule(SpecialRoles::Managers, 'employees.salary.read', false);
+$managerDenied = $resolve(10);
+$check(!$managerDenied['permissions']['employees.salary.read'],
+    'Explicit aggregate manager deny must prevail over legacy grants');
+
 // The selectable catalog is intentionally wider than default visible roles.
 // Selecting a column never grants Employees access without explicit rules.
 $availableRoles = $rules->availableRoleCatalog();
@@ -133,22 +151,5 @@ $check(!$resolve(16)['services']['employees'],
 $rules->setRule('sales', 'services.employees', true);
 $check($resolve(16)['services']['employees'] && $resolve(16)['permissions']['employees.read'],
     'Administrator must be able to grant Employees access through a selectable role');
-$rules->setRule(SpecialRoles::Managers, 'employees.salary.read', true, 'all');
-$managerAllSalary = $resolve(10);
-$check($managerAllSalary['permission_scopes']['employees.salary.read']['scope'] === 'all',
-    'Explicit manager company-wide scope must be applied only to its permission');
-// If a manager does NOT hold a separate company-wide read grant, a
-// salary=all override remains bounded by readable employees.
-$db->table('employee_access_roles')->where('employee_id', 10)
-    ->where('role', SpecialRoles::PersonnelOfficer)->delete();
-$managerOnly = $resolve(10);
-$check($managerOnly['permission_scopes']['employees.read']['scope'] === 'subtree',
-    'Manager-only read should be scoped');
-$check($managerOnly['permission_scopes']['employees.salary.read']['scope'] === 'subtree',
-    'Salary=all must not bypass employee-read scope');
-$rules->setRule(SpecialRoles::Managers, 'employees.salary.read', false);
-$managerDenied = $resolve(10);
-$check(!$managerDenied['permissions']['employees.salary.read'],
-    'Explicit aggregate manager deny must prevail over legacy grants');
 
 echo "Employees scoped grants integration checks passed\n";
