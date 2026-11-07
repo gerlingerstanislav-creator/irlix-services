@@ -49,9 +49,28 @@ final class PermissionScopePolicy
         return 'deny'; // No proven organizational boundary for unrelated roles.
     }
 
+    /**
+     * Certain actions have non-configurable domain/administrative boundaries.
+     * Rendering them as editable "allowed" would contradict server enforcement.
+     */
+    public static function immutableDenied(string $role, string $permission): bool
+    {
+        if (in_array($permission, ['organization.manage', 'access.manage'], true)) {
+            return $role !== SpecialRoles::PlatformAdmin;
+        }
+        if ($permission === 'employees.transfer') {
+            return !in_array($role, [SpecialRoles::PlatformAdmin, SpecialRoles::PersonnelOfficer], true);
+        }
+        if ($permission === 'services.finance') {
+            return !in_array($role, [SpecialRoles::PlatformAdmin, 'accounting'], true);
+        }
+        return false;
+    }
+
     /** Only roles with a concrete ownership relationship may select "own". */
     public static function options(string $role, string $permission): array
     {
+        if (self::immutableDenied($role, $permission)) return ['deny'];
         if (!self::scoped($permission)) return ['deny', 'allow'];
         if (in_array($role, [SpecialRoles::Managers, SpecialRoles::DirectionHr, SpecialRoles::ProductionDirectionHead, 'manager'], true) || str_ends_with($role, '-head')) {
             return ['deny', 'own', 'all'];
