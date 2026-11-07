@@ -65,7 +65,7 @@ const withinPermissionScope = (permission) => {
     || (policy.scope === 'subtree' && policy.department_ids?.includes(Number(employee.value?.department_id)));
 };
 const canManage = computed(() => withinPermissionScope('employees.manage'));
-const canManageAccess = computed(() Boolean(props.access.permissions?.['access.manage']));
+const canManageAccess = computed(() => Boolean(props.access.permissions?.['access.manage']));
 const canReadSalary = computed(() => withinPermissionScope('employees.salary.read') && salaryVisible.value);
 const canHire = computed(() => withinPermissionScope('employees.hire'));
 const hireForm = ref({ started_at: new Date().toLocaleDateString('en-CA'), gross_salary: '' });
