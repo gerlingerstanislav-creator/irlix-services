@@ -59,9 +59,11 @@ test('Role scope selectors reflect authoritative backend scopes and saved overri
   ], hardGate), 'deny');
 });
 
-test('Permission sections include every permission once and keep stable group order', () => {
+test('Permission sections show only Employees permissions in stable group order', () => {
   const grouped = permissionSections({
     'services.clients': 'Вход: Клиенты',
+    'services.finance': 'Вход: Финансы',
+    'services.employees': 'Вход: Сотрудники',
     'staff_positions.read': 'Просмотр должностей',
     'employees.read': 'Просмотр сотрудников',
     'audit.read': 'Аудит',
@@ -69,11 +71,13 @@ test('Permission sections include every permission once and keep stable group or
     'organization.manage': 'Управление оргструктурой',
   });
   assert.deepEqual(grouped.map(group => group.key), [
-    'employees', 'organization', 'administration', 'services', 'other',
+    'employees', 'organization', 'administration', 'services',
   ]);
   const keys = grouped.flatMap(group => group.permissions.map(permission => permission.key));
-  assert.equal(keys.length, 6);
-  assert.equal(new Set(keys).size, 6);
+  assert.deepEqual(keys, [
+    'employees.read', 'staff_positions.read', 'organization.manage', 'audit.read', 'services.employees',
+  ]);
+  assert.deepEqual(permissionSections({ 'services.clients': 'Вход: Клиенты' }), []);
 });
 
 test('Hiding a column is only a display change; admin cannot be hidden', () => {
