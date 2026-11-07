@@ -73,6 +73,9 @@ $check(array_key_exists('created_at', $auto['members'][0]) && $auto['members'][0
     'Automatic role must not invent an assignment date');
 $check($db->table('employee_access_roles')->where('role', SpecialRoles::ProductionDirectionHead)->count() === 0,
     'Computed role must not persist manual membership');
+$allManagers = collect($roles->catalogWithMembers())->firstWhere('key', SpecialRoles::Managers);
+$check(($allManagers['member_count'] ?? 0) === 1, 'Aggregate manager must be unique for multiple departments');
+$check(($allManagers['automatic'] ?? false) === true, 'Aggregate manager must be automatic');
 foreach (['assign', 'revoke'] as $mutation) {
     try {
         $roles->{$mutation}(7, SpecialRoles::ProductionDirectionHead);
@@ -85,13 +88,26 @@ $db->table('departments')->whereIn('id', [5, 6])->update(['manager_id' => null])
 $check(collect($roles->catalogWithMembers())->firstWhere('key', SpecialRoles::ProductionDirectionHead)['member_count'] === 0,
     'Removing production management must remove the automatic membership');
 $db->table('departments')->where('id', 5)->update(['manager_id' => 7, 'is_production' => 0]);
+$check(collect($roles->catalogWithMembers())->firstWhere('key', SpecialRoles::Managers)['member_count'] === 1,
+    'Manager of non-production department missing from aggregate role');
+foreach (['assign', 'revoke'] as $mutation) {
+    try {
+        $roles->{$mutation}(7, SpecialRoles::Managers);
+        throw new RuntimeException('Aggregate manager allowed manual '.$mutation);
+    } catch (DomainException $e) {
+        // Expected: aggregate membership cannot be manually persisted.
+    }
+}
 $check(collect($roles->catalogWithMembers())->firstWhere('key', SpecialRoles::ProductionDirectionHead)['member_count'] === 0,
     'Non-production management must not enter automatic role');
 $db->table('departments')->where('id', 5)->update(['manager_id' => null, 'is_production' => 1]);
+$check(collect($roles->catalogWithMembers())->firstWhere('key', SpecialRoles::Managers)['member_count'] === 0,
+    'Removing management must revoke aggregate membership');
 
 
 $rules = new PermissionRuleService();
-$check(isset($rules->roleCatalog()['engineering-head']), 'Department-head permission alias missing');
+$check(isset($rules->roleCatalog()[SpecialRoles::Managers]), 'Aggregate managers role missing from permission matrix');
+$check(!isset($rules->roleCatalog()['engineering-head']), 'Individual department heads must not be listed');
 $rules->setRule('engineering-head', 'employees.read', false);
 $rules->setRule('engineering-head', 'employees.read', true);
 $check($db->table('employee_permission_rules')->count() === 1, 'Rule upsert must be idempotent');

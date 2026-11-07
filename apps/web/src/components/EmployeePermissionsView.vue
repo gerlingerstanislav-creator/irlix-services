@@ -29,14 +29,12 @@ const displayedRoles = computed(() => orderedRoleColumns(matrix.value?.roles, co
 const availableRoles = computed(() => {
   const displayed = new Set(displayedRoles.value.map(role => role.key));
   const remaining = allRoles.value.filter(role => !displayed.has(role.key));
-  const special = remaining.filter(role => !role.key.endsWith('-head') && !role.key.includes('-head') &&
-    ['platform-admin', 'personnel-officer', 'top-management', 'manager', 'system-admin'].includes(role.key));
-  const heads = remaining.filter(role => role.key.endsWith('-head'));
-  const departments = remaining.filter(role => !special.includes(role) && !heads.includes(role));
+  const special = remaining.filter(role =>
+    ['platform-admin', 'personnel-officer', 'managers', 'top-management', 'manager', 'system-admin', 'production-direction-head'].includes(role.key));
+  const departments = remaining.filter(role => !special.includes(role));
   return [
-    ...optionGroup('Специальные роли', special),
+    ...optionGroup('Специальные и собирательные роли', special),
     ...optionGroup('Подразделения', departments),
-    ...optionGroup('Руководители', heads),
   ];
 });
 const hasAvailableRoles = computed(() => availableRoles.value.some(role => role.kind !== 'group'));

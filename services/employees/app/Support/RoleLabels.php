@@ -22,6 +22,9 @@ final class RoleLabels
         // Automatic roles come only from current organizational facts.
         $labels = array_values(array_filter(array_map('strval', $specialRoles),
             static fn (string $role): bool => !SpecialRoles::isAutomatic($role)));
+        if (self::managesDepartment($employee, $departments)) {
+            $labels[] = SpecialRoles::Managers;
+        }
         if (self::managesProductionDirection($employee, $departments)) {
             $labels[] = SpecialRoles::ProductionDirectionHead;
         }
@@ -62,7 +65,7 @@ final class RoleLabels
      * ancestors, never management of that department. "head:" is assigned
      * only by an explicit manager_id relationship. "special:" requires an
      * explicit Employees special-role assignment, except the derived
-     * production-direction-head role.
+     * production-direction-head and managers roles.
      *
      * These claims are deliberately separate from EmployeesAccess::roles:
      * publishing an ancestor MUST NOT implicitly change legacy permissions,
@@ -110,6 +113,9 @@ final class RoleLabels
                 || SpecialRoles::isAutomatic($role) || !SpecialRoles::exists($role)) continue;
             $claims[] = 'special:'.$role;
         }
+        if (self::managesDepartment($employee, $departments)) {
+            $claims[] = 'special:'.SpecialRoles::Managers;
+        }
         if (self::managesProductionDirection($employee, $departments)) {
             $claims[] = 'special:'.SpecialRoles::ProductionDirectionHead;
         }
@@ -117,6 +123,21 @@ final class RoleLabels
         $claims = array_values(array_unique($claims));
         sort($claims, SORT_STRING);
         return $claims;
+    }
+
+    /**
+     * Aggregate role: only direct department manager_id assignments count.
+     * System identities, titles and hierarchy ancestry are not managers.
+     */
+    public static function managesDepartment(?object $employee, array $departments): bool
+    {
+        if (!$employee || ($employee->account_type ?? 'employee') === 'system') return false;
+        $employeeId = (int) ($employee->id ?? 0);
+        if ($employeeId <= 0) return false;
+        foreach ($departments as $department) {
+            if ((int) ($department->manager_id ?? 0) === $employeeId) return true;
+        }
+        return false;
     }
 
     /**

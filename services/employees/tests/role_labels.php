@@ -26,18 +26,25 @@ $production = [
 $lead = (object) ['id'=>700,'department_id'=>53];
 $legal = (object) ['id'=>701,'department_id'=>52];
 $check(RoleLabels::managesProductionDirection($lead, $production), true);
+$check(RoleLabels::managesDepartment($lead, $production), true);
+$check(RoleLabels::managesDepartment($legal, $production), true);
+$check(RoleLabels::managesDepartment((object)['id'=>701,'account_type'=>'system'], $production), false);
+$check(RoleLabels::managesDepartment((object)['id'=>702,'position'=>'Директор'], $production), false);
 $check(RoleLabels::managesProductionDirection($legal, $production), false);
 $check(in_array('production-direction-head', RoleLabels::resolve($lead, $production), true), true);
 $check(in_array('production-direction-head', RoleLabels::resolve($legal, $production), true), false);
+$check(in_array('managers', RoleLabels::resolve($legal, $production), true), true);
 $check(in_array('special:production-direction-head',
     RoleLabels::publishedRoleClaims($lead, $production), true), true);
 $check(in_array('special:production-direction-head',
     RoleLabels::publishedRoleClaims($legal, $production), true), false);
+$check(in_array('special:managers', RoleLabels::publishedRoleClaims($legal, $production), true), true);
 $check(in_array('special:production-direction-head',
     RoleLabels::publishedRoleClaims($legal, $production, ['production-direction-head']), true), false);
 $check(in_array('production-direction-head',
     RoleLabels::resolve($legal, $production, ['production-direction-head']), true), false);
 $check(isset(RoleLabels::canonicalRoleCatalog($production)['special:production-direction-head']), true);
+$check(isset(RoleLabels::canonicalRoleCatalog($production)['special:managers']), true);
 $production[0]->manager_id = null;
 $production[1]->manager_id = null;
 $check(RoleLabels::managesProductionDirection($lead, $production), false);
@@ -48,9 +55,9 @@ $production[1]->is_production = false;
 $check(RoleLabels::managesProductionDirection($lead, $production), false);
 
 $check($roles(101,2), ['accounting']);
-$check($roles(200,3), ['account-management','account-manager','accounting','accounting-head','sales','sales-head']);
-$check($roles(200,3,['personnel-officer']), ['account-management','account-manager','accounting','accounting-head','personnel-officer','sales','sales-head']);
-$check($roles(100,1), ['irlix','irlix-head']);
+$check($roles(200,3), ['account-management','account-manager','accounting','accounting-head','managers','sales','sales-head']);
+$check($roles(200,3,['personnel-officer']), ['account-management','account-manager','accounting','accounting-head','managers','personnel-officer','sales','sales-head']);
+$check($roles(100,1), ['irlix','irlix-head','managers']);
 $check($roles(101,2,['system-admin','system-admin']), ['accounting','system-admin']);
 $check($roles(0,4), ['sales','sales-manager']);
 // V2 identities include every organizational ancestor. They do not
@@ -59,9 +66,9 @@ $check(RoleLabels::publishedRoleClaims((object)['id'=>101,'department_id'=>2], $
     ['personnel-officer']), ['org:accounting','org:irlix','special:personnel-officer']);
 $check(RoleLabels::publishedRoleClaims((object)['id'=>200,'department_id'=>3], $departments,
     ['personnel-officer']), ['head:accounting','head:sales','org:account-management','org:irlix',
-        'special:personnel-officer']);
+        'special:managers','special:personnel-officer']);
 $check(RoleLabels::publishedRoleClaims((object)['id'=>100,'department_id'=>1], $departments),
-    ['head:irlix','org:irlix']);
+    ['head:irlix','org:irlix','special:managers']);
 $check(RoleLabels::publishedRoleClaims((object)['id'=>101,'department_id'=>2], $departments,
     ['platform-tester']), ['org:accounting','org:irlix']);
 $roleCatalog = RoleLabels::canonicalRoleCatalog($departments);
@@ -135,7 +142,7 @@ $engineering[0]->parent_id = null;
 $unsafe = [(object) ['id'=>5,'alias'=>'platform-admin','parent_id'=>null,'manager_id'=>501],
     (object) ['id'=>6,'alias'=>'accounting-head','parent_id'=>null,'manager_id'=>501],
     (object) ['id'=>7,'alias'=>'system-admin','parent_id'=>null,'manager_id'=>501]];
-$check(RoleLabels::resolve((object) ['id'=>501,'department_id'=>5], $unsafe), []);
+$check(RoleLabels::resolve((object) ['id'=>501,'department_id'=>5], $unsafe), ['managers']);
 
 $check(RoleLabels::resolve(null,$departments,['platform-admin']), []);
 $check(KeycloakAuthorizationSync::grants([

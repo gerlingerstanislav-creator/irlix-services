@@ -5,6 +5,10 @@ require_once __DIR__.'/../app/Support/SpecialRoles.php';
 use App\Support\SpecialRoles;
 
 $catalog = SpecialRoles::catalog();
+if (!isset($catalog[SpecialRoles::Managers]) || !SpecialRoles::isAutomatic(SpecialRoles::Managers)
+    || !SpecialRoles::isAutomatic(SpecialRoles::ProductionDirectionHead)) {
+    throw new RuntimeException('Aggregate manager role must be automatic');
+}
 if (!isset($catalog[SpecialRoles::PlatformTester])) {
     fwrite(STDERR, "platform-tester role is missing from catalog\n");
     exit(1);

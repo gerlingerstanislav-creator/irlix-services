@@ -10,6 +10,7 @@ test('Employees matrix reflects backend boolean defaults and respects explicit o
   assert.equal(permissionEnabled('personnel-officer', 'employees.hire'), true);
   assert.equal(permissionEnabled('hr', 'employees.salary.read'), false);
   assert.equal(permissionEnabled('sales-head', 'employees.fot.plan'), true);
+  assert.equal(permissionEnabled('managers', 'employees.fot.plan'), true);
   assert.equal(permissionEnabled('accounting', 'employees.fot.view'), true);
   assert.equal(permissionEnabled('platform-tester', 'employees.manage'), false);
   assert.equal(permissionEnabled('personnel-officer', 'employees.hire', [
@@ -45,6 +46,7 @@ test('Hiding a column is only a display change; admin cannot be hidden', () => {
   };
   assert.deepEqual(orderedRoleColumns(catalog).map(role => role.key), ['platform-admin', 'hr', 'accounting']);
   assert.deepEqual(orderedRoleColumns(catalog, ['accounting']).map(role => role.key), ['accounting', 'platform-admin']);
+  assert.deepEqual(orderedRoleColumns({ 'platform-admin': 'Admin', managers: 'Руководители', hr: 'HR' }, ['hr']).map(role => role.key), ['hr', 'platform-admin', 'managers']);
   assert.deepEqual(orderedRoleColumns(catalog, ['deleted-role', 'hr', 'hr']).map(role => role.key), ['hr', 'platform-admin']);
 });
 
@@ -77,6 +79,8 @@ test('Sidebar and Fot filters keep the three requested navigation groups and pla
   assert.ok(sidebar.indexOf("id: 'positions'") < sidebar.indexOf("id: 'staffPositions'"));
   assert.ok(sidebar.indexOf("id: 'staffPositions'") < sidebar.indexOf("id: 'systemAccounts'"));
   assert.match(sidebar, /groupStart: index > 0 && itemIndex === 0/);
+  assert.match(sidebar, /:bottom-items="bottomItems"/);
+  assert.match(sidebar, /const bottomItems = computed/);
   assert.match(sidebar, /id: 'permissions'/);
   assert.match(sidebar, /id: 'audit'/);
   assert.doesNotMatch(fot, /<span>Направления<\/span>|<span>Статус трудоустройства<\/span>/);
