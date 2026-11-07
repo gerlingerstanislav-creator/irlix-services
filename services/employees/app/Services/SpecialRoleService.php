@@ -17,7 +17,8 @@ final class SpecialRoleService
             $query = Employee::query()->from('employees as e')->business('e')
                 ->leftJoin('departments as d', 'd.id', '=', 'e.department_id');
             if (SpecialRoles::isAutomatic($role['key'])) {
-                $query->join('departments as managed', 'managed.manager_id', '=', 'e.id');
+                $relation = $role['key'] === SpecialRoles::DirectionHr ? 'hr_id' : 'manager_id';
+                $query->join('departments as managed', 'managed.'.$relation, '=', 'e.id');
                 if ($role['key'] === SpecialRoles::ProductionDirectionHead) {
                     $query->where('managed.is_production', true);
                 }
