@@ -107,6 +107,32 @@ $check($admin['scope'] === 'all'
     'Platform admin must keep full scoped rights');
 
 $rules = new PermissionRuleService();
+// The selectable catalog is intentionally wider than default visible roles.
+// Selecting a column never grants Employees access without explicit rules.
+$availableRoles = $rules->availableRoleCatalog();
+$defaultRoles = $rules->roleCatalog();
+$check(isset($availableRoles['sales']) && !isset($defaultRoles['sales']),
+    'Sales must be selectable, but not automatically visible before Employees admission');
+$check(isset($availableRoles[SpecialRoles::TopManagement])
+    && isset($availableRoles[SpecialRoles::SystemAdministrator]),
+    'Known special roles must be selectable even without Employees grants');
+$check(!isset($availableRoles[SpecialRoles::PlatformTester]),
+    'Platform tester is a preview marker and cannot receive business grants');
+$check(($rules->scopeCatalog()['sales']['employees.read']['default'] ?? '') === 'deny',
+    'Unrelated roles must not obtain Employees read by displaying a column');
+$db->table('employees')->insert([
+    'id'=>16, 'login'=>'synthetic.16', 'full_name'=>'Sales staff',
+    'department_id'=>4, 'position'=>'Sales', 'employment_status'=>'Трудоустроен',
+    'keycloak_user_id'=>'synthetic-id-16', 'account_type'=>'employee',
+]);
+$check(!$resolve(16)['services']['employees'],
+    'A selectable role must not grant Employees entry automatically');
+$rules->setRule('sales', 'employees.read', true, 'all');
+$check(!$resolve(16)['services']['employees'],
+    'Reading Employees alone must not bypass service entry');
+$rules->setRule('sales', 'services.employees', true);
+$check($resolve(16)['services']['employees'] && $resolve(16)['permissions']['employees.read'],
+    'Administrator must be able to grant Employees access through a selectable role');
 $rules->setRule(SpecialRoles::Managers, 'employees.salary.read', true, 'all');
 $managerAllSalary = $resolve(10);
 $check($managerAllSalary['permission_scopes']['employees.salary.read']['scope'] === 'all',
