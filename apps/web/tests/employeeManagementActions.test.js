@@ -28,6 +28,20 @@ test('permissions and protected admin preserve prior restrictions', () => {
   assert.deepEqual(available(null), []);
 });
 
+test('only platform admin can create Keycloak access for an employed unprovisioned identity', () => {
+  const imported = { login: 'synthetic.imported', employment_status: 'Трудоустроен', identity_status: 'not_provisioned', keycloak_user_id: null };
+  const flags = { platformAdmin: true };
+  assert.ok(available(imported, allPermissions, flags).includes('provision-keycloak'));
+  assert.ok(!available(imported, allPermissions).includes('provision-keycloak'));
+  assert.ok(!available(imported, { 'employees.manage': true }, flags).includes('provision-keycloak'));
+  assert.ok(!available({ ...imported, identity_status: 'provisioning' }, allPermissions, flags).includes('provision-keycloak'));
+  assert.ok(!available({ ...imported, keycloak_user_id: 'existing' }, allPermissions, flags).includes('provision-keycloak'));
+  assert.ok(!available({ ...imported, employment_status: 'Уволен' }, allPermissions, flags).includes('provision-keycloak'));
+  assert.ok(!available({ ...imported, login: 'admin' }, allPermissions, flags).includes('provision-keycloak'));
+  const busy = employeeManagementActions(imported, allPermissions, { platformAdmin: true, provisioningKeycloak: true });
+  assert.equal(busy.find(action => action.id === 'provision-keycloak')?.disabled, true);
+});
+
 test('destructive actions are marked and in-progress requests cannot be repeated', () => {
   const actions = employeeManagementActions({ login: 'staff', employment_status: 'Трудоустроен', keycloak_user_id: 'synthetic' }, allPermissions, { deleting: true, resendingOnboarding: true });
   assert.equal(actions.find(a => a.id === 'delete')?.danger, true);
@@ -43,6 +57,7 @@ test('card management actions live only in header menu; forms remain available',
   assert.match(component, /activeTab.value = 'info';\s+lifecycleMode.value = id/);
   assert.match(component, /openActionModal\(id\)/);
   assert.match(component, /return resendOnboarding\(\)/);
+  assert.match(component, /return provisionKeycloak\(\)/);
   assert.match(component, /return deleteEmployee\(\)/);
   assert.doesNotMatch(component, /class="lifecycle-actions"/);
   assert.doesNotMatch(component, /class="employee-card-actions"/);
