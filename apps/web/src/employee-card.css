@@ -35,16 +35,13 @@
 .employee-avatar { width:58px; height:58px; display:grid; place-items:center; border-radius:12px; background:var(--irlix-color-surface-muted); font-size:var(--irlix-font-size-page-title); }
 .employee-card-hero h2 { margin:0 0 3px; font-size:var(--irlix-font-size-section-title); }
 .employee-card-hero p { margin:0; color:var(--irlix-color-text); font-size:var(--irlix-font-size-caption); }
-.employee-card-tabs { display:grid; grid-template-columns:repeat(5, 1fr); gap:2px; margin:0 14px; padding:3px; background:var(--irlix-color-surface-muted); border-radius:9px; }
+.employee-card-tabs { display:grid; grid-template-columns:repeat(2, 1fr); gap:2px; margin:0 14px; padding:3px; background:var(--irlix-color-surface-muted); border-radius:9px; }
 .employee-card-tabs.three { grid-template-columns:repeat(3, 1fr); }
-.employee-card-tabs.four { grid-template-columns:repeat(4, 1fr); }
 .employee-card-tabs.two { grid-template-columns:repeat(2, 1fr); }
 .employee-card-tabs button { min-height:35px; border:0; border-radius:7px; background:transparent; color:var(--irlix-color-text); font-size:var(--irlix-font-size-caption); font-weight:650; cursor:pointer; padding:6px 8px; }
 .employee-card-tabs button.active { background:var(--irlix-color-surface); color:var(--irlix-color-text); box-shadow:0 1px 3px color-mix(in srgb, var(--irlix-color-shadow-base) 8%, transparent); }
 .employee-card-content { min-width:0; padding:14px 22px 30px; }
-.employee-effective-rights-row { display:grid; grid-template-columns:minmax(160px, 1fr) minmax(110px, 1fr); gap:4px 12px; padding:10px 0; border-bottom:1px solid var(--irlix-color-border); }
-.employee-effective-rights-row > small { grid-column:1 / -1; color:var(--irlix-color-text-muted); overflow-wrap:anywhere; }
-.employee-effective-rights-row > span { text-align:right; }
+.employee-identity-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 12px; }
 .lifecycle-form { display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); align-items:end; gap:7px; margin:8px 0 14px; padding:9px; border:1px solid var(--irlix-color-border); border-radius:8px; background:var(--irlix-color-surface-muted); }
 .employee-info-view h3 { margin:14px 0 6px; font-size:var(--irlix-font-size-body); }
 .employee-info-view dl { margin:0; }
@@ -77,7 +74,6 @@
   .employee-card-hero { grid-template-columns:50px 1fr; }
   .employee-card-hero > .ui-badge { grid-column:2; justify-self:start; }
   .employee-card-tabs, .employee-card-tabs.three { grid-template-columns:repeat(3, 1fr); }
-  .employee-card-tabs.four { grid-template-columns:repeat(4, 1fr); }
   .employee-card-tabs.two { grid-template-columns:repeat(2, 1fr); }
   .inline-history-form, .inline-history-form.salary, .lifecycle-form { grid-template-columns:1fr; }
   .employee-info-view dl > div { grid-template-columns:120px minmax(0,1fr) 28px; }
