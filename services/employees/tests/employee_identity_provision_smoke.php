@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Http;
 $app = new Container();
 Container::setInstance($app);
 Facade::setFacadeApplication($app);
-$app->instance(Illuminate\Contracts\Routing\ResponseFactory::class, new class {
+$app->instance(Illuminate\Contracts\Routing\ResponseFactory::class, new class extends Illuminate\Http\Response {
     public function json($data = [], int $status = 200): Illuminate\Http\JsonResponse {
         return new Illuminate\Http\JsonResponse($data, $status);
     }
