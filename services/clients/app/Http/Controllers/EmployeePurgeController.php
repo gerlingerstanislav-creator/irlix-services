@@ -17,8 +17,9 @@ final class EmployeePurgeController extends Controller
     }
 
     /**
-     * Read-only ownership/reporting checks. This MUST precede mutating purge
-     * of Timesheets: a later Clients 423 would otherwise cause partial erasure.
+     * Validate the full Clients DB deletion in a rollback-only transaction.
+     * This MUST precede Timesheets: later Clients DB failures would otherwise
+     * leave a partially erased employee across services. No CV files are touched.
      */
     public function preflight(Request $request, int $employee)
     {

@@ -90,7 +90,34 @@ DB::table('reporting_periods')->insert(['client_id'=>10, 'period_start'=>'2026-0
     'period_end'=>'2026-01-31', 'status'=>'Новый']);
 
 $purge = new EmployeePurgeService();
-$purge->purge(7, 'synthetic.employee', true); // strictly read-only preflight
+
+// A failure late in DB mutation must be detected by preflight and rolled back.
+// The previous selection-only preflight passed and let Timesheets erase hours
+// before Clients failed on this same operation.
+DB::unprepared(<<<'SQL'
+CREATE TRIGGER synthetic_purge_late_failure BEFORE UPDATE OF sales_employee_id ON clients
+WHEN OLD.sales_employee_id = 7 AND NEW.sales_employee_id IS NULL
+BEGIN SELECT RAISE(ABORT, 'synthetic late purge failure'); END
+SQL);
+$rejectedLateFailure = false;
+try {
+    $purge->purge(7, 'synthetic.employee', true);
+} catch (\Illuminate\Database\QueryException $error) {
+    $rejectedLateFailure = str_contains($error->getMessage(), 'synthetic late purge failure');
+} finally {
+    DB::unprepared('DROP TRIGGER IF EXISTS synthetic_purge_late_failure');
+}
+clientCheck($rejectedLateFailure, 'Preflight missed a late database mutation failure');
+clientCheck(DB::table('connection_attempts')->where('specialist_id', 7)->exists()
+    && DB::table('member_terms')->where('id', 200)->exists()
+    && DB::table('client_members')->where('id', 100)->exists()
+    && DB::table('clients')->where('id', 10)->value('sales_employee_id') === 7
+    && !DB::table('employee_purge_files')->exists()
+    && file_exists($cvDirectory.'/'.$cvFilename),
+    'Failed preflight did not roll back all DB changes and retain CV files');
+
+// Successful preflight must run all mutations yet persist none of them.
+$purge->purge(7, 'synthetic.employee', true); // transactional rollback
 clientCheck(DB::table('client_members')->where('employee_id',7)->exists()
     && DB::table('connection_attempts')->where('specialist_id',7)->exists()
     && file_exists($cvDirectory.'/'.$cvFilename)

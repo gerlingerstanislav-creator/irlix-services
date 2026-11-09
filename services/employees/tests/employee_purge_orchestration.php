@@ -95,4 +95,20 @@ $check(count($requests) >= 1
         $ok && str_ends_with($entry[0]->url(), '/purge/preflight'), true),
     'An irreversible downstream purge was called after a failed Clients preflight');
 
+// An unexpected database failure in Clients preflight must never start the
+// irreversible Timesheets purge or Keycloak deletion.
+$factory4 = new Factory();
+Http::swap($factory4);
+$factory4->preventStrayRequests();
+$factory4->fake(static fn ($request) => (new Factory())->response(
+    ['message' => 'Internal clients preflight failed'], 500
+));
+$failed = (new EmployeeDeletionService())->purge($person);
+$check($failed['status'] === 502 && $failed['service'] === 'clients'
+    && $failed['upstream_status'] === 500,
+    'Unexpected Clients preflight failure should stop employee deletion');
+$check($factory4->recorded()->every(static fn ($entry) =>
+    str_ends_with($entry[0]->url(), '/purge/preflight')),
+    'Timesheets or another service was mutated after Clients preflight returned 500');
+
 echo "Employee erasure orchestration, protected preflight and retry isolation: PASS\n";
