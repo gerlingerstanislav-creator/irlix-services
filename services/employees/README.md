@@ -207,3 +207,15 @@ The deployed stand smoke runs its read-only `--verify` mode and fails if the
 technical directory is empty. The existing Eloquent business/technical scopes
 continue to rely on `account_type`; therefore the idempotent repair persists
 the correct classification *before* the directories are read.
+
+## Создание Keycloak-доступа для импортированного сотрудника
+
+У действующих сотрудников, импортированных из legacy Employees, может отсутствовать `keycloak_user_id`. Обычная кнопка «Трудоустроить» не подходит: она изменяет кадровую историю и начисления, а отправка письма работает только после привязки Keycloak.
+
+Для такого случая администратор платформы использует карточку существующего сотрудника → «Действия с сотрудником» → «Создать доступ Keycloak». Действие доступно лишь для `account_type=employee`, `employment_status=Трудоустроен`, `identity_status=not_provisioned`, `keycloak_user_id=NULL`. Требуются корпоративный логин/почта и личная почта для установки пароля. Backend повторно проверяет роль `platform-admin`, разрешения и область действия. Удалять старую Employees запись или изменять её Keycloak identity этот сценарий **не пытается**.
+
+`POST /api/employees/{employee}/keycloak-provision` атомарно захватывает право создания переходом `not_provisioned → provisioning` в БД, затем единожды создаёт Keycloak user. После успешного ответа `201` и настройки группы сохраняется полученный subject, статус `active`; PostgreSQL-триггер Employees автоматически ставит синхронизацию ролей JWT в очередь. Затем отправляется обычное письмо установки пароля. Если письмо не отправилось, созданная identity сохраняется и используется действие «Отправить письмо повторно».
+
+Явный конфликт `409` означает, что Keycloak отверг создание: статус Employees возвращается к `not_provisioned`, повторять попытку без сверки уже существующего аккаунта не нужно. При неопределённом исходе (timeout, ошибка после успешного POST, невозможность записать subject) статус остаётся `provisioning`; **повторная автоматическая попытка запрещена** до сверки в Keycloak, чтобы не создавать ещё одного пользователя. Для создания пользователя отключены HTTP retry на неидемпотентном POST. Тест: `tests/employee_identity_provision_smoke.php` в Docker build, фронтенд: `apps/web/tests/employeeManagementActions.test.js`.
+
+Это создание **доступа**, а не объединение двух Employees ID. Оно не переносит Clients/Timesheets, не восстанавливает уже удалённые записи, не исправляет `migration_mappings`. Не использовать эту кнопку как замену сверке сотрудников или как повод удалить устаревшую запись.
