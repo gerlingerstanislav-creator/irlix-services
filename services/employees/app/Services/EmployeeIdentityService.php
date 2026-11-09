@@ -109,7 +109,7 @@ final class EmployeeIdentityService
             ]],
         ]);
         if ($response->status() === 409) {
-            throw new DomainException('Такой логин уже существует в Keycloak. Выберите другой логин.');
+            throw new DomainException('Логин или email уже существует в Keycloak. Не создавайте дубль: проверьте существующую учётную запись и её привязку к сотруднику.');
         }
         if ($response->status() !== 201) {
             throw new RuntimeException('Keycloak user creation failed: '.$response->status());
