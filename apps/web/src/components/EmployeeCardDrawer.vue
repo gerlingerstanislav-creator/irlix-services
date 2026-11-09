@@ -19,7 +19,7 @@ const effectiveRights = ref(null);
 const rightsLoading = ref(false);
 const rightsError = ref('');
 const editField = ref(null); const editValue = ref(''); const actionModal = ref(null); const lifecycleMode = ref(null);
-const deleting = ref(false); const resendingOnboarding = ref(false); const onboardingMessage = ref('');
+const deleting = ref(false); const resendingOnboarding = ref(false); const provisioningKeycloak = ref(false); const onboardingMessage = ref('');
 const drawerWidth = ref(690);
 const salaryForm = ref({ effective_from: '', gross_salary: '', bonus: '', comment: '', position_id: '' });
 const transferForm = ref({ department_id: '', effective_from: '', position_id: '', change_salary: false, gross_salary: '' });
@@ -77,7 +77,8 @@ const cardPermissions = computed(() => Object.fromEntries(Object.entries(props.a
   .map(([permission, enabled]) => [permission, props.access.permission_scopes?.[permission]
     ? withinPermissionScope(permission) : enabled])));
 const managementActions = computed(() => employeeManagementActions(employee.value, cardPermissions.value,
-  { deleting: deleting.value, resendingOnboarding: resendingOnboarding.value }));
+  { deleting: deleting.value, resendingOnboarding: resendingOnboarding.value,
+    provisioningKeycloak: provisioningKeycloak.value, platformAdmin: isPlatformAdmin.value }));
 
 const fields = computed(() => [
   { title: 'Основная информация', rows: [
@@ -222,6 +223,7 @@ const selectManagementAction = (id) => {
   }
   lifecycleMode.value = null;
   if (id === 'onboarding') return resendOnboarding();
+  if (id === 'provision-keycloak') return provisionKeycloak();
   if (id === 'delete') return deleteEmployee();
   if (['transfer', 'cooperation', 'dismiss', 'salary'].includes(id)) openActionModal(id);
 };
@@ -261,6 +263,21 @@ const transferEmployee = async () => {
     await request(`/api/employees/employees/${props.employeeId}/transfer`, { method: 'POST', body: JSON.stringify(payload) });
     actionModal.value = null; await load(); emit('updated');
   } catch (e) { error.value = e.message; }
+};
+const provisionKeycloak = async () => {
+  if (!isPlatformAdmin.value || !canManageAccess.value || provisioningKeycloak.value
+      || employee.value?.keycloak_user_id || employee.value?.identity_status !== 'not_provisioned') return;
+  const name = shortEmployeeName(employee.value);
+  if (!window.confirm(`Создать новый доступ Keycloak для ${name}? Учётная запись будет связана с этим сотрудником, но связи и данные других сотрудников НЕ переносятся.`)) return;
+  provisioningKeycloak.value = true; error.value = ''; onboardingMessage.value = '';
+  try {
+    const payload = await request(`/api/employees/employees/${props.employeeId}/keycloak-provision`, { method: 'POST' });
+    await load(); emit('updated');
+    onboardingMessage.value = payload?.meta?.onboarding_email_status === 'sent'
+      ? 'Доступ Keycloak создан и письмо для установки пароля отправлено.'
+      : 'Доступ Keycloak создан. Письмо для установки пароля не отправлено — проверьте статус и отправьте письмо повторно.';
+  } catch (e) { error.value = e.message; await load(); }
+  finally { provisioningKeycloak.value = false; }
 };
 const resendOnboarding = async () => {
   if (!canManageAccess.value || resendingOnboarding.value || !employee.value?.keycloak_user_id) return;

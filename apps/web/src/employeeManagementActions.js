@@ -1,5 +1,5 @@
 // Employee card header actions are defined in one place so every tab and permission set agrees.
-export function employeeManagementActions(employee, permissions = {}, { deleting = false, resendingOnboarding = false } = {}) {
+export function employeeManagementActions(employee, permissions = {}, { deleting = false, resendingOnboarding = false, provisioningKeycloak = false, platformAdmin = false } = {}) {
   if (!employee) return [];
   const allowed = permission => Boolean(permissions?.[permission]);
   const employed = employee.employment_status === 'Трудоустроен';
@@ -12,6 +12,12 @@ export function employeeManagementActions(employee, permissions = {}, { deleting
   if (employed && allowed('employees.manage')) actions.push({ id: 'cooperation', label: 'Изменить тип сотрудничества' });
   if (dismissed && allowed('employees.manage')) actions.push({ id: 'rehire', label: 'Вернуть в компанию' });
   if (allowed('employees.salary.read') && allowed('employees.salary.manage')) actions.push({ id: 'salary', label: 'Пересмотреть зарплату' });
+  if (platformAdmin && employed && !protectedUser && allowed('access.manage')
+    && !employee.keycloak_user_id && employee.identity_status === 'not_provisioned') actions.push({
+    id: 'provision-keycloak',
+    label: provisioningKeycloak ? 'Создание доступа…' : 'Создать доступ Keycloak',
+    disabled: provisioningKeycloak,
+  });
   if (allowed('access.manage') && employee.keycloak_user_id) actions.push({
     id: 'onboarding',
     label: resendingOnboarding ? 'Отправляем…' : (employee.onboarding_email_status === 'sent' ? 'Отправить письмо повторно' : 'Отправить письмо'),

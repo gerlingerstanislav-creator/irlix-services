@@ -39,7 +39,11 @@ final class EmployeeIdentityService
 
     private function call(string $method, string $path, array $json = []): \Illuminate\Http\Client\Response
     {
-        $request = Http::withToken($this->token())->acceptJson()->retry(2, 300)->timeout(8);
+        // Creating a Keycloak user is not idempotent. A retried POST after a
+        // network timeout could create an identity but report a later 409,
+        // leaving the Employees row with no reliable subject to attach.
+        $request = Http::withToken($this->token())->acceptJson()->timeout(8);
+        if (strtoupper($method) !== 'POST') $request = $request->retry(2, 300);
         $url = $this->base().'/admin/realms/'.$this->realm().$path;
         return match (strtoupper($method)) {
             'GET' => $request->get($url, $json),
@@ -105,7 +109,7 @@ final class EmployeeIdentityService
             ]],
         ]);
         if ($response->status() === 409) {
-            throw new DomainException('Такой логин уже существует в Keycloak. Выберите другой логин.');
+            throw new DomainException('Логин или email уже существует в Keycloak. Не создавайте дубль: проверьте существующую учётную запись и её привязку к сотруднику.');
         }
         if ($response->status() !== 201) {
             throw new RuntimeException('Keycloak user creation failed: '.$response->status());
