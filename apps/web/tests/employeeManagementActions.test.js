@@ -50,7 +50,7 @@ test('destructive actions are marked and in-progress requests cannot be repeated
   assert.equal(actions.find(a => a.id === 'onboarding')?.disabled, true);
 });
 
-test('card management actions live only in header menu; forms remain available', () => {
+test('card management menu remains available without hiding onboarding and forms', () => {
   const component = readFileSync(new URL('../src/components/EmployeeCardDrawer.vue', import.meta.url), 'utf8');
   assert.match(component, /class="employee-card-top-actions"><UiActionMenu v-if="managementActions.length"/);
   assert.match(component, /@select="selectManagementAction"/);
@@ -65,6 +65,32 @@ test('card management actions live only in header menu; forms remain available',
   assert.match(component, /lifecycleMode==='rehire'/);
   assert.match(component, /actionModal === 'salary'/);
   assert.match(component, /aria-label="Закрыть карточку"/);
+});
+
+test('employee card preserves visible onboarding and no unsolicited rights tab', () => {
+  const component = readFileSync(new URL('../src/components/EmployeeCardDrawer.vue', import.meta.url), 'utf8');
+  const routes = readFileSync(new URL('../../../services/employees/routes/onboarding.php', import.meta.url), 'utf8');
+  const permissions = readFileSync(new URL('../src/components/EmployeePermissionsView.vue', import.meta.url), 'utf8');
+
+  // Manual onboarding is a confirmed business workflow, not a hidden menu-only action.
+  assert.match(component, /class="employee-identity-actions"/);
+  assert.match(component, /canManageAccess && canManage && employee\.keycloak_user_id/);
+  assert.match(component, /@click="resendOnboarding"/);
+  assert.match(component, /Отправить письмо повторно/);
+  assert.match(component, /Отправить письмо/);
+  assert.match(component, /@click="provisionKeycloak"/);
+  assert.match(component, /employee\.identity_status === 'not_provisioned'/);
+  assert.match(routes, /\/employees\/\{employee\}\/onboarding-email/);
+  assert.match(routes, /\/employees\/\{employee\}\/keycloak-provision/);
+  assert.match(permissions, /<template>/);
+
+  // Role permissions are a separate Employees page, not a tab added to the HR card.
+  assert.doesNotMatch(component, /activeTab\s*===?\s*['"]rights['"]/);
+  assert.doesNotMatch(component, />Права<\/button>/);
+  assert.doesNotMatch(component, /\/api\/employees\/access\/permissions\/effective\//);
+  assert.match(component, /activeTab==='info'/);
+  assert.match(component, /activeTab === 'employment'/);
+  assert.match(component, /activeTab === 'salary'/);
 });
 
 test('production navigation smoke uses menuitem and explicit close button after header actions moved', () => {

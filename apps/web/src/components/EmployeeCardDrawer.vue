@@ -15,9 +15,6 @@ const props = defineProps({
 const emit = defineEmits(['close', 'updated']);
 const loading = ref(true); const error = ref(''); const detail = ref(null); const activeTab = ref('info');
 const salaryVisible = ref(false);
-const effectiveRights = ref(null);
-const rightsLoading = ref(false);
-const rightsError = ref('');
 const editField = ref(null); const editValue = ref(''); const actionModal = ref(null); const lifecycleMode = ref(null);
 const deleting = ref(false); const resendingOnboarding = ref(false); const provisioningKeycloak = ref(false); const onboardingMessage = ref('');
 const drawerWidth = ref(690);
@@ -119,32 +116,6 @@ const load = async () => {
   } catch (e) { error.value = e.message; }
   finally { loading.value = false; }
 };
-const scopedRights = computed(() => Object.entries(effectiveRights.value?.permission_scopes || {})
-  .map(([key, policy]) => ({
-    key,
-    label: effectiveRights.value?.permission_labels?.[key] || key,
-    ...policy,
-    sourceText: (policy.sources || []).map((source) => {
-      const role = effectiveRights.value?.role_labels?.[source.role] || source.role;
-      const names = (source.department_ids || []).map((id) =>
-        effectiveRights.value?.department_names?.[id] || `#${id}`);
-      return source.scope === 'all' ? `${role} (вся компания)`
-        : `${role} (${names.join(', ') || 'назначенные подразделения'})`;
-    }).join('; '),
-  })));
-const showRights = async () => {
-  activeTab.value = 'rights';
-  if (!isPlatformAdmin.value || rightsLoading.value || effectiveRights.value) return;
-  rightsLoading.value = true;
-  rightsError.value = '';
-  try {
-    const result = await request(`/api/employees/access/permissions/effective/${props.employeeId}`);
-    effectiveRights.value = result.data;
-  } catch (e) { rightsError.value = e.message; }
-  finally { rightsLoading.value = false; }
-};
-const scopeLabel = (scope) => scope === 'all' ? 'Вся компания'
-  : scope === 'subtree' ? 'В зоне ответственности' : 'Нет доступа';
 const date = (value) => value ? new Date(`${value}T00:00:00`).toLocaleDateString('ru-RU') : 'Бессрочно';
 const money = (value) => value == null ? '—' : new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(Number(value));
 const display = (field) => {
@@ -328,8 +299,6 @@ const stopResize = () => { document.removeEventListener('pointermove', resizeMov
 const startResize = (event) => { resizeStartX = event.clientX; resizeStartWidth = drawerWidth.value; document.body.classList.add('employee-drawer-resizing'); document.addEventListener('pointermove', resizeMove); document.addEventListener('pointerup', stopResize); };
 
 watch(() => props.employeeId, () => {
-  effectiveRights.value = null;
-  rightsError.value = '';
   activeTab.value = 'info';
   load();
 });
@@ -345,11 +314,20 @@ onBeforeUnmount(stopResize);
     <div v-if="loading" class="employee-card-loading">Загрузка…</div>
     <template v-else-if="employee">
       <section class="employee-card-hero"><div class="employee-avatar">♙</div><div><h2>{{ shortEmployeeName(employee) }}</h2><p>{{ employee.work_email || 'Рабочая почта не указана' }}</p></div><div><UiBadge :tone="employee.employment_status === 'Трудоустроен' ? 'success' : 'neutral'">{{ employee.employment_status }}</UiBadge></div></section>
-      <nav class="employee-card-tabs" :class="isPlatformAdmin ? (canReadSalary ? 'four' : 'three') : (canReadSalary ? 'three' : 'two')"><button :class="{ active: activeTab === 'info' }" @click="activeTab='info'">♙ Инфо</button><button :class="{ active: activeTab === 'employment' }" @click="activeTab='employment'">▣ ТУ</button><button v-if="canReadSalary" :class="{ active: activeTab === 'salary' }" @click="activeTab='salary'">♙ Зарплаты</button><button v-if="isPlatformAdmin" :class="{ active: activeTab === 'rights' }" @click="showRights">Права</button></nav>
+      <nav class="employee-card-tabs" :class="canReadSalary ? 'three' : 'two'"><button :class="{ active: activeTab === 'info' }" @click="activeTab='info'">♙ Инфо</button><button :class="{ active: activeTab === 'employment' }" @click="activeTab='employment'">▣ ТУ</button><button v-if="canReadSalary" :class="{ active: activeTab === 'salary' }" @click="activeTab='salary'">♙ Зарплаты</button></nav>
       <div v-if="error" class="employee-card-error">{{ error }}</div>
       <div v-if="onboardingMessage" class="employee-onboarding-note">{{ onboardingMessage }}</div>
 
       <section v-if="activeTab==='info'" class="employee-card-content">
+        <!-- The manually resent Keycloak onboarding email is a confirmed HR
+             workflow. Keep its action visible, never hide it solely in a menu. -->
+        <div v-if="canManageAccess && canManage && employee.keycloak_user_id" class="employee-identity-actions">
+          <UiButton type="button" compact variant="secondary" :disabled="resendingOnboarding" @click="resendOnboarding">{{ resendingOnboarding ? 'Отправляем…' : (employee.onboarding_email_status === 'sent' ? 'Отправить письмо повторно' : 'Отправить письмо') }}</UiButton>
+        </div>
+        <div v-else-if="isPlatformAdmin && canManage && canManageAccess && employee.employment_status === 'Трудоустроен' && !employee.keycloak_user_id && employee.identity_status === 'not_provisioned' && employee.login !== 'admin'" class="employee-identity-actions">
+          <UiButton type="button" compact variant="secondary" :disabled="provisioningKeycloak" @click="provisionKeycloak">{{ provisioningKeycloak ? 'Создание доступа…' : 'Создать доступ Keycloak' }}</UiButton>
+        </div>
+
         <form v-if="canHire && lifecycleMode==='hire' && employee.employment_status==='Ожидает трудоустройства'" class="lifecycle-form" @submit.prevent="hireEmployee">
           <label class="irlix-field"><span>Дата трудоустройства</span><input v-model="hireForm.started_at" type="date" required /></label>
           <label class="irlix-field"><span>Оклад gross</span><input v-model="hireForm.gross_salary" type="number" step="0.01" min="0" required /></label>
@@ -379,21 +357,6 @@ onBeforeUnmount(stopResize);
         <div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>Тип ТУ</th><th>Начало</th><th>Окончание</th></tr></thead><tbody><tr v-for="p in periods" :key="p.id"><td><UiBadge tone="info">{{p.cooperation_type}}</UiBadge></td><td>{{date(p.started_at)}}</td><td>{{date(p.ended_at)}}</td></tr></tbody></table></div>
         <h3 class="history-title">История статусов</h3><div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>Статус</th><th>С</th><th>По</th></tr></thead><tbody><tr v-for="s in statuses" :key="s.id"><td>{{s.status}}</td><td>{{date(s.effective_from)}}</td><td>{{date(s.effective_to)}}</td></tr></tbody></table></div>
         <h3 class="history-title">Переводы</h3><div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>Подразделение</th><th>Должность</th><th>С</th><th>По</th><th v-if="isPlatformAdmin" class="employee-history-actions"></th></tr></thead><tbody><tr v-for="a in assignments" :key="a.id"><td>{{a.department_name||'—'}}</td><td>{{a.position||'—'}}</td><td>{{date(a.effective_from)}}</td><td>{{date(a.effective_to)}}</td><td v-if="isPlatformAdmin" class="employee-history-actions"><UiButton compact variant="secondary" :aria-label="`Редактировать перевод от ${date(a.effective_from)}`" @click="editAssignment(a)">✎</UiButton></td></tr></tbody></table></div>
-      </section>
-
-      <section v-else-if="activeTab === 'rights' && isPlatformAdmin" class="employee-card-content employee-effective-rights">
-        <h3>Итоговые области доступа</h3>
-        <p>Результат совмещения ролей сотрудника. Приведены реальные границы доступа к кадровым данным, включая ограничения по окладам.</p>
-        <p v-if="rightsLoading">Загрузка прав…</p>
-        <p v-else-if="rightsError" role="alert">{{ rightsError }} <button type="button" @click="showRights">Повторить</button></p>
-        <div v-else-if="effectiveRights">
-          <div v-for="right in scopedRights" :key="right.key" class="employee-effective-rights-row">
-            <strong>{{ right.label }}</strong>
-            <span>{{ scopeLabel(right.scope) }}</span>
-            <small v-if="right.sourceText">Источник: {{ right.sourceText }}</small>
-            <small v-if="['employees.fot.view', 'employees.fot.plan'].includes(right.key) && right.scope !== 'none'">Дополнительно ограничено разрешением на просмотр окладов.</small>
-          </div>
-        </div>
       </section>
 
       <section v-else-if="activeTab === 'salary' && canReadSalary" class="employee-card-content">
