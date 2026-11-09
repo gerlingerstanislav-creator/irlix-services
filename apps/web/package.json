@@ -15,8 +15,5 @@
     "@fontsource-variable/onest": "5.3.1",
     "vue-router": "^4.6.4"
   },
-  "devDependencies": {},
-  "overrides": {
-    "rollup": "4.68.1"
-  }
+  "devDependencies": {}
 }
