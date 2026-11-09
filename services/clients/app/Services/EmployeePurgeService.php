@@ -42,7 +42,14 @@ final class EmployeePurgeService
      */
     public function purge(int $employeeId, string $username, bool $preflight = false): void
     {
-        DB::transaction(static function () use ($employeeId, $username, $preflight): void {
+        // Preflight exercises the *same* DB mutation path as purge, including FK
+        // constraints and reporting snapshots, inside an outer transaction that
+        // can never commit. A selection-only check missed failures that occurred
+        // after Timesheets had already permanently removed employee hours.
+        // Do not perform CV filesystem cleanup or any external I/O in this phase.
+        if ($preflight) DB::beginTransaction();
+        try {
+            DB::transaction(static function () use ($employeeId, $username): void {
             $members = ClientMember::query()->where('employee_id', $employeeId)->get();
             $memberOwners = $members->pluck('client_id', 'id')->all();
             // Older project-member rows can still be referenced by terms even
@@ -109,20 +116,17 @@ final class EmployeePurgeService
                 abort_unless($filename !== '' && $filename !== '.' && $filename !== '..'
                     && basename($filename) === $filename && !str_contains($filename, '\\'),
                     409, 'Unsafe stored CV filename requires reconciliation');
-                if (!$preflight) {
-                    EmployeePurgeFile::query()->firstOrCreate([
-                        'employee_id' => $employeeId, 'filename' => $filename,
-                    ]);
-                }
+                EmployeePurgeFile::query()->firstOrCreate([
+                    'employee_id' => $employeeId, 'filename' => $filename,
+                ]);
             }
 
             // Paid and confirmed periods do not shield mistaken/test staff
             // from administrative erasure. Remove their stored personal detail
             // from snapshots without touching other employees' rows.
             EmployeeReportingSnapshotPurge::apply(
-                $employeeId, array_keys($memberOwners), $termIds, $ranges, $preflight
+                $employeeId, array_keys($memberOwners), $termIds, $ranges, false
             );
-            if ($preflight) return;
 
             ConnectionAttempt::query()->where('specialist_id', $employeeId)->delete();
             foreach ($members as $member) {
@@ -165,7 +169,10 @@ final class EmployeePurgeService
                 ReportingPeriodApprovedHours::query()->where('updated_by', $username)
                     ->update(['updated_by' => null]);
             }
-        });
+            });
+        } finally {
+            if ($preflight) DB::rollBack();
+        }
 
         if ($preflight) return;
 
