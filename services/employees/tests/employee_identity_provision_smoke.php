@@ -53,9 +53,8 @@ $db->table('employees')->insert([
   'identity_status'=>'not_provisioned','keycloak_user_id'=>null],
 ]);
 $db->table('salary_history')->insert(['id'=>1,'employee_id'=>7,'gross_salary'=>100]);
-$sent = [];
-$onboarding = new class ($sent) extends EmployeeOnboardingService {
-    public function __construct(private array &$sent) {}
+$onboarding = new class extends EmployeeOnboardingService {
+    public array $sent = [];
     public function sendPasswordSetup(int $id): array {
         $this->sent[] = $id;
         Employee::query()->whereKey($id)->update(['onboarding_email_status'=>'sent']);
@@ -104,7 +103,7 @@ $check($db->table('salary_history')->where('employee_id',7)->value('gross_salary
   'Keycloak provision changed HR history or payroll');
 $check(Employee::query()->whereKey(8)->value('keycloak_user_id')==='old-identity',
   'Legacy employee identity was modified');
-$check($sent===[7] && $posts===['synthetic.imported'], 'Unexpected onboarding / duplicate creation');
+$check($onboarding->sent===[7] && $posts===['synthetic.imported'], 'Unexpected onboarding / duplicate creation');
 
 $repeat=false;
 try { $service->provision(7); } catch (DomainException) { $repeat=true; }
