@@ -22,6 +22,11 @@ use Illuminate\Support\Facades\Http;
 $app = new Container();
 Container::setInstance($app);
 Facade::setFacadeApplication($app);
+$app->instance(Illuminate\Contracts\Routing\ResponseFactory::class, new class {
+    public function json($data = [], int $status = 200): Illuminate\Http\JsonResponse {
+        return new Illuminate\Http\JsonResponse($data, $status);
+    }
+});
 $app->instance('date', new Illuminate\Support\DateFactory());
 $capsule = new Manager($app);
 $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
