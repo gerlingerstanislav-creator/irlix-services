@@ -67,24 +67,27 @@ test('card management menu remains available without hiding onboarding and forms
   assert.match(component, /aria-label="Закрыть карточку"/);
 });
 
-test('employee card preserves visible onboarding and no unsolicited rights tab', () => {
+test('employee card keeps password email visible but Keycloak provisioning only in menu', () => {
   const component = readFileSync(new URL('../src/components/EmployeeCardDrawer.vue', import.meta.url), 'utf8');
+  const actions = readFileSync(new URL('../src/employeeManagementActions.js', import.meta.url), 'utf8');
   const routes = readFileSync(new URL('../../../services/employees/routes/onboarding.php', import.meta.url), 'utf8');
   const permissions = readFileSync(new URL('../src/components/EmployeePermissionsView.vue', import.meta.url), 'utf8');
 
-  // Manual onboarding is a confirmed business workflow, not a hidden menu-only action.
   assert.match(component, /class="employee-identity-actions"/);
   assert.match(component, /canManageAccess && canManage && employee\.keycloak_user_id/);
   assert.match(component, /@click="resendOnboarding"/);
-  assert.match(component, /Отправить письмо повторно/);
-  assert.match(component, /Отправить письмо/);
-  assert.match(component, /@click="provisionKeycloak"/);
-  assert.match(component, /employee\.identity_status === 'not_provisioned'/);
+  assert.match(component, /Отправить письмо для смены пароля/);
+  assert.doesNotMatch(component, /@click="provisionKeycloak"/);
+  assert.doesNotMatch(component, /Создать доступ Keycloak/);
+  assert.match(component, /return provisionKeycloak\(\)/);
+  assert.match(actions, /id: 'provision-keycloak'/);
+  assert.match(actions, /'Отправить письмо для смены пароля'/);
+  assert.doesNotMatch(actions, /Отправить письмо повторно/);
   assert.match(routes, /\/employees\/\{employee\}\/onboarding-email/);
   assert.match(routes, /\/employees\/\{employee\}\/keycloak-provision/);
   assert.match(permissions, /<template>/);
 
-  // Role permissions are a separate Employees page, not a tab added to the HR card.
+  // The user's agreed card still has the original three HR tabs.
   assert.doesNotMatch(component, /activeTab\s*===?\s*['"]rights['"]/);
   assert.doesNotMatch(component, />Права<\/button>/);
   assert.doesNotMatch(component, /\/api\/employees\/access\/permissions\/effective\//);
