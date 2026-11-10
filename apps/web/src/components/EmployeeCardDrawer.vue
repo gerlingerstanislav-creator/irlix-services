@@ -319,6 +319,9 @@ onBeforeUnmount(stopResize);
       <div v-if="onboardingMessage" class="employee-onboarding-note">{{ onboardingMessage }}</div>
 
       <section v-if="activeTab==='info'" class="employee-card-content">
+        <div v-if="canManageAccess && canManage && employee.keycloak_user_id" class="employee-identity-actions">
+          <UiButton type="button" compact variant="secondary" :disabled="resendingOnboarding" @click="resendOnboarding">{{ resendingOnboarding ? 'Отправляем…' : 'Отправить письмо для смены пароля' }}</UiButton>
+        </div>
         <form v-if="canHire && lifecycleMode==='hire' && employee.employment_status==='Ожидает трудоустройства'" class="lifecycle-form" @submit.prevent="hireEmployee">
           <label class="irlix-field"><span>Дата трудоустройства</span><input v-model="hireForm.started_at" type="date" required /></label>
           <label class="irlix-field"><span>Оклад gross</span><input v-model="hireForm.gross_salary" type="number" step="0.01" min="0" required /></label>
