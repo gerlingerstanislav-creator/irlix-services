@@ -59,7 +59,7 @@ $check(count($operations)===1,'Expected one profile reconciliation');
 $sync->reconcile(17);
 $check(count($operations)===1,'Idempotent reconciliation still wrote identity');
 $failed=false;
-try{$sync->reconcile(18);}catch(RuntimeException $e){$failed=str_contains($e->getMessage(),'explicit reconciliation');}
+try{$sync->reconcile(18);}catch(RuntimeException $e){$failed=str_contains($e->getMessage(),'reconciliation required');}
 $check($failed,'Keycloak collision must fail closed, not link wrong account');
 $check($user['synthetic-conflict']['email']==='synthetic.other@example.invalid','Conflict unexpectedly rewrote Keycloak identity');
 $check($db->table('employees')->count()===2,'Sync must not create or delete Employees rows');
