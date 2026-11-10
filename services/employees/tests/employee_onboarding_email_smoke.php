@@ -70,7 +70,7 @@ $check($db->table('employees')->where('id',7)->value('onboarding_email_status')=
 
 $failedEmail=true;
 try { $service->sendPasswordSetup(8); throw new RuntimeException('SMTP failure unexpectedly accepted'); }
-catch (RuntimeException $e) { $check(str_contains($e->getMessage(),'onboarding email failed'), 'Wrong error on SMTP failure'); }
+catch (RuntimeException $e) { $service->markFailure(8, $e); $check(str_contains($e->getMessage(),'onboarding email failed'), 'Wrong error on SMTP failure'); }
 $check($messages[1]==='synthetic2@example.invalid', 'SMTP failure did not use personal email');
 $check($profile['synthetic-id-2']['email']==='synthetic.second@irlix.ru','SMTP failure left personal email in Keycloak');
 $check($db->table('employees')->where('id',8)->value('onboarding_email_status')!== 'sent', 'False successful delivery');
