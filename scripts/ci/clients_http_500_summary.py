@@ -6,7 +6,7 @@ import sys
 
 STATE = re.compile(r'SQLSTATE(?:\[|\s*[:=]\s*)([A-Z0-9]{5})', re.I)
 ERROR = re.compile(r'(?<![A-Za-z])([A-Za-z_][A-Za-z0-9_]*(?:Exception|Error))\b')
-FRAME = re.compile(r'(ClientContourAccess|ClientsAccountingAccess|ServiceEntitlement|ClientsOverviewPageService|ClientsOverviewService|ClientsController|ClientWorkflowVisibility)\.php(?::|\()(\d{1,5})')
+FRAME = re.compile(r'(?<![A-Za-z0-9_])([A-Za-z][A-Za-z0-9_]{0,79})\.php(?::|\()(\d{1,5})')
 DATE = re.compile(r'20\d{2}-\d{2}-\d{2}')
 OBJECT = re.compile(r'(?:column|relation|table) "([a-z][a-z0-9_]{0,79})"', re.I)
 
