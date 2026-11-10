@@ -319,15 +319,6 @@ onBeforeUnmount(stopResize);
       <div v-if="onboardingMessage" class="employee-onboarding-note">{{ onboardingMessage }}</div>
 
       <section v-if="activeTab==='info'" class="employee-card-content">
-        <!-- The manually resent Keycloak onboarding email is a confirmed HR
-             workflow. Keep its action visible, never hide it solely in a menu. -->
-        <div v-if="canManageAccess && canManage && employee.keycloak_user_id" class="employee-identity-actions">
-          <UiButton type="button" compact variant="secondary" :disabled="resendingOnboarding" @click="resendOnboarding">{{ resendingOnboarding ? 'Отправляем…' : (employee.onboarding_email_status === 'sent' ? 'Отправить письмо повторно' : 'Отправить письмо') }}</UiButton>
-        </div>
-        <div v-else-if="isPlatformAdmin && canManage && canManageAccess && employee.employment_status === 'Трудоустроен' && !employee.keycloak_user_id && employee.identity_status === 'not_provisioned' && employee.login !== 'admin'" class="employee-identity-actions">
-          <UiButton type="button" compact variant="secondary" :disabled="provisioningKeycloak" @click="provisionKeycloak">{{ provisioningKeycloak ? 'Создание доступа…' : 'Создать доступ Keycloak' }}</UiButton>
-        </div>
-
         <form v-if="canHire && lifecycleMode==='hire' && employee.employment_status==='Ожидает трудоустройства'" class="lifecycle-form" @submit.prevent="hireEmployee">
           <label class="irlix-field"><span>Дата трудоустройства</span><input v-model="hireForm.started_at" type="date" required /></label>
           <label class="irlix-field"><span>Оклад gross</span><input v-model="hireForm.gross_salary" type="number" step="0.01" min="0" required /></label>
