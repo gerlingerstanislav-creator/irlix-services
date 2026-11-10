@@ -20,7 +20,7 @@ export function employeeManagementActions(employee, permissions = {}, { deleting
   });
   if (allowed('access.manage') && employee.keycloak_user_id) actions.push({
     id: 'onboarding',
-    label: resendingOnboarding ? 'Отправляем…' : (employee.onboarding_email_status === 'sent' ? 'Отправить письмо повторно' : 'Отправить письмо'),
+    label: resendingOnboarding ? 'Отправляем…' : 'Отправить письмо для смены пароля',
     disabled: resendingOnboarding,
   });
   if (employed && !protectedUser && allowed('employees.manage')) actions.push({ id: 'dismiss', label: 'Уволить', danger: true });

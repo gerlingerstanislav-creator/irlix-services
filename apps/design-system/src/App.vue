@@ -218,7 +218,7 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         <div class="ds-row ds-row--plain"><UiViewSwitch v-model="view" :items="views" /><UiSegmentedControl v-model="chart" :items="[{ value: 'month', label: 'Месяц' }, { value: 'year', label: 'Год' }]" /></div>
         </template>
         <template v-if="entry.id === 'card-actions'">
-          <p class="ds-hint">UiActionMenu — компактное меню действий в заголовке карточки, справа от названия и слева от закрытия. Открывается поверх прокрутки, учитывает отключённые и опасные команды.</p>
+          <p class="ds-hint">UiActionMenu — компактное меню действий в заголовке карточки, справа от названия и слева от закрытия. Точки — компактная векторная иконка, пункты — шрифт caption по дизайн-системе. Открывается поверх прокрутки, учитывает отключённые и опасные команды.</p>
           <div class="ds-row ds-row--plain" style="align-items:center;justify-content:flex-start">
             <UiActionMenu aria-label="Действия с демо-сотрудником" :items="[{id:'transfer',label:'Перевести в другое направление'},{id:'salary',label:'Пересмотреть зарплату'},{id:'dismiss',label:'Уволить',danger:true},{id:'delete',label:'Удалить пользователя',danger:true,disabled:true}]" @select="demoActionMessage = $event" />
             <span class="ds-hint">Выбрано: {{ demoActionMessage || 'ничего' }} (синтетический пример)</span>

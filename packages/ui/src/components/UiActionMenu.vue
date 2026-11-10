@@ -43,7 +43,7 @@ watch(() => props.items.length, count => { if (!count) close(); });
 
 <template>
   <button ref="trigger" type="button" class="ui-action-menu__trigger" :aria-label="ariaLabel" aria-haspopup="menu" :aria-expanded="open" :aria-controls="id + '-menu'" @click="open ? close() : show()" @keydown.down.prevent="show" @keydown.up.prevent="show">
-    <span aria-hidden="true">⋮</span>
+    <svg aria-hidden="true" class="ui-action-menu__icon" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.55" /><circle cx="12" cy="12" r="1.55" /><circle cx="12" cy="19" r="1.55" /></svg>
   </button>
   <Teleport to="body">
     <div v-if="open" :id="id + '-menu'" ref="menu" class="ui-action-menu__panel irlix-ui" :style="style" role="menu" :aria-label="ariaLabel" @keydown="navigate">
@@ -54,11 +54,11 @@ watch(() => props.items.length, count => { if (!count) close(); });
 
 <style>
 .ui-action-menu__trigger { display:inline-grid; place-items:center; width:32px; height:32px; padding:0; border:0; border-radius:var(--irlix-radius-sm); background:transparent; color:var(--irlix-color-text); cursor:pointer; }
-.ui-action-menu__trigger > span { font-size:24px; line-height:1; }
+.ui-action-menu__trigger > .ui-action-menu__icon { width:17px; height:17px; display:block; }
 .ui-action-menu__trigger:hover, .ui-action-menu__trigger[aria-expanded="true"] { background:var(--irlix-color-surface-muted); }
 .ui-action-menu__trigger:focus-visible { outline:2px solid var(--irlix-color-primary); outline-offset:2px; }
 .ui-action-menu__panel { z-index:var(--irlix-popover-z-index); overflow:auto; padding:5px; border:1px solid var(--irlix-color-border); border-radius:var(--irlix-control-radius); background:var(--irlix-color-surface); box-shadow:var(--irlix-popover-shadow); }
-.ui-action-menu__panel > button { display:block; width:100%; padding:9px 10px; border:0; border-radius:var(--irlix-radius-sm); background:transparent; color:var(--irlix-color-text); font-size:var(--irlix-font-size-caption); text-align:left; line-height:1.3; cursor:pointer; }
+.ui-action-menu__panel.irlix-ui > button { display:block; width:100%; padding:8px 10px; border:0; border-radius:var(--irlix-radius-sm); background:transparent; color:var(--irlix-color-text); font-family:var(--irlix-font-sans); font-size:var(--irlix-font-size-caption); font-weight:400; text-align:left; line-height:1.35; cursor:pointer; }
 .ui-action-menu__panel > button:hover { background:var(--irlix-color-surface-muted); }
 .ui-action-menu__panel > button:focus-visible { outline:2px solid var(--irlix-color-primary); outline-offset:-2px; }
 .ui-action-menu__panel > button.ui-action-menu__danger { color:var(--irlix-status-danger-text); }
