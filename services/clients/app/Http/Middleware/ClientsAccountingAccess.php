@@ -405,6 +405,21 @@ class ClientsAccountingAccess
             }
             $payload['data']['clients'] = array_map(fn ($row) => [...$row, 'can_manage' => $ownsClientManage((int) $row['id'])], $payload['data']['clients'] ?? []);
             $payload['data']['reportingPeriods'] = $this->accessResolver->allows($access, 'reports.view') ? array_values(array_filter($payload['data']['reportingPeriods'] ?? [], fn ($row) => $ownsClientView((int) $row['client_id']))) : [];
+            // Use the independently granted leads.view scope when projecting
+            // lead relations in contacts and the leads registry. An account
+            // manager may see clients/contacts without any lead permissions.
+            $leadViewIds = $this->accessResolver->allows($access, 'leads.view')
+                ? $employeeIdsForPermission('leads.view') : [];
+            $visibleLeadIds = [];
+            if ($this->accessResolver->allows($access, 'contacts.view') && $leadViewIds !== []) {
+                $visibleLeadIds = DB::table('leads')
+                    ->when($leadViewIds !== null,
+                        fn ($query) => $query->whereIn('responsible_employee_id', $leadViewIds))
+                    ->pluck('id')->map(fn ($leadId) => (int) $leadId)->all();
+            }
+            $visibleLeadSet = array_fill_keys($visibleLeadIds, true);
+            $ownsVisibleLead = static fn (int $leadId): bool => isset($visibleLeadSet[$leadId]);
+
             if ($this->accessResolver->allows($access, 'contacts.view')) {
                 $contacts = array_map(function ($row) use ($ownsClientView, $ownsVisibleLead) {
                     $row['relations'] = array_values(array_filter($row['relations'] ?? [], fn ($relation) =>
