@@ -49,8 +49,13 @@ jobs:
             -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE' | python3 scripts/ci/clients_purge_log_summary.py
           set -euo pipefail
           cd /opt/irlix-services
-          docker compose logs --no-color --since 168h --tail 6000 clients 2>&1 || true
-          docker compose exec -T clients sh -c 'tail -n 4000 storage/logs/laravel.log' 2>&1 || true
+          id="$(docker ps -q --filter label=com.docker.compose.service=clients | head -n 1)"
+          if [ -z "$id" ]; then
+            echo 'clients_container=missing'
+            exit 3
+          fi
+          docker logs --since 168h --tail 6000 "$id" 2>&1 || true
+          docker exec "$id" sh -c 'tail -n 4000 storage/logs/laravel.log' 2>&1 || true
           REMOTE
 
       - name: Rehearse Clients employee 14 purge without committing changes
@@ -69,7 +74,12 @@ jobs:
             -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           cd /opt/irlix-services
-          docker compose exec -T clients php /dev/stdin <<'PHP'
+          id="$(docker ps -q --filter label=com.docker.compose.service=clients | head -n 1)"
+          if [ -z "$id" ]; then
+            echo 'clients_container=missing'
+            exit 3
+          fi
+          docker exec -i "$id" php /dev/stdin <<'PHP'
           <?php
           ini_set('display_errors', '0');
           error_reporting(0);
