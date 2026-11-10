@@ -246,7 +246,7 @@ const provisionKeycloak = async () => {
     await load(); emit('updated');
     onboardingMessage.value = payload?.meta?.onboarding_email_status === 'sent'
       ? 'Доступ Keycloak создан и письмо для установки пароля отправлено.'
-      : 'Доступ Keycloak создан. Письмо для установки пароля не отправлено — проверьте статус и отправьте письмо повторно.';
+      : 'Доступ Keycloak создан. Письмо для установки пароля не отправлено — проверьте статус и отправьте письмо для смены пароля.';
   } catch (e) { error.value = e.message; await load(); }
   finally { provisioningKeycloak.value = false; }
 };
