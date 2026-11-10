@@ -77,7 +77,7 @@ $check($db->table('employees')->where('id',8)->value('onboarding_email_status')!
 
 $failedEmail=false; $restoreFailure=true;
 try { $service->sendPasswordSetup(8); throw new RuntimeException('Restore failure unexpectedly accepted'); }
-catch (RuntimeException $e) { $check(str_contains($e->getMessage(),'restoration failed'), 'Failed restoration not reported'); }
+catch (RuntimeException $e) { $check(str_contains($e->getMessage(),'restoration failed'), 'Failed restoration not reported: '.$e->getMessage()); }
 $check($db->table('employees')->where('id',8)->value('onboarding_email_status')!== 'sent','Failed restoration accepted as sent');
 
 echo "Keycloak onboarding corporate email restoration: PASS\n";
