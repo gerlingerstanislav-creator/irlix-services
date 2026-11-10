@@ -24,19 +24,51 @@ class EmployeeOnboardingService
         $current = Http::withToken($token)->acceptJson()->timeout(8)->get($userUrl);
         if (!$current->successful()) throw new RuntimeException($this->keycloakError('Keycloak user lookup failed', $current));
 
+        // Keycloak executes the password-setup email against the user's current
+        // address. The recipient is personal_email, but the authoritative login
+        // email is work_email. Never leave the temporary delivery address as the
+        // authentication email (the previous implementation did).
         $representation = $current->json() ?: [];
+        $originalVerified = (bool) ($representation['emailVerified'] ?? false);
+        $corporateEmail = (string) $employee->work_email;
+        if ($corporateEmail === '') {
+            throw new RuntimeException('Corporate email is required for onboarding');
+        }
         $representation['email'] = $employee->personal_email;
         $representation['emailVerified'] = false;
-        $representation['requiredActions'] = array_values(array_unique([...(array) ($representation['requiredActions'] ?? []), 'UPDATE_PASSWORD']));
+        $representation['requiredActions'] = array_values(array_unique([
+            ...(array) ($representation['requiredActions'] ?? []), 'UPDATE_PASSWORD',
+        ]));
         $updated = Http::withToken($token)->acceptJson()->timeout(8)->put($userUrl, $representation);
-        if ($updated->status() !== 204) throw new RuntimeException($this->keycloakError('Keycloak onboarding email update failed', $updated));
+        if ($updated->status() !== 204) {
+            throw new RuntimeException($this->keycloakError('Keycloak onboarding email update failed', $updated));
+        }
 
-        $clientId = rawurlencode((string) env('KEYCLOAK_CLIENT_ID', 'irlix-services-web'));
-        $redirect = rawurlencode(rtrim((string) env('IRLIX_PUBLIC_URL', 'http://192.168.90.100'), '/').'/');
-        $lifespan = max(300, (int) env('ONBOARDING_LINK_LIFESPAN', 86400));
-        $actionUrl = "{$userUrl}/execute-actions-email?client_id={$clientId}&redirect_uri={$redirect}&lifespan={$lifespan}";
-        $sent = Http::withToken($token)->acceptJson()->timeout(12)->put($actionUrl, ['UPDATE_PASSWORD']);
-        if ($sent->status() !== 204) throw new RuntimeException($this->keycloakError('Keycloak onboarding email failed', $sent));
+        try {
+            $clientId = rawurlencode((string) env('KEYCLOAK_CLIENT_ID', 'irlix-services-web'));
+            $redirect = rawurlencode(rtrim((string) env('IRLIX_PUBLIC_URL', 'http://192.168.90.100'), '/').'/');
+            $lifespan = max(300, (int) env('ONBOARDING_LINK_LIFESPAN', 86400));
+            $actionUrl = "{$userUrl}/execute-actions-email?client_id={$clientId}&redirect_uri={$redirect}&lifespan={$lifespan}";
+            $sent = Http::withToken($token)->acceptJson()->timeout(12)->put($actionUrl, ['UPDATE_PASSWORD']);
+            if ($sent->status() !== 204) {
+                throw new RuntimeException($this->keycloakError('Keycloak onboarding email failed', $sent));
+            }
+        } finally {
+            // Even if SMTP fails or Keycloak times out, recover the corporate
+            // identity. If recovery fails the onboarding operation fails too;
+            // the UI must not report delivery success for a divergent identity.
+            $representation['email'] = $corporateEmail;
+            $representation['emailVerified'] = $originalVerified
+                && strcasecmp((string) ($current->json('email') ?? ''), $corporateEmail) === 0;
+            $restored = Http::withToken($token)->acceptJson()->timeout(8)->put($userUrl, $representation);
+            if ($restored->status() !== 204) {
+                throw new RuntimeException($this->keycloakError('Keycloak corporate email restoration failed', $restored));
+            }
+            $verified = Http::withToken($token)->acceptJson()->timeout(8)->get($userUrl);
+            if (!$verified->successful() || strcasecmp((string) $verified->json('email'), $corporateEmail) !== 0) {
+                throw new RuntimeException('Keycloak corporate email restoration could not be verified');
+            }
+        }
 
         Employee::query()->whereKey($employeeId)->update([
             'onboarding_email_status' => 'sent',
