@@ -6,7 +6,7 @@ declare(strict_types=1);
 // profile reconciliation contract without touching any external service.
 require __DIR__.'/../vendor/autoload.php';
 
-use App\Support\KeycloakAuthorizationSync;
+use App\Support\KeycloakCorporateProfileSync;
 use Illuminate\Container\Container;
 use Illuminate\Database\Capsule\Manager;
 use Illuminate\Database\Eloquent\Model;
@@ -49,7 +49,7 @@ $factory->fake(function($request)use(&$user,&$operations,$factory){
  throw new RuntimeException('Unexpected Keycloak test request: '.$method);
 });
 $check=static fn(bool $valid,string $message)=>$valid ?: throw new RuntimeException($message);
-$sync=new KeycloakAuthorizationSync();
+$sync=new KeycloakCorporateProfileSync();
 $sync->reconcile(17);
 $check($user['synthetic-sub']['username']==='synthetic.current','Keycloak login did not follow Employees');
 $check($user['synthetic-sub']['email']==='synthetic.current@irlix.ru','Keycloak email did not follow Employees');
