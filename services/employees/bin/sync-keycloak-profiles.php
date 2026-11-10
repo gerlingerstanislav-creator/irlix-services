@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 use App\Support\KeycloakCorporateProfileSync;
+use App\Models\KeycloakProfileSync;
 use Illuminate\Contracts\Console\Kernel;
-use Illuminate\Support\Facades\DB;
 
 require __DIR__.'/../vendor/autoload.php';
 $app = require __DIR__.'/../bootstrap/app.php';
@@ -20,17 +20,17 @@ $sync = new KeycloakCorporateProfileSync();
 do {
     try {
         // Recover a claim interrupted by a container restart.
-        DB::table('keycloak_profile_sync')->where('status', 'processing')
+        KeycloakProfileSync::query()->where('status', 'processing')
             ->where('updated_at', '<', now()->subMinutes(5))
             ->update(['status' => 'retry', 'available_at' => now()]);
 
-        $batch = DB::table('keycloak_profile_sync')
+        $batch = KeycloakProfileSync::query()
             ->whereIn('status', ['pending', 'retry'])
             ->where('available_at', '<=', now())
             ->orderBy('available_at')->limit(20)->get();
 
         foreach ($batch as $entry) {
-            $where = static fn () => DB::table('keycloak_profile_sync')
+            $where = static fn () => KeycloakProfileSync::query()
                 ->where('employee_id', $entry->employee_id)
                 ->where('version', $entry->version);
             $claimed = $where()->whereIn('status', ['pending', 'retry'])
