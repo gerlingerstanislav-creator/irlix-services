@@ -39,6 +39,7 @@ COPY routes/web.php /app/routes/web.php
 COPY bootstrap/app.php /app/bootstrap/app.php
 COPY bin/publish-events.php /app/bin/publish-events.php
 COPY bin/sync-authorization.php /app/bin/sync-authorization.php
+COPY bin/sync-keycloak-profiles.php /app/bin/sync-keycloak-profiles.php
 COPY bin/authz-status.php /app/bin/authz-status.php
 COPY bin/authz-preflight.php /app/bin/authz-preflight.php
 COPY bin/authz-export.php /app/bin/authz-export.php
@@ -102,6 +103,7 @@ RUN find /app/app/Models /app/app/Services /app/app/Http/Controllers -name '*.ph
     && php -l /app/app/Support/StaffPositionImporter.php \
     && php -l /app/bin/publish-events.php \
     && php -l /app/bin/sync-authorization.php \
+    && php -l /app/bin/sync-keycloak-profiles.php \
     && php -l /app/bin/authz-status.php \
     && php -l /app/bin/authz-preflight.php \
     && php -l /app/bin/authz-export.php \
