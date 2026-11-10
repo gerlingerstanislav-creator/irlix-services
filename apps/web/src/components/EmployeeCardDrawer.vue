@@ -15,6 +15,9 @@ const props = defineProps({
 const emit = defineEmits(['close', 'updated']);
 const loading = ref(true); const error = ref(''); const detail = ref(null); const activeTab = ref('info');
 const salaryVisible = ref(false);
+const assignedRoles = ref([]);
+const rolesLoading = ref(false);
+const rolesError = ref('');
 const editField = ref(null); const editValue = ref(''); const actionModal = ref(null); const lifecycleMode = ref(null);
 const deleting = ref(false); const resendingOnboarding = ref(false); const provisioningKeycloak = ref(false); const onboardingMessage = ref('');
 const drawerWidth = ref(690);
@@ -106,6 +109,16 @@ const request = async (url, options = {}) => {
   }
   return payload;
 };
+const loadRoles = async () => {
+  if (!isPlatformAdmin.value) return;
+  rolesLoading.value = true; rolesError.value = '';
+  try {
+    const payload = await request(`/api/employees/access/roles/employee/${props.employeeId}`);
+    assignedRoles.value = Array.isArray(payload.data) ? payload.data : [];
+  } catch (e) { rolesError.value = e.message; assignedRoles.value = []; }
+  finally { rolesLoading.value = false; }
+};
+const openRoles = () => { if (!isPlatformAdmin.value) return; activeTab.value = 'roles'; loadRoles(); };
 const load = async () => {
   loading.value = true; error.value = '';
   try {
@@ -113,6 +126,7 @@ const load = async () => {
     detail.value = payload.data;
     salaryVisible.value = payload.meta?.salary_visible ?? Boolean(props.access.permissions?.['employees.salary.read']);
     if (!canReadSalary.value && activeTab.value === 'salary') activeTab.value = 'info';
+    if (!isPlatformAdmin.value && activeTab.value === 'roles') activeTab.value = 'info';
   } catch (e) { error.value = e.message; }
   finally { loading.value = false; }
 };
@@ -299,7 +313,7 @@ const stopResize = () => { document.removeEventListener('pointermove', resizeMov
 const startResize = (event) => { resizeStartX = event.clientX; resizeStartWidth = drawerWidth.value; document.body.classList.add('employee-drawer-resizing'); document.addEventListener('pointermove', resizeMove); document.addEventListener('pointerup', stopResize); };
 
 watch(() => props.employeeId, () => {
-  activeTab.value = 'info';
+  activeTab.value = 'info'; assignedRoles.value = []; rolesError.value = '';
   load();
 });
 onMounted(load);
@@ -314,7 +328,7 @@ onBeforeUnmount(stopResize);
     <div v-if="loading" class="employee-card-loading">Загрузка…</div>
     <template v-else-if="employee">
       <section class="employee-card-hero"><div class="employee-avatar">♙</div><div><h2>{{ shortEmployeeName(employee) }}</h2><p>{{ employee.work_email || 'Рабочая почта не указана' }}</p></div><div><UiBadge :tone="employee.employment_status === 'Трудоустроен' ? 'success' : 'neutral'">{{ employee.employment_status }}</UiBadge></div></section>
-      <nav class="employee-card-tabs" :class="canReadSalary ? 'three' : 'two'"><button :class="{ active: activeTab === 'info' }" @click="activeTab='info'">♙ Инфо</button><button :class="{ active: activeTab === 'employment' }" @click="activeTab='employment'">▣ ТУ</button><button v-if="canReadSalary" :class="{ active: activeTab === 'salary' }" @click="activeTab='salary'">♙ Зарплаты</button></nav>
+      <nav class="employee-card-tabs" :style="{ gridTemplateColumns: `repeat(${2 + Number(canReadSalary) + Number(isPlatformAdmin)}, minmax(0, 1fr))` }"><button :class="{ active: activeTab === 'info' }" @click="activeTab='info'">♙ Инфо</button><button :class="{ active: activeTab === 'employment' }" @click="activeTab='employment'">▣ ТУ</button><button v-if="canReadSalary" :class="{ active: activeTab === 'salary' }" @click="activeTab='salary'">♙ Зарплаты</button><button v-if="isPlatformAdmin" :class="{ active: activeTab === 'roles' }" @click="openRoles">Роли</button></nav>
       <div v-if="error" class="employee-card-error">{{ error }}</div>
       <div v-if="onboardingMessage" class="employee-onboarding-note">{{ onboardingMessage }}</div>
 
@@ -353,6 +367,19 @@ onBeforeUnmount(stopResize);
         <h3 class="history-title">Переводы</h3><div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>Подразделение</th><th>Должность</th><th>С</th><th>По</th><th v-if="isPlatformAdmin" class="employee-history-actions"></th></tr></thead><tbody><tr v-for="a in assignments" :key="a.id"><td>{{a.department_name||'—'}}</td><td>{{a.position||'—'}}</td><td>{{date(a.effective_from)}}</td><td>{{date(a.effective_to)}}</td><td v-if="isPlatformAdmin" class="employee-history-actions"><UiButton compact variant="secondary" :aria-label="`Редактировать перевод от ${date(a.effective_from)}`" @click="editAssignment(a)">✎</UiButton></td></tr></tbody></table></div>
       </section>
 
+      <section v-else-if="activeTab === 'roles' && isPlatformAdmin" class="employee-card-content">
+        <p v-if="rolesLoading">Загрузка ролей…</p>
+        <p v-else-if="rolesError" class="employee-form-error" role="alert">{{ rolesError }}</p>
+        <p v-else-if="!assignedRoles.length">Специальные роли не назначены.</p>
+        <div v-else class="employee-history-table">
+          <table class="irlix-data-table"><thead><tr><th>Роль</th><th>Источник</th></tr></thead>
+            <tbody><tr v-for="role in assignedRoles" :key="role.key">
+              <td><strong>{{ role.label }}</strong><small class="employee-role-description">{{ role.description }}</small></td>
+              <td><UiBadge tone="neutral">{{ role.automatic ? 'Оргструктура' : 'Назначена вручную' }}</UiBadge></td>
+            </tr></tbody>
+          </table>
+        </div>
+      </section>
       <section v-else-if="activeTab === 'salary' && canReadSalary" class="employee-card-content">
         <div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>С</th><th>По</th><th>Оклад</th><th>Премия</th><th>Статус</th><th v-if="canManageSalary"></th></tr></thead><tbody><tr v-for="s in salaries" :key="s.id"><td>{{date(s.effective_from)}}</td><td>{{date(s.effective_to)}}</td><td>{{money(s.gross_salary)}}</td><td>{{money(s.bonus)}}</td><td><UiBadge :tone="s.effective_to ? 'neutral' : 'success'">{{s.status}}</UiBadge></td><td v-if="canManageSalary"><UiButton variant="danger" compact @click="removeSalary(s.id)">×</UiButton></td></tr></tbody></table></div>
       </section>
