@@ -11,7 +11,8 @@ test('shared UiActionMenu teleports above scroll panels and uses anchored popove
   assert.match(actionMenu, /useAnchoredPopover\(trigger, menu, \{ width: 272, align: 'right' \}\)/);
   assert.match(actionMenu, /<Teleport to="body">/);
   assert.match(actionMenu, /aria-haspopup="menu"/);
-  assert.match(actionMenu, /aria-hidden="true">⋮<\/span>/);
+  assert.match(actionMenu, /class="ui-action-menu__icon"/);
+  assert.match(actionMenu, /<circle cx="12" cy="12" r="1\.55"/);
   assert.match(actionMenu, /role="menu"/);
   assert.match(actionMenu, /role="menuitem"/);
   assert.match(actionMenu, /close\(true\);\s+emit\('select', item.id\)/);
@@ -26,4 +27,12 @@ test('shared menu supports keyboard actions, disabled and danger semantics', () 
   assert.match(actionMenu, /:disabled="item.disabled"/);
   assert.match(actionMenu, /item.danger/);
   assert.match(example, /<UiActionMenu/);
+});
+
+test('shared action menu uses design-system typography and compact vector trigger', () => {
+  assert.match(actionMenu, /ui-action-menu__icon \{ width:17px; height:17px/);
+  assert.match(actionMenu, /\.ui-action-menu__panel\.irlix-ui > button/);
+  assert.match(actionMenu, /font-family:var\(--irlix-font-sans\)/);
+  assert.match(actionMenu, /font-size:var\(--irlix-font-size-caption\)/);
+  assert.doesNotMatch(actionMenu, /font-size:24px/);
 });
