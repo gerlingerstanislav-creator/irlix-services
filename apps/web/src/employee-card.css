@@ -41,6 +41,7 @@
 .employee-card-tabs button { min-height:35px; border:0; border-radius:7px; background:transparent; color:var(--irlix-color-text); font-size:var(--irlix-font-size-caption); font-weight:650; cursor:pointer; padding:6px 8px; }
 .employee-card-tabs button.active { background:var(--irlix-color-surface); color:var(--irlix-color-text); box-shadow:0 1px 3px color-mix(in srgb, var(--irlix-color-shadow-base) 8%, transparent); }
 .employee-card-content { min-width:0; padding:14px 22px 30px; }
+.employee-role-description { display:block; margin-top:3px; color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); font-weight:400; }
 .employee-identity-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 12px; }
 .lifecycle-form { display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); align-items:end; gap:7px; margin:8px 0 14px; padding:9px; border:1px solid var(--irlix-color-border); border-radius:8px; background:var(--irlix-color-surface-muted); }
 .employee-info-view h3 { margin:14px 0 6px; font-size:var(--irlix-font-size-body); }

@@ -23,6 +23,58 @@ final class AccessRoleController extends Controller
         return response()->json(['data' => $this->roles->catalogWithMembers()]);
     }
 
+    /**
+     * Current role projection from Employees, not from potentially stale Keycloak tokens.
+     * Organizational claims and functional labels are descriptive; they do not
+     * grant permissions or copy assignments into the special-role table.
+     */
+    public function employeeRoles(Request $request, int $employee): JsonResponse
+    {
+        if (!$this->isPlatformAdmin($request)) {
+            return response()->json(['message' => 'Доступно только администратору платформы.'], 403);
+        }
+        $person = \App\Models\Employee::query()->whereKey($employee)->first();
+        if (!$person) return response()->json(['message' => 'Employee not found'], 404);
+
+        $departments = \App\Models\Department::query()->get()->all();
+        $assigned = \App\Models\EmployeeAccessRole::query()->where('employee_id', $employee)
+            ->pluck('role')->filter(static fn ($role) => SpecialRoles::exists((string) $role))->all();
+        $labels = \App\Support\RoleLabels::canonicalRoleCatalog($departments);
+        $claims = \App\Support\RoleLabels::publishedRoleClaims($person, $departments, $assigned);
+        $legacy = \App\Support\RoleLabels::resolve($person, $departments, $assigned);
+        $items = [];
+        foreach ($claims as $claim) {
+            $role = str_starts_with($claim, 'special:') ? substr($claim, 8) : null;
+            $definition = $role ? (SpecialRoles::catalog()[$role] ?? []) : [];
+            $items[] = [
+                'key' => $claim,
+                'label' => $labels[$claim] ?? $claim,
+                'description' => $definition['description'] ?? '',
+                'source' => str_starts_with($claim, 'org:') ? 'Подразделение'
+                    : (str_starts_with($claim, 'head:') ? 'Руководство'
+                        : (SpecialRoles::isAutomatic((string) $role) ? 'Оргструктура' : 'Назначена вручную')),
+            ];
+        }
+        // Platform tester is intentionally omitted from JWT V2 business grants,
+        // but administrators must still see its actual manual assignment.
+        foreach ($assigned as $specialRole) {
+            $key = 'special:'.$specialRole;
+            if (in_array($key, array_column($items, 'key'), true)) continue;
+            $definition = SpecialRoles::catalog()[$specialRole];
+            $items[] = ['key' => $key, 'label' => $definition['label'],
+                'description' => $definition['description'],
+                'source' => 'Назначена вручную'];
+        }
+        foreach (['account-manager' => 'Аккаунт-менеджер', 'sales-manager' => 'Менеджер по продажам'] as $key => $label) {
+            if (in_array($key, $legacy, true)) {
+                $items[] = ['key' => 'functional:'.$key, 'label' => $label,
+                    'description' => 'Функциональная роль определяется текущими данными сотрудника.',
+                    'source' => 'Функциональная'];
+            }
+        }
+        return response()->json(['data' => $items]);
+    }
+
     public function assign(Request $request, string $role, int $employee): JsonResponse
     {
         if (!SpecialRoles::exists($role)) return response()->json(['message' => 'Unknown special role'], 404);
