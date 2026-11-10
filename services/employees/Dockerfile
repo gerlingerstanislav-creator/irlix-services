@@ -18,6 +18,7 @@ COPY app/Support/EmployeesAccess.php /app/app/Support/EmployeesAccess.php
 COPY app/Support/PermissionScopePolicy.php /app/app/Support/PermissionScopePolicy.php
 COPY app/Support/RoleLabels.php /app/app/Support/RoleLabels.php
 COPY app/Support/KeycloakAuthorizationSync.php /app/app/Support/KeycloakAuthorizationSync.php
+COPY app/Support/KeycloakCorporateProfileSync.php /app/app/Support/KeycloakCorporateProfileSync.php
 COPY app/Support/SpecialRoles.php /app/app/Support/SpecialRoles.php
 COPY app/Support/ClientsProductionHeadAliases.php /app/app/Support/ClientsProductionHeadAliases.php
 COPY app/Support/BrandbookGate.php /app/app/Support/BrandbookGate.php
@@ -95,6 +96,7 @@ RUN find /app/app/Models /app/app/Services /app/app/Http/Controllers -name '*.ph
     && php -l /app/app/Support/PermissionScopePolicy.php \
     && php -l /app/app/Support/RoleLabels.php \
     && php -l /app/app/Support/KeycloakAuthorizationSync.php \
+    && php -l /app/app/Support/KeycloakCorporateProfileSync.php \
     && php -l /app/app/Support/SpecialRoles.php \
     && php -l /app/app/Support/ClientsProductionHeadAliases.php \
     && php -l /app/app/Support/StoragePilotGate.php \
