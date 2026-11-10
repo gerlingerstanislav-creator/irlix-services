@@ -370,12 +370,12 @@ onBeforeUnmount(stopResize);
       <section v-else-if="activeTab === 'roles' && isPlatformAdmin" class="employee-card-content">
         <p v-if="rolesLoading">Загрузка ролей…</p>
         <p v-else-if="rolesError" class="employee-form-error" role="alert">{{ rolesError }}</p>
-        <p v-else-if="!assignedRoles.length">Специальные роли не назначены.</p>
+        <p v-else-if="!assignedRoles.length">Роли не назначены.</p>
         <div v-else class="employee-history-table">
           <table class="irlix-data-table"><thead><tr><th>Роль</th><th>Источник</th></tr></thead>
             <tbody><tr v-for="role in assignedRoles" :key="role.key">
               <td><strong>{{ role.label }}</strong><small class="employee-role-description">{{ role.description }}</small></td>
-              <td><UiBadge tone="neutral">{{ role.automatic ? 'Оргструктура' : 'Назначена вручную' }}</UiBadge></td>
+              <td><UiBadge tone="neutral">{{ role.source }}</UiBadge></td>
             </tr></tbody>
           </table>
         </div>
