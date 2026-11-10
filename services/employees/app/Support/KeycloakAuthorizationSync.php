@@ -116,50 +116,6 @@ final class KeycloakAuthorizationSync
         $userId = rawurlencode((string) $employee->keycloak_user_id);
         $user = $this->api('GET', "/users/{$userId}")->json();
         if (!is_array($user) || !isset($user['id'])) throw new RuntimeException('Keycloak employee identity not found');
-        // Employees owns the corporate identity fields. This worker also runs
-        // after direct SQL imports via the Employees trigger; browser-only
-        // synchronisation would silently miss migrated login/email changes.
-        // Never locate users by email: only the already verified Keycloak sub.
-        if ($employee->account_type === Employee::TYPE_EMPLOYEE) {
-            $expected = [
-                'username' => (string) $employee->login,
-                'email' => (string) $employee->work_email,
-                'firstName' => (string) $employee->first_name,
-                'lastName' => (string) $employee->last_name,
-            ];
-            if ($expected['username'] === '' || $expected['email'] === ''
-                || strcasecmp($expected['email'], $expected['username'].'@irlix.ru') !== 0) {
-                throw new RuntimeException('Employees corporate identity fields require reconciliation');
-            }
-            $emailChanged = (string) ($user['email'] ?? '') !== $expected['email'];
-            $changed = false;
-            foreach ($expected as $field => $value) {
-                if ((string) ($user[$field] ?? '') !== $value) {
-                    $user[$field] = $value;
-                    $changed = true;
-                }
-            }
-            if ($changed) {
-                // A verified email belongs to its prior address. Do not keep
-                // that verification bit when moving to another corporate email.
-                if ($emailChanged) {
-                    $user['emailVerified'] = false;
-                }
-                $updated = $this->raw('PUT', "/users/{$userId}", $user);
-                if ($updated->status() === 409) {
-                    throw new RuntimeException('Keycloak corporate login/email belongs to another identity; explicit reconciliation required');
-                }
-                if ($updated->status() !== 204) {
-                    throw new RuntimeException('Keycloak corporate profile sync failed with HTTP '.$updated->status());
-                }
-                $confirmed = $this->api('GET', "/users/{$userId}")->json();
-                foreach ($expected as $field => $value) {
-                    if (!is_array($confirmed) || (string) ($confirmed[$field] ?? '') !== $value) {
-                        throw new RuntimeException('Keycloak corporate identity read-back mismatch');
-                    }
-                }
-            }
-        }
         $attrs = is_array($user['attributes'] ?? null) ? $user['attributes'] : [];
         // Legacy Keycloak profile markers are read-only compatibility input.
         // Keycloak 26 can reject unmanaged user-profile attributes with HTTP 400.
