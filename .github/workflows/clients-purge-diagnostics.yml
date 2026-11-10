@@ -52,3 +52,47 @@ jobs:
           docker compose logs --no-color --since 168h --tail 6000 clients 2>&1 || true
           docker compose exec -T clients sh -c 'tail -n 4000 storage/logs/laravel.log' 2>&1 || true
           REMOTE
+
+      - name: Rehearse Clients employee 14 purge without committing changes
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          # Preflight runs the production purge SQL under a rollback-only outer
+          # transaction. No CV filesystem cleanup, Keycloak or remote calls.
+          # Output must be strictly allowlisted; raw SQL, messages and personal
+          # data never reach the public Actions log.
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=12 \
+            -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /opt/irlix-services
+          docker compose exec -T clients php /dev/stdin <<'PHP'
+          <?php
+          ini_set('display_errors', '0');
+          error_reporting(0);
+          try {
+              require '/app/vendor/autoload.php';
+              $app = require '/app/bootstrap/app.php';
+              $app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap();
+              (new App\\Services\\EmployeePurgeService())->purge(14, '', true);
+              echo "employee_id=14 preflight=PASS rollback_only=true\\n";
+          } catch (Throwable $error) {
+              $type = (new ReflectionClass($error))->getShortName();
+              $type = preg_match('/^[a-zA-Z][a-zA-Z0-9]{0,70}$/', $type) ? $type : 'Unknown';
+              $code = (string) $error->getCode();
+              $code = preg_match('/^[0-9A-Z]{5}$/', $code) ? $code : 'none';
+              $message = $error->getMessage();
+              preg_match('/SQLSTATE\\[([0-9A-Z]{5})\\]/', $message, $sqlstate);
+              preg_match('/constraint ["\\\x27]([a-z][a-z0-9_]{0,79})["\\\x27]/i', $message, $constraint);
+              $state = $sqlstate[1] ?? 'none';
+              $name = $constraint[1] ?? 'none';
+              $file = basename($error->getFile());
+              $file = preg_match('/^[a-zA-Z][a-zA-Z0-9_.-]{0,79}$/', $file) ? $file : 'unknown';
+              echo "employee_id=14 preflight=FAIL class=$type code=$code sqlstate=$state constraint=$name file=$file line=".intval($error->getLine())."\\n";
+              exit(0); // Expected diagnostic failure, not a workflow failure.
+          }
+          PHP
+          REMOTE
