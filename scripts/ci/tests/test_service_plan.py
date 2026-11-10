@@ -61,7 +61,7 @@ class PlannerTests(unittest.TestCase):
     def test_backend_aliases_share_one_build(self):
         plan = self.plan(["services/employees/routes/api.php"])
         self.assertEqual(self.ids(plan), {"employees"})
-        self.assertEqual(plan["services"], ["employees", "employees-authorization-sync", "employees-events"])
+        self.assertEqual(plan["services"], ["employees", "employees-authorization-sync", "employees-events", "employees-profile-sync"])
         self.assertEqual(plan["migrations"], ["employees"])
 
     def test_diagnostics_do_not_trigger_release(self):
