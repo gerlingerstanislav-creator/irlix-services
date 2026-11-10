@@ -15,6 +15,18 @@ class EmployeeOnboardingService
         if (!$employee->keycloak_user_id) throw new RuntimeException('Keycloak identity is not provisioned');
         if (!$employee->personal_email) throw new RuntimeException('Personal email is required for onboarding');
 
+        // This email must temporarily become the Keycloak delivery address.
+        // Claim the operation so the authorization worker does not concurrently
+        // restore work_email before Keycloak sends the action-link message.
+        $claimed = Employee::query()->whereKey($employeeId)
+            ->where(function ($query): void {
+                $query->where('onboarding_email_status', '<>', 'sending')
+                    ->orWhereNull('onboarding_email_status')
+                    ->orWhere('updated_at', '<', now()->subMinutes(2));
+            })
+            ->update(['onboarding_email_status' => 'sending', 'updated_at' => now()]);
+        if ($claimed !== 1) throw new RuntimeException('Onboarding email delivery is already running');
+
         $base = rtrim((string) env('KEYCLOAK_URL', 'http://keycloak:8080/keycloak/auth'), '/');
         $realm = (string) env('KEYCLOAK_REALM', 'irlix');
         $token = $this->adminToken($base);
