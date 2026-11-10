@@ -23,6 +23,36 @@ final class AccessRoleController extends Controller
         return response()->json(['data' => $this->roles->catalogWithMembers()]);
     }
 
+    /**
+     * Read-only employee role projection for the administrative employee card.
+     * Do not return the full role member directory to this endpoint.
+     */
+    public function employeeRoles(Request $request, int $employee): JsonResponse
+    {
+        if (!$this->isPlatformAdmin($request)) {
+            return response()->json(['message' => 'Доступно только администратору платформы.'], 403);
+        }
+        if (!$this->roles->employeeExists($employee)) {
+            return response()->json(['message' => 'Employee not found'], 404);
+        }
+
+        $assigned = [];
+        foreach ($this->roles->catalogWithMembers() as $role) {
+            $member = collect($role['members'])->first(
+                static fn ($row) => (int) ($row['id'] ?? 0) === $employee
+            );
+            if (!$member) continue;
+            $assigned[] = [
+                'key' => $role['key'],
+                'label' => $role['label'],
+                'description' => $role['description'],
+                'automatic' => (bool) ($role['automatic'] ?? false),
+                'assigned_at' => $member['created_at'] ?? null,
+            ];
+        }
+        return response()->json(['data' => $assigned]);
+    }
+
     public function assign(Request $request, string $role, int $employee): JsonResponse
     {
         if (!SpecialRoles::exists($role)) return response()->json(['message' => 'Unknown special role'], 404);
