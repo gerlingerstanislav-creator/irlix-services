@@ -32,7 +32,7 @@ BEGIN
   ) VALUES (
       p_employee_id,'pending',1,0,now(),now(),now()
   ) ON CONFLICT (employee_id) DO UPDATE SET
-      status='pending',version=keycloak_profile_sync.version+1,
+      status='pending',version=employees.keycloak_profile_sync.version+1,
       attempts=0,available_at=now(),updated_at=now();
 END;
 $$ LANGUAGE plpgsql;
@@ -41,12 +41,17 @@ CREATE OR REPLACE FUNCTION employees_profile_sync_employee_event() RETURNS trigg
 BEGIN
   IF TG_OP = 'DELETE' THEN
     DELETE FROM employees.keycloak_profile_sync WHERE employee_id=OLD.id;
-  ELSIF NEW.keycloak_user_id IS NOT NULL AND
-    (TG_OP = 'INSERT' OR
-     ROW(OLD.login,OLD.work_email,OLD.first_name,OLD.last_name,OLD.keycloak_user_id)
-       IS DISTINCT FROM
-     ROW(NEW.login,NEW.work_email,NEW.first_name,NEW.last_name,NEW.keycloak_user_id)) THEN
-    PERFORM employees_queue_profile_sync(NEW.id);
+  ELSIF TG_OP = 'INSERT' THEN
+    IF NEW.keycloak_user_id IS NOT NULL THEN
+      PERFORM employees_queue_profile_sync(NEW.id);
+    END IF;
+  ELSIF TG_OP = 'UPDATE' THEN
+    IF NEW.keycloak_user_id IS NOT NULL
+      AND ROW(OLD.login,OLD.work_email,OLD.first_name,OLD.last_name,OLD.keycloak_user_id)
+        IS DISTINCT FROM
+          ROW(NEW.login,NEW.work_email,NEW.first_name,NEW.last_name,NEW.keycloak_user_id) THEN
+      PERFORM employees_queue_profile_sync(NEW.id);
+    END IF;
   END IF;
   RETURN NULL;
 END;
