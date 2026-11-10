@@ -9,7 +9,7 @@ foreach([1,2,3]as $id)DB::table('client_members')->insert(['id'=>$id,'client_id'
 DB::table('client_account_delegations')->insert(['client_id'=>2,'to_employee_id'=>5,'starts_at'=>'2026-01-01','ends_at'=>'2026-12-31']);
 Http::fake(['*/self'=>Http::response(['data'=>['id'=>5]]),'*/clients-directory'=>Http::response(['data'=>['employees'=>[['id'=>7,'department_id'=>11]]]])]);
 $resolver=new class extends App\Support\ClientContourAccess {
-    public string $scope='own';public bool $manage=true;public bool $membersView=true;public bool $reportsView=true;public bool $contactsView=true;public array $permissionScopes=[];
+    public string $scope='own';public bool $manage=true;public bool $membersView=true;public bool $reportsView=true;public bool $contactsView=true;public bool $leadsView=true;public array $permissionScopes=[];
     public function resolve(Illuminate\Http\Request $request):array {
         $permissions=[];
         foreach(['clients.view','clients.manage','members.view','members.manage',
@@ -17,7 +17,8 @@ $resolver=new class extends App\Support\ClientContourAccess {
             $permissions[$p]=['allowed'=>(!str_ends_with($p,'manage')||$this->manage)
                 && ($p!=='members.view'||$this->membersView)
                 && ($p!=='reports.view'||$this->reportsView)
-                && ($p!=='contacts.view'||$this->contactsView),
+                && ($p!=='contacts.view'||$this->contactsView)
+                && ($p!=='leads.view'||$this->leadsView),
                 'scope'=>$this->permissionScopes[$p]??$this->scope];
         return ['platform_admin'=>false,'employee'=>['id'=>5],'permissions'=>$permissions,'client_service_permissions'=>$permissions,'department_ids'=>[11],'roles'=>['account-manager']];
     }
@@ -95,6 +96,47 @@ foreach($hidden['data']['clients'] as $client){
         'Client overview leaked specialist commercial terms to a role without members.view');
 }
 $resolver->membersView=true;
+// Regression for production 500: ClientsAccountingAccess overview must define
+// both lead scope variables before processing contacts and leads.
+DB::table('leads')->insert([
+    ['id'=>31,'responsible_employee_id'=>5],
+    ['id'=>32,'responsible_employee_id'=>6],
+]);
+$contactSample = [...$sample, 'contacts'=>[
+    ['id'=>40,'relations'=>[
+        ['entity_type'=>'client','entity_id'=>1],
+        ['entity_type'=>'lead','entity_id'=>31],
+        ['entity_type'=>'lead','entity_id'=>32],
+    ]],
+    ['id'=>41,'relations'=>[['entity_type'=>'lead','entity_id'=>32]]],
+], 'leads'=>[
+    ['id'=>31,'responsible_employee_id'=>5],
+    ['id'=>32,'responsible_employee_id'=>6],
+]];
+$scopedOverview = $guard->handle($overviewRequest,
+    fn() => response()->json(['data'=>$contactSample]))->getData(true)['data'];
+clientCheck(count($scopedOverview['contacts'])===1
+    && count($scopedOverview['contacts'][0]['relations'])===2,
+    'Account overview leaked unrelated lead contacts or discarded own contact');
+clientCheck(count($scopedOverview['leads'])===1
+    && (int)$scopedOverview['leads'][0]['id']===31,
+    'Account overview leaked lead outside own scope');
+// Denying leads.view must not remove permitted client contacts, nor leak
+// other employees' lead contacts or lead list entries.
+$resolver->permissionScopes=['leads.view'=>'none'];
+$resolver->scope='own';
+$resolver->contactsView=true;
+$resolver->membersView=true;
+$resolver->leadsView=false;
+$withoutLeads = $guard->handle($overviewRequest,
+    fn() => response()->json(['data'=>$contactSample]))->getData(true)['data'];
+clientCheck(count($withoutLeads['contacts'])===1
+    && count($withoutLeads['contacts'][0]['relations'])===1
+    && $withoutLeads['contacts'][0]['relations'][0]['entity_type']==='client'
+    && $withoutLeads['leads']===[],
+    'Denied leads.view leaked lead data or hid allowed client contact');
+$resolver->permissionScopes=[];
+$resolver->leadsView=true;
 $own = $guard->handle($overviewRequest,fn() => response()->json(['data'=>$sample]))->getData(true);
 clientCheck(count($own['data']['clients'][0]['client_members'])===1,
     'Account Manager with members.view lost specialist card data');
