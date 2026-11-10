@@ -42,7 +42,7 @@ $factory->fake(function($request)use(&$user,&$operations,$factory){
    if($method==='PUT'){
      $operations[]=['id'=>$uid,'payload'=>$request->data()];
      if($uid==='synthetic-conflict')return $factory->response(['error'=>'conflict'],409);
-     $user[$uid]=$request->data();
+     $user[$uid]=array_replace($user[$uid],$request->data());
      return $factory->response('',204);
    }
  }
