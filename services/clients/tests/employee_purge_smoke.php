@@ -48,7 +48,10 @@ foreach ($columns as $table => $names) {
         if ($table === 'project_members') $t->foreign('project_id')->references('id')->on('projects')->restrictOnDelete();
         if ($table === 'member_terms') $t->foreign('project_member_id')->references('id')->on('project_members')->restrictOnDelete();
         if ($table === 'reporting_period_approved_hours') $t->foreign('member_term_id')->references('id')->on('member_terms')->cascadeOnDelete();
-        $t->timestamps();
+        // Match production event/audit schemas: these tables do not
+        // expose updated_at, so a purge that synthesizes it must fail here.
+        if ($table === 'client_contour_permission_audit') $t->timestamp('created_at')->nullable();
+        elseif ($table !== 'connection_attempt_events') $t->timestamps();
     });
 }
 DB::table('clients')->insert([['id'=>10, 'account_employee_id'=>7, 'sales_employee_id'=>7],
@@ -85,6 +88,8 @@ DB::table('reporting_period_history')->insert(['author'=>'synthetic.employee']);
 DB::table('reporting_period_approved_hours')->insert(['reporting_period_id'=>null,
     'member_term_id'=>201,'updated_by'=>'synthetic.employee']);
 DB::table('lead_events')->insert(['created_by_employee_id'=>7]);
+DB::table('client_contour_permission_audit')->insert(['actor_employee_id'=>7]);
+DB::table('connection_attempt_events')->insert(['actor_employee_id'=>7]);
 DB::table('client_account_delegations')->insert(['from_employee_id'=>7, 'to_employee_id'=>8, 'created_by_employee_id'=>7]);
 DB::table('reporting_periods')->insert(['client_id'=>10, 'period_start'=>'2026-01-01',
     'period_end'=>'2026-01-31', 'status'=>'Новый']);
@@ -140,6 +145,9 @@ clientCheck(DB::table('clients')->where('id',10)->value('sales_employee_id')===n
     'Sales reference remains');
 clientCheck(DB::table('lead_events')->first()->created_by_employee_id===null,
     'Foreign history actor remains');
+clientCheck(DB::table('client_contour_permission_audit')->first()->actor_employee_id===null
+    && DB::table('connection_attempt_events')->first()->actor_employee_id===null,
+    'Append-only audit/event actor was not anonymized without updated_at');
 clientCheck(DB::table('client_history_events')->first()->created_by_username===null,
     'Foreign authored history was not anonymized');
 clientCheck(DB::table('client_notes')->first()->created_by_username===null
