@@ -198,6 +198,32 @@ services:
       postgres: { condition: service_healthy }
       keycloak: { condition: service_started }
 
+  employees-profile-sync:
+    build: { context: ./services/employees }
+    restart: unless-stopped
+    command: ["php", "bin/sync-keycloak-profiles.php"]
+    environment:
+      APP_NAME: IRLIX Employees Corporate Profile Sync
+      APP_KEY: ${EMPLOYEES_APP_KEY:?Provision server APP_KEY before Docker Compose}
+      APP_PREVIOUS_KEYS: ${EMPLOYEES_APP_PREVIOUS_KEYS:-}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-irlix_services}
+      DB_USERNAME: ${EMPLOYEES_DB_USER:-employees_app}
+      DB_PASSWORD: ${EMPLOYEES_DB_PASSWORD:-employees_local}
+      DB_SEARCH_PATH: employees
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      IRLIX_PROFILE_SYNC_WRITE_ENABLED: ${IRLIX_PROFILE_SYNC_WRITE_ENABLED:-true}
+      KEYCLOAK_URL: http://keycloak:8080/keycloak/auth
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
+      KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-irlix_keycloak_local}
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_started }
+
   employees-events:
     build: { context: ./services/employees }
     restart: unless-stopped

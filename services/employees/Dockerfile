@@ -18,6 +18,7 @@ COPY app/Support/EmployeesAccess.php /app/app/Support/EmployeesAccess.php
 COPY app/Support/PermissionScopePolicy.php /app/app/Support/PermissionScopePolicy.php
 COPY app/Support/RoleLabels.php /app/app/Support/RoleLabels.php
 COPY app/Support/KeycloakAuthorizationSync.php /app/app/Support/KeycloakAuthorizationSync.php
+COPY app/Support/KeycloakCorporateProfileSync.php /app/app/Support/KeycloakCorporateProfileSync.php
 COPY app/Support/SpecialRoles.php /app/app/Support/SpecialRoles.php
 COPY app/Support/ClientsProductionHeadAliases.php /app/app/Support/ClientsProductionHeadAliases.php
 COPY app/Support/BrandbookGate.php /app/app/Support/BrandbookGate.php
@@ -39,6 +40,7 @@ COPY routes/web.php /app/routes/web.php
 COPY bootstrap/app.php /app/bootstrap/app.php
 COPY bin/publish-events.php /app/bin/publish-events.php
 COPY bin/sync-authorization.php /app/bin/sync-authorization.php
+COPY bin/sync-keycloak-profiles.php /app/bin/sync-keycloak-profiles.php
 COPY bin/authz-status.php /app/bin/authz-status.php
 COPY bin/authz-preflight.php /app/bin/authz-preflight.php
 COPY bin/authz-export.php /app/bin/authz-export.php
@@ -71,7 +73,9 @@ COPY tests/specialists_history_smoke.php /app/tests/specialists_history_smoke.ph
 COPY tests/employee_purge_orchestration.php /app/tests/employee_purge_orchestration.php
 COPY tests/employee_local_purge_smoke.php /app/tests/employee_local_purge_smoke.php
 COPY tests/employee_identity_provision_smoke.php /app/tests/employee_identity_provision_smoke.php
-RUN php /app/tests/clients_production_head_aliases.php && php /app/tests/role_labels.php && php /app/tests/inherited_permission_rules.php && php /app/tests/permission_scope_policy.php && php /app/tests/permission_scopes_integration.php && php /app/tests/cv_production_heads_access.php && php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php && php /app/tests/vacations_historical_directory.php && php /app/tests/platform_roles.php && php /app/tests/eloquent_architecture.php && php /app/tests/eloquent_services.php && php /app/tests/layered_workflows.php && php /app/tests/system_accounts_separation.php && php /app/tests/system_accounts_bootstrap.php && php /app/tests/system_accounts_runtime_reconcile.php && php /app/tests/assignment_history_edit.php && php /app/tests/staff_positions_import.php && php /app/tests/specialists_history_smoke.php && php /app/tests/employee_purge_orchestration.php && php /app/tests/employee_local_purge_smoke.php && php /app/tests/employee_identity_provision_smoke.php
+COPY tests/employee_onboarding_email_smoke.php /app/tests/employee_onboarding_email_smoke.php
+COPY tests/employee_keycloak_profile_sync_smoke.php /app/tests/employee_keycloak_profile_sync_smoke.php
+RUN php /app/tests/clients_production_head_aliases.php && php /app/tests/role_labels.php && php /app/tests/inherited_permission_rules.php && php /app/tests/permission_scope_policy.php && php /app/tests/permission_scopes_integration.php && php /app/tests/cv_production_heads_access.php && php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php && php /app/tests/vacations_historical_directory.php && php /app/tests/platform_roles.php && php /app/tests/eloquent_architecture.php && php /app/tests/eloquent_services.php && php /app/tests/layered_workflows.php && php /app/tests/system_accounts_separation.php && php /app/tests/system_accounts_bootstrap.php && php /app/tests/system_accounts_runtime_reconcile.php && php /app/tests/assignment_history_edit.php && php /app/tests/staff_positions_import.php && php /app/tests/specialists_history_smoke.php && php /app/tests/employee_purge_orchestration.php && php /app/tests/employee_local_purge_smoke.php && php /app/tests/employee_identity_provision_smoke.php && php /app/tests/employee_onboarding_email_smoke.php && php /app/tests/employee_keycloak_profile_sync_smoke.php
 RUN find /app/app/Models /app/app/Services /app/app/Http/Controllers -name '*.php' -exec php -l {} \; \
     && php -l /app/routes/api.php \
     && php -l /app/routes/self.php \
@@ -92,6 +96,7 @@ RUN find /app/app/Models /app/app/Services /app/app/Http/Controllers -name '*.ph
     && php -l /app/app/Support/PermissionScopePolicy.php \
     && php -l /app/app/Support/RoleLabels.php \
     && php -l /app/app/Support/KeycloakAuthorizationSync.php \
+    && php -l /app/app/Support/KeycloakCorporateProfileSync.php \
     && php -l /app/app/Support/SpecialRoles.php \
     && php -l /app/app/Support/ClientsProductionHeadAliases.php \
     && php -l /app/app/Support/StoragePilotGate.php \
@@ -100,6 +105,7 @@ RUN find /app/app/Models /app/app/Services /app/app/Http/Controllers -name '*.ph
     && php -l /app/app/Support/StaffPositionImporter.php \
     && php -l /app/bin/publish-events.php \
     && php -l /app/bin/sync-authorization.php \
+    && php -l /app/bin/sync-keycloak-profiles.php \
     && php -l /app/bin/authz-status.php \
     && php -l /app/bin/authz-preflight.php \
     && php -l /app/bin/authz-export.php \
