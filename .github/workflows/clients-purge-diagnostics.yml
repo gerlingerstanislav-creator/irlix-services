@@ -45,7 +45,7 @@ jobs:
           set -euo pipefail
           # Raw logs are only transferred over SSH to this runner and piped to
           # a restrictive formatter. Neither raw text nor SQL bindings are printed.
-          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=12 \\
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=12 \
             -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE' | python3 scripts/ci/clients_purge_log_summary.py
           set -euo pipefail
           cd /opt/irlix-services
