@@ -76,22 +76,22 @@ jobs:
           try {
               require '/app/vendor/autoload.php';
               $app = require '/app/bootstrap/app.php';
-              $app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap();
-              (new App\\Services\\EmployeePurgeService())->purge(14, '', true);
-              echo "employee_id=14 preflight=PASS rollback_only=true\\n";
+              $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+              (new App\Services\EmployeePurgeService())->purge(14, '', true);
+              echo "employee_id=14 preflight=PASS rollback_only=true\n";
           } catch (Throwable $error) {
               $type = (new ReflectionClass($error))->getShortName();
               $type = preg_match('/^[a-zA-Z][a-zA-Z0-9]{0,70}$/', $type) ? $type : 'Unknown';
               $code = (string) $error->getCode();
               $code = preg_match('/^[0-9A-Z]{5}$/', $code) ? $code : 'none';
               $message = $error->getMessage();
-              preg_match('/SQLSTATE\\[([0-9A-Z]{5})\\]/', $message, $sqlstate);
-              preg_match('/constraint ["\\\x27]([a-z][a-z0-9_]{0,79})["\\\x27]/i', $message, $constraint);
+              preg_match('/SQLSTATE\[([0-9A-Z]{5})\]/', $message, $sqlstate);
+              preg_match('/constraint ["\\x27]([a-z][a-z0-9_]{0,79})["\\x27]/i', $message, $constraint);
               $state = $sqlstate[1] ?? 'none';
               $name = $constraint[1] ?? 'none';
               $file = basename($error->getFile());
               $file = preg_match('/^[a-zA-Z][a-zA-Z0-9_.-]{0,79}$/', $file) ? $file : 'unknown';
-              echo "employee_id=14 preflight=FAIL class=$type code=$code sqlstate=$state constraint=$name file=$file line=".intval($error->getLine())."\\n";
+              echo "employee_id=14 preflight=FAIL class=$type code=$code sqlstate=$state constraint=$name file=$file line=".intval($error->getLine())."\n";
               exit(0); // Expected diagnostic failure, not a workflow failure.
           }
           PHP
