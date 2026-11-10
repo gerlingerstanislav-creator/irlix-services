@@ -124,6 +124,7 @@ final class KeycloakAuthorizationSync
                 || strcasecmp($expected['email'], $expected['username'].'@irlix.ru') !== 0) {
                 throw new RuntimeException('Employees corporate identity fields require reconciliation');
             }
+            $emailChanged = (string) ($user['email'] ?? '') !== $expected['email'];
             $changed = false;
             foreach ($expected as $field => $value) {
                 if ((string) ($user[$field] ?? '') !== $value) {
@@ -134,7 +135,7 @@ final class KeycloakAuthorizationSync
             if ($changed) {
                 // A verified email belongs to its prior address. Do not keep
                 // that verification bit when moving to another corporate email.
-                if ((string) ($user['email'] ?? '') !== (string) ($employee->work_email ?? '')) {
+                if ($emailChanged) {
                     $user['emailVerified'] = false;
                 }
                 $updated = $this->raw('PUT', "/users/{$userId}", $user);
