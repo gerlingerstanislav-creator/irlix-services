@@ -18,9 +18,13 @@ final class KeycloakCorporateProfileSync
 {
     public function reconcile(int $employeeId): void
     {
-        $employee = Employee::query()->whereKey($employeeId)->first();
+        Employee::resolveConnection()->transaction(function () use ($employeeId): void {
+        $employee = Employee::query()->whereKey($employeeId)->lockForUpdate()->first();
         if (!$employee || !$employee->keycloak_user_id
             || $employee->account_type !== Employee::TYPE_EMPLOYEE) return;
+        if ($employee->onboarding_email_status === 'sending') {
+            throw new RuntimeException('Keycloak onboarding delivery is in progress');
+        }
 
         $expected = [
             'username' => trim((string) $employee->login),
@@ -79,7 +83,8 @@ final class KeycloakCorporateProfileSync
                 throw new RuntimeException('Keycloak corporate profile read-back differs from Employees');
             }
         }
-        // Concurrent mutation of Employees while the network call was in
-        // flight must be re-queued by versioned DB trigger, not lost.
+        // The Employees row is locked during Keycloak I/O; changes wait and
+        // enqueue a new version, preventing lost/crossed profile updates.
+        });
     }
 }
