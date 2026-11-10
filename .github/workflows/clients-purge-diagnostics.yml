@@ -1,0 +1,54 @@
+name: Clients employee purge read-only diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/clients-purge-diagnostics.yml
+      - scripts/ci/clients_purge_log_summary.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clients-purge-readonly-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    name: Inspect recent Clients purge errors (redacted)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure deploy SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -T 10 -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Inspect Clients logs without publishing personal information
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          # Raw logs are only transferred over SSH to this runner and piped to
+          # a restrictive formatter. Neither raw text nor SQL bindings are printed.
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=12 \
+            -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE' | python3 scripts/ci/clients_purge_log_summary.py
+          set -euo pipefail
+          cd /opt/irlix-services
+          docker compose logs --no-color --since 168h --tail 6000 clients 2>&1 || true
+          docker compose exec -T clients sh -c 'tail -n 4000 storage/logs/laravel.log' 2>&1 || true
+          REMOTE
