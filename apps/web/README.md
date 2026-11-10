@@ -52,3 +52,7 @@ Registry filters are not rendered as a horizontal toolbar in Employees. The empl
 ## Deployed navigation verification
 
 The main release runs `scripts/ci/check_employees_navigation.cjs` in Chromium against frontend HTML/JS served by the stand nginx, through an SSH tunnel. It checks the staffing sidebar click, canonical URL, same-document navigation, Back/Forward, refresh and direct entry. OIDC and business API responses are synthetic, so this check does not read employee records or validate real-account permissions. A release remains failed if this check or subsequent runtime checks fail.
+
+### Карточка сотрудника: роли
+
+Вкладка «Роли» отображается только при действующей роли `platform-admin`. Список загружается при открытии через `GET /api/employees/access/roles/employee/{employee}`; сервер отдельно проверяет полномочия администратора (403 для остальных), включая прямой API-доступ. Отображаются текущие организационные, руководящие и специальные роли Employees, а также производные функциональные роли аккаунт-менеджера/менеджера продаж. Вкладка предназначена для просмотра, не создаёт и не снимает назначения; источником является оргструктура и записи Employees, а не устаревшие JWT.
