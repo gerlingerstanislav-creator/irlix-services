@@ -132,6 +132,11 @@ final class KeycloakAuthorizationSync
                 }
             }
             if ($changed) {
+                // A verified email belongs to its prior address. Do not keep
+                // that verification bit when moving to another corporate email.
+                if ((string) ($user['email'] ?? '') !== (string) ($employee->work_email ?? '')) {
+                    $user['emailVerified'] = false;
+                }
                 $updated = $this->raw('PUT', "/users/{$userId}", $user);
                 if ($updated->status() === 409) {
                     throw new RuntimeException('Keycloak corporate login/email belongs to another identity; explicit reconciliation required');
