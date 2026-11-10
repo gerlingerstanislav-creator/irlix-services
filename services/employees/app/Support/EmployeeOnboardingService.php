@@ -10,7 +10,10 @@ class EmployeeOnboardingService
 {
     public function sendPasswordSetup(int $employeeId): array
     {
-        $employee = Employee::query()->whereKey($employeeId)->first();
+        // Serialize temporary delivery-email mutation against the independent
+        // corporate Keycloak profile worker for the same employee.
+        return Employee::resolveConnection()->transaction(function () use ($employeeId): array {
+        $employee = Employee::query()->whereKey($employeeId)->lockForUpdate()->first();
         if (!$employee) throw new RuntimeException('Employee not found');
         if (!$employee->keycloak_user_id) throw new RuntimeException('Keycloak identity is not provisioned');
         if (!$employee->personal_email) throw new RuntimeException('Personal email is required for onboarding');
@@ -90,6 +93,7 @@ class EmployeeOnboardingService
         ]);
 
         return ['status' => 'sent', 'recipient' => $employee->personal_email];
+        });
     }
 
     public function markFailure(int $employeeId, \Throwable $error): void
