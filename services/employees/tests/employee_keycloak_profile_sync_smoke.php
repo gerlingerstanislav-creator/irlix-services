@@ -19,12 +19,12 @@ $app->instance('date',new Illuminate\Support\DateFactory());
 $capsule=new Manager($app); $capsule->addConnection(['driver'=>'sqlite','database'=>':memory:']);
 Model::setConnectionResolver($capsule->getDatabaseManager());
 $db=$capsule->getConnection();
-$db->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, account_type TEXT, login TEXT, work_email TEXT, first_name TEXT, last_name TEXT, employment_status TEXT, keycloak_user_id TEXT)');
+$db->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, account_type TEXT, login TEXT, work_email TEXT, first_name TEXT, last_name TEXT, employment_status TEXT, onboarding_email_status TEXT, keycloak_user_id TEXT)');
 $db->statement('CREATE TABLE departments (id INTEGER PRIMARY KEY, alias TEXT)');
 $db->statement('CREATE TABLE keycloak_auth_sync (employee_id INTEGER PRIMARY KEY, managed_roles TEXT, updated_at TEXT)');
 $db->table('employees')->insert([
- ['id'=>17,'account_type'=>'employee','login'=>'synthetic.current','work_email'=>'synthetic.current@irlix.ru','first_name'=>'Synthetic','last_name'=>'Employee','employment_status'=>'Уволен','keycloak_user_id'=>'synthetic-sub'],
- ['id'=>18,'account_type'=>'employee','login'=>'synthetic.collision','work_email'=>'synthetic.collision@irlix.ru','first_name'=>'Other','last_name'=>'Employee','employment_status'=>'Уволен','keycloak_user_id'=>'synthetic-conflict'],
+ ['id'=>17,'account_type'=>'employee','login'=>'synthetic.current','work_email'=>'synthetic.current@irlix.ru','first_name'=>'Synthetic','last_name'=>'Employee','employment_status'=>'Уволен','onboarding_email_status'=>'sent','keycloak_user_id'=>'synthetic-sub'],
+ ['id'=>18,'account_type'=>'employee','login'=>'synthetic.collision','work_email'=>'synthetic.collision@irlix.ru','first_name'=>'Other','last_name'=>'Employee','employment_status'=>'Уволен','onboarding_email_status'=>'sent','keycloak_user_id'=>'synthetic-conflict'],
 ]);
 $db->table('keycloak_auth_sync')->insert([['employee_id'=>17],['employee_id'=>18]]);
 $user=[
