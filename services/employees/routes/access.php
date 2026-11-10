@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/access/me', [AccessRoleController::class, 'me']);
 Route::get('/access/roles', [AccessRoleController::class, 'index']);
+Route::get('/access/roles/employee/{employee}', [AccessRoleController::class, 'employeeRoles'])->whereNumber('employee');
 Route::put('/access/roles/{role}/{employee}', [AccessRoleController::class, 'assign']);
 Route::delete('/access/roles/{role}/{employee}', [AccessRoleController::class, 'revoke']);
 
