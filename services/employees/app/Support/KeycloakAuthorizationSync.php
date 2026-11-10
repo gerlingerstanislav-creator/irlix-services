@@ -94,6 +94,13 @@ final class KeycloakAuthorizationSync
         $employee = Employee::query()->where('id', $employeeId)->first();
         // Hard-deleted employees have their Keycloak identity deleted first.
         if (!$employee || !$employee->keycloak_user_id) return;
+        if ($employee->onboarding_email_status === 'sending'
+            && $employee->updated_at !== null
+            && $employee->updated_at->greaterThan(now()->subMinutes(2))) {
+            // Onboarding temporarily routes to personal_email, but
+            // authentication must ultimately use the corporate address.
+            throw new RuntimeException('Keycloak identity is temporarily reserved for onboarding delivery');
+        }
 
         $roles = [];
         if (($employee->employment_status ?? '') === 'Трудоустроен' || $employee->login === 'admin') {
