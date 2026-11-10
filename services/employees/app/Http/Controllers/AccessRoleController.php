@@ -24,33 +24,45 @@ final class AccessRoleController extends Controller
     }
 
     /**
-     * Read-only employee role projection for the administrative employee card.
-     * Do not return the full role member directory to this endpoint.
+     * Current role projection from Employees, not from potentially stale Keycloak tokens.
+     * Organizational claims and functional labels are descriptive; they do not
+     * grant permissions or copy assignments into the special-role table.
      */
     public function employeeRoles(Request $request, int $employee): JsonResponse
     {
         if (!$this->isPlatformAdmin($request)) {
             return response()->json(['message' => 'Доступно только администратору платформы.'], 403);
         }
-        if (!$this->roles->employeeExists($employee)) {
-            return response()->json(['message' => 'Employee not found'], 404);
-        }
+        $person = \App\Models\Employee::query()->whereKey($employee)->first();
+        if (!$person) return response()->json(['message' => 'Employee not found'], 404);
 
-        $assigned = [];
-        foreach ($this->roles->catalogWithMembers() as $role) {
-            $member = collect($role['members'])->first(
-                static fn ($row) => (int) ($row['id'] ?? 0) === $employee
-            );
-            if (!$member) continue;
-            $assigned[] = [
-                'key' => $role['key'],
-                'label' => $role['label'],
-                'description' => $role['description'],
-                'automatic' => (bool) ($role['automatic'] ?? false),
-                'assigned_at' => $member['created_at'] ?? null,
+        $departments = \App\Models\Department::query()->get()->all();
+        $assigned = \App\Models\EmployeeAccessRole::query()->where('employee_id', $employee)
+            ->pluck('role')->filter(static fn ($role) => SpecialRoles::exists((string) $role))->all();
+        $labels = \App\Support\RoleLabels::canonicalRoleCatalog($departments);
+        $claims = \App\Support\RoleLabels::publishedRoleClaims($person, $departments, $assigned);
+        $legacy = \App\Support\RoleLabels::resolve($person, $departments, $assigned);
+        $items = [];
+        foreach ($claims as $claim) {
+            $role = str_starts_with($claim, 'special:') ? substr($claim, 8) : null;
+            $definition = $role ? (SpecialRoles::catalog()[$role] ?? []) : [];
+            $items[] = [
+                'key' => $claim,
+                'label' => $labels[$claim] ?? $claim,
+                'description' => $definition['description'] ?? '',
+                'source' => str_starts_with($claim, 'org:') ? 'Подразделение'
+                    : (str_starts_with($claim, 'head:') ? 'Руководство'
+                        : (SpecialRoles::isAutomatic((string) $role) ? 'Оргструктура' : 'Назначена вручную')),
             ];
         }
-        return response()->json(['data' => $assigned]);
+        foreach (['account-manager' => 'Аккаунт-менеджер', 'sales-manager' => 'Менеджер по продажам'] as $key => $label) {
+            if (in_array($key, $legacy, true)) {
+                $items[] = ['key' => 'functional:'.$key, 'label' => $label,
+                    'description' => 'Функциональная роль определяется текущими данными сотрудника.',
+                    'source' => 'Функциональная'];
+            }
+        }
+        return response()->json(['data' => $items]);
     }
 
     public function assign(Request $request, string $role, int $employee): JsonResponse
