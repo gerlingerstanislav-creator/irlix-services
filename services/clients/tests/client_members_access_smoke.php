@@ -9,7 +9,7 @@ foreach([1,2,3]as $id)DB::table('client_members')->insert(['id'=>$id,'client_id'
 DB::table('client_account_delegations')->insert(['client_id'=>2,'to_employee_id'=>5,'starts_at'=>'2026-01-01','ends_at'=>'2026-12-31']);
 Http::fake(['*/self'=>Http::response(['data'=>['id'=>5]]),'*/clients-directory'=>Http::response(['data'=>['employees'=>[['id'=>7,'department_id'=>11]]]])]);
 $resolver=new class extends App\Support\ClientContourAccess {
-    public string $scope='own';public bool $manage=true;public bool $membersView=true;public bool $reportsView=true;public bool $contactsView=true;public bool $leadsView=true;public array $permissionScopes=[];
+    public string $scope='own';public bool $manage=true;public bool $membersView=true;public bool $reportsView=true;public bool $contactsView=true;public bool $leadsView=true;public array $roles=['account-manager'];public array $permissionScopes=[];
     public function resolve(Illuminate\Http\Request $request):array {
         $permissions=[];
         foreach(['clients.view','clients.manage','members.view','members.manage',
@@ -20,7 +20,7 @@ $resolver=new class extends App\Support\ClientContourAccess {
                 && ($p!=='contacts.view'||$this->contactsView)
                 && ($p!=='leads.view'||$this->leadsView),
                 'scope'=>$this->permissionScopes[$p]??$this->scope];
-        return ['platform_admin'=>false,'employee'=>['id'=>5],'permissions'=>$permissions,'client_service_permissions'=>$permissions,'department_ids'=>[11],'roles'=>['account-manager']];
+        return ['platform_admin'=>false,'employee'=>['id'=>5],'permissions'=>$permissions,'client_service_permissions'=>$permissions,'department_ids'=>[11],'roles'=>$this->roles];
     }
 };
 $guard=new App\Http\Middleware\ClientsAccountingAccess($resolver);
@@ -136,6 +136,36 @@ clientCheck(count($withoutLeads['contacts'])===1
     && $withoutLeads['leads']===[],
     'Denied leads.view leaked lead data or hid allowed client contact');
 $resolver->permissionScopes=[];
+$resolver->leadsView=true;
+// Sales regression: the same overview projection runs for Sales, but own
+// clients are selected through sales_employee_id, not account_employee_id.
+DB::table('clients')->where('id',1)->update(['account_employee_id'=>6,'sales_employee_id'=>5]);
+$resolver->roles=['sales-manager'];
+$resolver->membersView=false;
+$resolver->scope='own';
+$salesOverview = $guard->handle($overviewRequest,
+    fn() => response()->json(['data'=>$contactSample]))->getData(true)['data'];
+clientCheck(count($salesOverview['clients'])===1 && (int)$salesOverview['clients'][0]['id']===1,
+    'Sales own client missing from overview');
+clientCheck($salesOverview['clients'][0]['client_members']===[],
+    'Sales overview disclosed specialist rates without members.view');
+clientCheck(count($salesOverview['contacts'])===1
+    && count($salesOverview['contacts'][0]['relations'])===2,
+    'Sales own client/lead contacts are missing or foreign contacts leaked');
+clientCheck(count($salesOverview['leads'])===1
+    && (int)$salesOverview['leads'][0]['id']===31,
+    'Sales overview lost own lead or leaked another Sales lead');
+$resolver->leadsView=false;
+$salesNoLeads = $guard->handle($overviewRequest,
+    fn() => response()->json(['data'=>$contactSample]))->getData(true)['data'];
+clientCheck(count($salesNoLeads['contacts'])===1
+    && count($salesNoLeads['contacts'][0]['relations'])===1
+    && $salesNoLeads['contacts'][0]['relations'][0]['entity_type']==='client'
+    && $salesNoLeads['leads']===[],
+    'Sales role leaked foreign/denied lead data or lost own client contact');
+DB::table('clients')->where('id',1)->update(['account_employee_id'=>5,'sales_employee_id'=>null]);
+$resolver->roles=['account-manager'];
+$resolver->membersView=true;
 $resolver->leadsView=true;
 $own = $guard->handle($overviewRequest,fn() => response()->json(['data'=>$sample]))->getData(true);
 clientCheck(count($own['data']['clients'][0]['client_members'])===1,
