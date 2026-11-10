@@ -1,0 +1,55 @@
+name: Clients read-only HTTP 500 diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/clients-http-500-diagnostics.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clients-http-500-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure deploy SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -T 10 -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Inspect recent Clients errors (read-only, redacted)
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=12 \
+            -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE' | python3 scripts/ci/clients_http_500_summary.py
+          set -euo pipefail
+          cd /opt/irlix-services
+          id="$(docker ps -q --filter label=com.docker.compose.service=clients | head -n 1)"
+          if [ -z "$id" ]; then
+            echo 'clients_container=missing'
+            exit 3
+          fi
+          docker logs --since 48h --tail 3000 "$id" 2>&1 || true
+          docker exec "$id" sh -c 'tail -n 3000 storage/logs/laravel.log' 2>&1 || true
+          REMOTE
