@@ -55,6 +55,16 @@ final class AccessRoleController extends Controller
                         : (SpecialRoles::isAutomatic((string) $role) ? 'Оргструктура' : 'Назначена вручную')),
             ];
         }
+        // Platform tester is intentionally omitted from JWT V2 business grants,
+        // but administrators must still see its actual manual assignment.
+        foreach ($assigned as $specialRole) {
+            $key = 'special:'.$specialRole;
+            if (in_array($key, array_column($items, 'key'), true)) continue;
+            $definition = SpecialRoles::catalog()[$specialRole];
+            $items[] = ['key' => $key, 'label' => $definition['label'],
+                'description' => $definition['description'],
+                'source' => 'Назначена вручную'];
+        }
         foreach (['account-manager' => 'Аккаунт-менеджер', 'sales-manager' => 'Менеджер по продажам'] as $key => $label) {
             if (in_array($key, $legacy, true)) {
                 $items[] = ['key' => 'functional:'.$key, 'label' => $label,
